@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn()   { return request.auth != null; }
+    function myDoc()      { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(myDoc()); }
+    function isAdmin()    { return hasProfile() && get(myDoc()).data.role == 'admin'; }
+    function isApproved() { return hasProfile() && get(myDoc()).data.role == 'craftsman' && get(myDoc()).data.status == 'approved'; }
+    function job(id)      { return get(/databases/$(database)/documents/jobs/$(id)).data; }
+
+    // 協力業者・管理者のプロフィール
+    match /users/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      // 新規登録は「職人・審査中・無料」でしか作れない
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'craftsman'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.plan == 'free';
+      // 本人は審査状態・権限・プランを変えられない
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'plan', 'email']));
+      allow delete: if false;
+    }
+
+    match /companies/{cid} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // 案件：承認済みの職人は「募集中」か「自分に発注された」案件だけ見られる
+    match /jobs/{jobId} {
+      allow read: if isAdmin()
+        || (isApproved() && (resource.data.status == 'open' || resource.data.assignedTo == request.auth.uid));
+      allow write: if isAdmin();
+
+      // 住所・鍵などは発注先だけ
+      match /private/{docId} {
+        allow read: if isAdmin() || (isApproved() && job(jobId).assignedTo == request.auth.uid);
+        allow write: if isAdmin();
+      }
+    }
+
+    // 応募
+    match /applications/{appId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.craftsmanId == request.auth.uid);
+      allow create: if isApproved()
+        && request.resource.data.craftsmanId == request.auth.uid
+        && appId == request.resource.data.jobId + '_' + request.auth.uid
+        && request.resource.data.status == 'applied'
+        && job(request.resource.data.jobId).status == 'open';
+      // 本人ができるのは「取り下げ」だけ
+      allow update: if isAdmin()
+        || (signedIn() && resource.data.craftsmanId == request.auth.uid
+            && resource.data.status == 'applied'
+            && request.resource.data.status == 'withdrawn'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']));
+      allow delete: if false;
+    }
+
+    // 完了報告
+    match /reports/{reportId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.craftsmanId == request.auth.uid);
+      allow create: if isApproved()
+        && request.resource.data.craftsmanId == request.auth.uid
+        && request.resource.data.status == 'submitted'
+        && job(request.resource.data.jobId).assignedTo == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+  }
+}
