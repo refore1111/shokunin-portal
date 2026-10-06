@@ -1,0 +1,1150 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Refore 協力業者ポータル</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Barlow+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EEF1F4; --surface:#FFFFFF; --ink:#18212C; --sub:#5A6574; --line:#D3D9E0;
+  --kon:#1F3A5F; --kon-text:#1F3A5F; --kon-ink:#FFFFFF; --kon-soft:#E2E9F2;
+  --shu:#C42E26; --caution:#E8B21C; --warn:#8A5F00; --warn-soft:#FBF1D6;
+  --ok:#2C7A4B;
+  --font:"BIZ UDPGothic","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;
+  --num:"Barlow Condensed","Arial Narrow","BIZ UDPGothic",sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#11161D; --surface:#19212B; --ink:#E5EAF0; --sub:#9AA5B3; --line:#2B3542;
+    --kon:#2F5487; --kon-text:#8FB2E3; --kon-ink:#FFFFFF; --kon-soft:#1E2A3A;
+    --shu:#E5584E; --warn:#E8B21C; --warn-soft:#30291A; --ok:#5BB585;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#11161D; --surface:#19212B; --ink:#E5EAF0; --sub:#9AA5B3; --line:#2B3542;
+  --kon:#2F5487; --kon-text:#8FB2E3; --kon-ink:#FFFFFF; --kon-soft:#1E2A3A;
+  --shu:#E5584E; --warn:#E8B21C; --warn-soft:#30291A; --ok:#5BB585;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.7;-webkit-text-size-adjust:100%}
+img{max-width:100%;display:block}
+a{color:var(--kon-text)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--caution);outline-offset:2px}
+h1{font-size:22px;line-height:1.4;margin:0 0 4px}
+h2{font-size:16px;line-height:1.5;margin:0 0 12px}
+
+/* デモ表示 */
+.demo{background:var(--caution);color:#1d1600;font-size:13px;padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.demo button{background:rgba(255,255,255,.6);border:1px solid rgba(0,0,0,.25);border-radius:4px;padding:2px 10px;cursor:pointer;font-size:13px;color:#1d1600}
+
+/* ヘッダー */
+.top{background:var(--kon);color:var(--kon-ink)}
+.top-in{max-width:960px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-decoration:none;color:inherit}
+.brand-mark{flex:none;width:34px;height:34px;border:2px solid currentColor;display:grid;place-items:center;font-family:var(--num);font-weight:600;font-size:20px;border-radius:3px}
+.brand b{display:block;font-size:15px;line-height:1.3}
+.brand small{display:block;font-size:12px;opacity:.8;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .link{background:none;border:1px solid rgba(255,255,255,.45);color:inherit;border-radius:4px;padding:4px 10px;font-size:13px;cursor:pointer;flex:none}
+.admin-nav{max-width:960px;margin:0 auto;padding:0 8px;display:flex;gap:4px}
+.admin-nav a{padding:8px 12px 10px;text-decoration:none;font-size:14px;color:rgba(255,255,255,.75);border-bottom:3px solid transparent}
+.admin-nav a[aria-current="page"]{color:#fff;border-color:var(--caution);font-weight:700}
+.badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:var(--caution);color:#1d1600;font-size:12px;font-weight:700;text-align:center;line-height:20px;margin-left:4px}
+
+/* 職人用タブ（スマホは下、PCは上） */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 10px;font-size:11px;text-decoration:none;color:var(--sub)}
+.tabbar svg{width:22px;height:22px}
+.tabbar a[aria-current="page"]{color:var(--kon-text);font-weight:700}
+@media (min-width:720px){
+  .tabbar{position:sticky;top:0;bottom:auto;display:flex;justify-content:center;gap:4px;border-top:0;border-bottom:1px solid var(--line);padding-bottom:0}
+  .tabbar a{flex-direction:row;gap:6px;font-size:14px;padding:10px 16px;border-bottom:3px solid transparent}
+  .tabbar a[aria-current="page"]{border-color:var(--kon-text)}
+  .tabbar svg{width:18px;height:18px}
+}
+
+.main{max-width:960px;margin:0 auto;padding:20px 16px 110px}
+@media (min-width:720px){.main{padding-bottom:48px}}
+.lead{color:var(--sub);font-size:14px;margin:0 0 20px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.page-head .lead{margin:0}
+.back{display:inline-block;font-size:14px;color:var(--sub);text-decoration:none;margin-bottom:10px;padding:4px 0}
+.small{font-size:13px;color:var(--sub)}
+.pre{white-space:pre-wrap;word-break:break-word}
+.center{text-align:center}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.between{justify-content:space-between}
+.end{justify-content:flex-end}
+.stack{display:grid;gap:16px;align-content:start}
+.cols{display:grid;gap:16px}
+@media (min-width:860px){.cols{grid-template-columns:1.25fr 1fr;align-items:start}}
+
+/* 絞り込み */
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.filters select{width:auto;padding:8px 10px;font-size:14px}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:14px;cursor:pointer}
+.toggle input{width:18px;height:18px;accent-color:var(--kon)}
+.seg{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px}
+.seg a{padding:5px 14px;border-radius:999px;border:1px solid var(--line);text-decoration:none;font-size:13px;white-space:nowrap;background:var(--surface);color:var(--ink)}
+.seg a[aria-current="true"]{background:var(--kon);border-color:var(--kon);color:var(--kon-ink)}
+
+/* 案件カード：伝票＋判子 */
+.list{display:grid;gap:12px}
+@media (min-width:720px){.list.grid{grid-template-columns:1fr 1fr}}
+.job{position:relative;display:block;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--kon);border-radius:6px;padding:14px 16px;text-decoration:none;color:var(--ink);overflow:hidden}
+.job:hover{border-color:var(--kon-text)}
+.job h3{font-size:17px;margin:6px 0 8px;line-height:1.45;padding-right:66px}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+.tag{font-size:12px;background:var(--kon-soft);color:var(--ink);padding:1px 8px;border-radius:3px}
+.meta{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:14px;margin:0}
+.meta dt{color:var(--sub)}
+.meta dd{margin:0}
+.price{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
+.price .num{font-family:var(--num);font-weight:600;font-size:30px;line-height:1;letter-spacing:.01em}
+.price small{color:var(--sub);font-size:12px}
+.price.big{border:0;padding:0;margin:4px 0 14px}
+.price.big .num{font-size:42px}
+.job .foot{margin:8px 0 0;font-size:13px;color:var(--sub)}
+.count{font-family:var(--num);font-weight:600;font-size:20px;color:var(--ink)}
+.stamp{position:absolute;top:12px;right:12px;width:60px;height:60px;border:2px solid var(--stamp,var(--shu));color:var(--stamp,var(--shu));border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;letter-spacing:.04em;transform:rotate(-12deg);box-shadow:inset 0 0 0 2px var(--surface),inset 0 0 0 3.5px var(--stamp,var(--shu));pointer-events:none}
+.stamp.mute{--stamp:var(--sub)}
+.stamp.inline{position:static;flex:none}
+.stamp.press{animation:press .38s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes press{0%{transform:rotate(-12deg) scale(1.9);opacity:0}70%{transform:rotate(-12deg) scale(.94);opacity:1}100%{transform:rotate(-12deg) scale(1)}}
+
+/* パネル・詳細 */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px}
+.panel > :last-child{margin-bottom:0}
+.panel h2 small{font-weight:400;color:var(--sub);font-size:12px;margin-left:6px}
+.detail h1{margin:8px 0 6px}
+.detail h2{font-size:15px;margin:20px 0 8px;border-left:4px solid var(--caution);padding-left:8px}
+.kv{display:grid;grid-template-columns:7.5em 1fr;gap:6px 12px;margin:0;font-size:14px}
+.kv dt{color:var(--sub)}
+.kv dd{margin:0;white-space:pre-wrap;word-break:break-word}
+.note{background:var(--warn-soft);border-left:4px solid var(--caution);padding:10px 12px;font-size:14px;border-radius:0 4px 4px 0;margin:0 0 16px}
+.empty{text-align:center;color:var(--sub);padding:36px 16px;border:1px dashed var(--line);border-radius:6px;background:var(--surface)}
+.row-item{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px;text-decoration:none;color:var(--ink)}
+.row-item:hover{border-color:var(--kon-text)}
+.row-main{display:grid;gap:2px;min-width:0}
+.applicant{border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+.applicant + .applicant{margin-top:10px}
+.applicant.dim{opacity:.6}
+.msg{background:var(--paper);border-radius:4px;padding:8px 10px;font-size:14px;margin:8px 0}
+
+.pill{display:inline-block;flex:none;font-size:12px;padding:1px 10px;border-radius:999px;border:1px solid currentColor;font-weight:700;white-space:nowrap}
+.pill.applied,.pill.open{color:var(--kon-text)}
+.pill.selected,.pill.approved,.pill.assigned{color:var(--ok)}
+.pill.rejected,.pill.withdrawn,.pill.suspended,.pill.closed,.pill.completed{color:var(--sub)}
+.pill.pending,.pill.submitted,.pill.draft{color:var(--warn)}
+.pill.returned{color:var(--shu)}
+
+/* 写真 */
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;margin:8px 0}
+.photos .ph{position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;background:var(--paper)}
+.photos button.zoom{padding:0;border:0;background:none;cursor:zoom-in;width:100%;height:100%}
+.photos img{width:100%;height:100%;object-fit:cover}
+.photos .x{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;cursor:pointer;font-size:14px;line-height:26px;padding:0}
+
+/* フォーム */
+.field{display:grid;gap:6px;margin:0 0 16px}
+.field > span,.field > legend{font-size:14px;font-weight:700;padding:0}
+.field small{color:var(--sub);font-size:12px;font-weight:400;margin-left:4px}
+fieldset{border:0;padding:0;min-width:0}
+input[type=text],input[type=email],input[type=password],input[type=tel],input[type=number],input[type=date],input[type=file],select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:10px 12px;font-size:16px}
+input[type=file]{padding:8px}
+textarea{min-height:110px;resize:vertical}
+.two{display:grid;gap:0 12px}
+@media (min-width:560px){.two{grid-template-columns:1fr 1fr}}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.checks label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:4px;padding:6px 10px;background:var(--surface);font-size:14px;cursor:pointer}
+.checks input{accent-color:var(--kon);width:18px;height:18px;margin:0}
+.checks label:has(input:checked){border-color:var(--kon-text);background:var(--kon-soft)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--kon);background:var(--kon);color:var(--kon-ink);border-radius:4px;padding:10px 18px;font-weight:700;font-size:15px;cursor:pointer;text-decoration:none;min-height:44px}
+.btn.sub{background:transparent;color:var(--kon-text);border-color:var(--kon-text)}
+.btn.danger{background:transparent;color:var(--shu);border-color:var(--shu)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.55;cursor:progress}
+.textlink{background:none;border:0;color:var(--kon-text);text-decoration:underline;cursor:pointer;padding:0;font-size:14px}
+
+/* ログイン */
+.auth-wrap{max-width:440px;margin:0 auto;padding:36px 16px 48px}
+.auth-wrap.wide{max-width:680px}
+.auth-brand{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.auth-brand .brand-mark{width:46px;height:46px;font-size:26px;background:var(--kon);color:var(--kon-ink);border-color:var(--kon)}
+.auth-brand b{font-size:18px;display:block;line-height:1.35}
+.auth-brand small{color:var(--sub);font-size:13px}
+
+/* モーダル・通知 */
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:6px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
+.toast[hidden]{display:none}
+.modal-bg{position:fixed;inset:0;background:rgba(8,12,18,.6);display:grid;place-items:center;padding:16px;z-index:50}
+.modal{background:var(--surface);border-radius:8px;padding:20px;width:100%;max-width:440px}
+.modal p{margin:0 0 14px;font-size:14px}
+.modal textarea,.modal input{margin-bottom:14px}
+.lightbox img{max-height:86vh;max-width:100%;border-radius:4px}
+
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"><p class="center small" style="padding:48px 16px">読み込み中…</p></div>
+
+<script>
+/* =========================================================
+   設定：Firebaseの設定値を入れると本番モードで動きます。
+   apiKey が空のままなら「デモモード」（ブラウザ内保存）で動きます。
+   ========================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};
+const FIREBASE_SDK_VERSION = "10.12.2";
+const COMPANY_ID = "refore";
+const CONTACT_TEL = "03-6824-7282";
+const REPORT_EMAIL = "info@refore.co.jp";   // 完了報告メールの送信先
+const JOB_PHOTO_MAX = 4;                      // 案件写真の上限（Firestoreに直接保存するため）
+
+const TRADES = ["ハウスクリーニング","エアコンクリーニング","クロス張替え","床（CF・フロアタイル）","塗装","設備交換","簡易修繕","退去立会","その他"];
+const PREFS = ["東京都","神奈川県","埼玉県","千葉県"];
+const JOB_STATUS = {draft:"下書き",open:"募集中",closed:"締切",assigned:"発注済み",completed:"完了"};
+const APP_STATUS = {applied:"応募中",selected:"採用",rejected:"見送り",withdrawn:"取り下げ"};
+const REPORT_STATUS = {submitted:"確認待ち",approved:"確認済み",returned:"差し戻し"};
+const CRAFT_STATUS = {pending:"審査中",approved:"承認済み",suspended:"停止中"};
+
+/* ---------- 共通の小道具 ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const yen = n => Number(n) > 0 ? "¥" + Number(n).toLocaleString("ja-JP") : "応相談";
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const clone = o => o == null ? o : JSON.parse(JSON.stringify(o));
+function fmtDay(s){
+  if(!s) return "日程未定";
+  const d = new Date(s + "T00:00:00");
+  if(isNaN(d)) return s;
+  return `${d.getMonth()+1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`;
+}
+function fmtRange(a, b){ return (!b || a === b) ? fmtDay(a) : `${fmtDay(a)}〜${fmtDay(b)}`; }
+function fmtTime(ms){
+  if(!ms) return "";
+  const d = new Date(ms);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+function resizeImage(file, max = 1280, q = 0.75){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => b ? res(b) : rej(new Error("画像を変換できませんでした")), "image/jpeg", q);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error(`「${file.name}」を画像として読み込めませんでした`)); };
+    img.src = url;
+  });
+}
+const blobToDataURL = b => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+
+/* =========================================================
+   デモ用バックエンド（ブラウザ内に保存）
+   ========================================================= */
+function seedDemo(){
+  const now = Date.now(), day = 86400000;
+  const iso = off => { const d = new Date(now + off * day); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  return {
+    session: null,
+    accounts: {
+      admin: {email:"admin@demo.jp", pw:"demo1234"},
+      c1: {email:"yamada@demo.jp", pw:"demo1234"},
+      c2: {email:"tanaka@demo.jp", pw:"demo1234"}
+    },
+    users: {
+      admin: {uid:"admin", role:"admin", status:"approved", name:"Refore 管理者", email:"admin@demo.jp", createdAt:now - 90*day},
+      c1: {uid:"c1", role:"craftsman", status:"approved", plan:"free", name:"山田 太郎", tradeName:"山田クリーンサービス", phone:"090-0000-0000", email:"yamada@demo.jp",
+        prefs:["東京都","千葉県"], areaNote:"墨田区・江東区・市川市は即日対応できます", trades:["ハウスクリーニング","エアコンクリーニング","簡易修繕"],
+        years:"8", licenses:"", invoiceNumber:"T1234567890123", insurance:"加入済み", pr:"原状回復のクリーニングが中心です。施工前後の写真報告に慣れています。", createdAt:now - 30*day},
+      c2: {uid:"c2", role:"craftsman", status:"pending", plan:"free", name:"田中 健一", tradeName:"", phone:"080-0000-0000", email:"tanaka@demo.jp",
+        prefs:["東京都","埼玉県"], areaNote:"", trades:["クロス張替え","床（CF・フロアタイル）"],
+        years:"15", licenses:"内装仕上げ施工技能士 1級", invoiceNumber:"", insurance:"手続き中", pr:"", createdAt:now - day}
+    },
+    jobs: {
+      j1: {id:"j1", companyId:COMPANY_ID, status:"open", title:"1K 退去後ハウスクリーニング", trades:["ハウスクリーニング"], pref:"東京都", city:"墨田区",
+        startDate:iso(5), endDate:iso(5), price:18000, priceNote:"税別・洗剤等持参",
+        description:"1K（約22㎡）の退去後クリーニング一式です。\nキッチン、浴室、トイレ、洗面、床、窓、ベランダ。\nエアコンは別手配のため対象外です。", photos:[], assignedTo:null, createdAt:now - 2*day},
+      j2: {id:"j2", companyId:COMPANY_ID, status:"open", title:"2LDK クロス張替え（天井含む 約120㎡）", trades:["クロス張替え"], pref:"東京都", city:"江東区",
+        startDate:iso(9), endDate:iso(10), price:110000, priceNote:"税別・材料支給（量産品）",
+        description:"居室2部屋とLDKの壁・天井。\n下地補修が数か所あります（パテで対応できる範囲）。\n残置物なし、駐車場は近隣コインパーキングをご利用ください。", photos:[], assignedTo:null, createdAt:now - day},
+      j3: {id:"j3", companyId:COMPANY_ID, status:"open", title:"エアコンクリーニング 壁掛け2台", trades:["エアコンクリーニング"], pref:"千葉県", city:"市川市",
+        startDate:iso(7), endDate:iso(7), price:16000, priceNote:"税別・2台分",
+        description:"お掃除機能なしの壁掛けエアコン2台（6畳用）。\n分解洗浄でお願いします。", photos:[], assignedTo:null, createdAt:now - 3*day},
+      j4: {id:"j4", companyId:COMPANY_ID, status:"draft", title:"和室 襖・障子 張替え（襖4枚・障子2枚）", trades:["その他"], pref:"千葉県", city:"船橋市",
+        startDate:iso(14), endDate:iso(14), price:0, priceNote:"見積後に確定",
+        description:"襖は両面、障子は普通紙での張替えです。", photos:[], assignedTo:null, createdAt:now - 3600000},
+      j5: {id:"j5", companyId:COMPANY_ID, status:"assigned", title:"1R 退去後クリーニング（浴室カビ取り含む）", trades:["ハウスクリーニング"], pref:"東京都", city:"台東区",
+        startDate:iso(-1), endDate:iso(-1), price:20000, priceNote:"税別",
+        description:"1R（約18㎡）の退去後クリーニング一式。\n浴室のカビが強めなので、カビ取りを含めてお願いします。", photos:[], assignedTo:"c1", createdAt:now - 6*day}
+    },
+    jobPrivate: {
+      j1: {address:"東京都墨田区○○1-2-3", building:"サンプルハイツ 201号室", keyInfo:"現地キーボックス（番号は前日に連絡します）", manager:"○○管理", contact:"作業前後で同じ角度の写真を撮影してください。"},
+      j2: {address:"東京都江東区○○4-5-6", building:"サンプルマンション 503号室", keyInfo:"管理人室で受け取り（平日9〜17時）", manager:"○○不動産", contact:"エレベーター養生をお願いします。"},
+      j3: {address:"千葉県市川市○○7-8-9", building:"サンプルコーポ 102号室", keyInfo:"入居者在宅（立会いあり）", manager:"○○ホーム", contact:"入居者さまへの声かけを丁寧にお願いします。"},
+      j5: {address:"東京都台東区○○2-4-6", building:"サンプルレジデンス 305号室", keyInfo:"ポスト内（ダイヤル番号は別途連絡済み）", manager:"○○管理", contact:"作業後は鍵をポストに戻してください。"}
+    },
+    applications: {
+      j3_c1: {id:"j3_c1", jobId:"j3", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"エアコンクリーニング 壁掛け2台", jobArea:"千葉県市川市", jobStart:iso(7), jobEnd:iso(7), price:16000, message:"当日は9時から作業できます。", status:"applied", createdAt:now - day},
+      j5_c1: {id:"j5_c1", jobId:"j5", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"1R 退去後クリーニング（浴室カビ取り含む）", jobArea:"東京都台東区", jobStart:iso(-1), jobEnd:iso(-1), price:20000, message:"", status:"selected", createdAt:now - 5*day}
+    },
+    reports: {}
+  };
+}
+
+class DemoBackend {
+  constructor(){
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v1"; this.listeners = [];
+    let raw = null;
+    try { raw = localStorage.getItem(this.key); } catch(e) {}
+    try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
+    this.save();
+  }
+  save(){ try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch(e) {} }
+  emit(){
+    const s = this.data.session;
+    const u = s && this.data.accounts[s] ? {uid:s, email:this.data.accounts[s].email} : null;
+    this.listeners.forEach(f => f(u));
+  }
+  reset(){ this.data = seedDemo(); this.save(); this.emit(); }
+  onAuth(cb){ this.listeners.push(cb); setTimeout(() => this.emit()); }
+  async signUp(email, pw){
+    email = email.trim().toLowerCase();
+    if(Object.values(this.data.accounts).some(a => a.email === email)) throw new Error("このメールアドレスはすでに登録されています");
+    if(pw.length < 6) throw new Error("パスワードは6文字以上にしてください");
+    const uid = "u_" + newId();
+    this.data.accounts[uid] = {email, pw}; this.data.session = uid; this.save(); this.emit();
+  }
+  async signIn(email, pw){
+    email = email.trim().toLowerCase();
+    const hit = Object.entries(this.data.accounts).find(([, a]) => a.email === email && a.pw === pw);
+    if(!hit) throw new Error("メールアドレスかパスワードが違います");
+    this.data.session = hit[0]; this.save(); this.emit();
+  }
+  async signOut(){ this.data.session = null; this.save(); this.emit(); }
+  async resetPassword(){ throw new Error("デモモードではパスワード再設定メールは送れません"); }
+
+  async getProfile(uid){ return clone(this.data.users[uid] || null); }
+  async createProfile(uid, d){ this.data.users[uid] = {...d, uid}; this.save(); }
+  async updateProfile(uid, d){ Object.assign(this.data.users[uid], d); this.save(); }
+  async listCraftsmen(){ return Object.values(this.data.users).filter(u => u.role === "craftsman").map(clone); }
+  async setCraftsmanStatus(uid, status){ this.data.users[uid].status = status; this.save(); }
+
+  async listJobs(f = {}){
+    let a = Object.values(this.data.jobs);
+    if(f.status) a = a.filter(j => j.status === f.status);
+    if(f.assignedTo) a = a.filter(j => j.assignedTo === f.assignedTo);
+    return a.map(clone);
+  }
+  async getJob(id){ return clone(this.data.jobs[id] || null); }
+  async saveJob(id, d){
+    if(!id){ id = "j_" + newId(); this.data.jobs[id] = {...d, id, companyId:COMPANY_ID, assignedTo:null, createdAt:Date.now()}; }
+    else Object.assign(this.data.jobs[id], d);
+    this.data.jobs[id].updatedAt = Date.now(); this.save(); return id;
+  }
+  async setJobStatus(id, status){ this.data.jobs[id].status = status; this.data.jobs[id].updatedAt = Date.now(); this.save(); }
+  async getJobPrivate(id){ return clone(this.data.jobPrivate[id] || {}); }
+  async setJobPrivate(id, d){ this.data.jobPrivate[id] = {...d}; this.save(); }
+
+  async listApplications(f = {}){
+    let a = Object.values(this.data.applications);
+    if(f.jobId) a = a.filter(x => x.jobId === f.jobId);
+    if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId);
+    return a.map(clone);
+  }
+  async apply(app){
+    if(this.data.applications[app.id]) throw new Error("この案件にはすでに応募しています");
+    if(this.data.jobs[app.jobId]?.status !== "open") throw new Error("この案件の募集は終了しています");
+    this.data.applications[app.id] = app; this.save();
+  }
+  async withdraw(id){ Object.assign(this.data.applications[id], {status:"withdrawn", updatedAt:Date.now()}); this.save(); }
+  async assign(jobId, uid){
+    Object.assign(this.data.jobs[jobId], {status:"assigned", assignedTo:uid, updatedAt:Date.now()});
+    Object.values(this.data.applications).filter(a => a.jobId === jobId && a.status === "applied")
+      .forEach(a => { a.status = a.craftsmanId === uid ? "selected" : "rejected"; a.updatedAt = Date.now(); });
+    this.save();
+  }
+
+  async listReports(f = {}){
+    let a = Object.values(this.data.reports);
+    if(f.jobId) a = a.filter(x => x.jobId === f.jobId);
+    if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId);
+    return a.map(clone);
+  }
+  async submitReport(d){ const id = "r_" + newId(); this.data.reports[id] = {...d, id, status:"submitted", createdAt:Date.now()}; this.save(); }
+  async setReportStatus(id, status, comment){ Object.assign(this.data.reports[id], {status, reviewComment:comment || "", reviewedAt:Date.now()}); this.save(); }
+
+  async uploadPhotos(files){
+    const out = [];
+    for(const f of files) out.push(await blobToDataURL(await resizeImage(f, 800, 0.65)));
+    return out;
+  }
+}
+
+/* =========================================================
+   本番用バックエンド（Firebase）
+   ========================================================= */
+function authError(e){
+  const m = {
+    "auth/email-already-in-use":"このメールアドレスはすでに登録されています",
+    "auth/invalid-email":"メールアドレスの形式が正しくありません",
+    "auth/weak-password":"パスワードは6文字以上にしてください",
+    "auth/invalid-credential":"メールアドレスかパスワードが違います",
+    "auth/wrong-password":"メールアドレスかパスワードが違います",
+    "auth/user-not-found":"メールアドレスかパスワードが違います",
+    "auth/too-many-requests":"試行回数が多すぎます。しばらく待ってからお試しください",
+    "auth/network-request-failed":"通信できませんでした。電波の良い場所でお試しください"
+  };
+  return new Error(m[e.code] || e.message);
+}
+class FirebaseBackend {
+  constructor(){
+    this.mode = "firebase";
+    firebase.initializeApp(FIREBASE_CONFIG);
+    this.auth = firebase.auth(); this.db = firebase.firestore();
+  }
+  col(n){ return this.db.collection(n); }
+  docs(s){ return s.docs.map(d => ({id:d.id, ...d.data()})); }
+  onAuth(cb){ this.auth.onAuthStateChanged(u => cb(u ? {uid:u.uid, email:u.email} : null)); }
+  async signUp(email, pw){ try { await this.auth.createUserWithEmailAndPassword(email.trim(), pw); } catch(e) { throw authError(e); } }
+  async signIn(email, pw){ try { await this.auth.signInWithEmailAndPassword(email.trim(), pw); } catch(e) { throw authError(e); } }
+  async signOut(){ await this.auth.signOut(); }
+  async resetPassword(email){ try { await this.auth.sendPasswordResetEmail(email.trim()); } catch(e) { throw authError(e); } }
+
+  async getProfile(uid){ const s = await this.col("users").doc(uid).get(); return s.exists ? {uid, ...s.data()} : null; }
+  async createProfile(uid, d){ await this.col("users").doc(uid).set(d); }
+  async updateProfile(uid, d){ await this.col("users").doc(uid).update(d); }
+  async listCraftsmen(){ const s = await this.col("users").where("role", "==", "craftsman").get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
+  async setCraftsmanStatus(uid, status){ await this.col("users").doc(uid).update({status}); }
+
+  async listJobs(f = {}){
+    let q = this.col("jobs");
+    if(f.status) q = q.where("status", "==", f.status);
+    if(f.assignedTo) q = q.where("assignedTo", "==", f.assignedTo);
+    return this.docs(await q.get());
+  }
+  async getJob(id){
+    try { const s = await this.col("jobs").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
+    catch(e) { if(e.code === "permission-denied") return null; throw e; }
+  }
+  async saveJob(id, d){
+    if(!id){ const ref = this.col("jobs").doc(); await ref.set({...d, companyId:COMPANY_ID, assignedTo:null, createdAt:Date.now(), updatedAt:Date.now()}); return ref.id; }
+    await this.col("jobs").doc(id).update({...d, updatedAt:Date.now()}); return id;
+  }
+  async setJobStatus(id, status){ await this.col("jobs").doc(id).update({status, updatedAt:Date.now()}); }
+  async getJobPrivate(id){ const s = await this.col("jobs").doc(id).collection("private").doc("detail").get(); return s.exists ? s.data() : {}; }
+  async setJobPrivate(id, d){ await this.col("jobs").doc(id).collection("private").doc("detail").set(d); }
+
+  async listApplications(f = {}){
+    let q = this.col("applications");
+    if(f.jobId) q = q.where("jobId", "==", f.jobId);
+    if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
+    return this.docs(await q.get());
+  }
+  async apply(app){
+    try { await this.col("applications").doc(app.id).set(app); }
+    catch(e) { if(e.code === "permission-denied") throw new Error("応募できませんでした。募集が終了したか、すでに応募済みです"); throw e; }
+  }
+  async withdraw(id){ await this.col("applications").doc(id).update({status:"withdrawn", updatedAt:Date.now()}); }
+  async assign(jobId, uid){
+    const apps = await this.col("applications").where("jobId", "==", jobId).get();
+    const b = this.db.batch();
+    b.update(this.col("jobs").doc(jobId), {status:"assigned", assignedTo:uid, updatedAt:Date.now()});
+    apps.forEach(s => { const a = s.data(); if(a.status === "applied") b.update(s.ref, {status:a.craftsmanId === uid ? "selected" : "rejected", updatedAt:Date.now()}); });
+    await b.commit();
+  }
+
+  async listReports(f = {}){
+    let q = this.col("reports");
+    if(f.jobId) q = q.where("jobId", "==", f.jobId);
+    if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
+    return this.docs(await q.get());
+  }
+  async submitReport(d){ await this.col("reports").add({...d, status:"submitted", createdAt:Date.now()}); }
+  async setReportStatus(id, status, comment){ await this.col("reports").doc(id).update({status, reviewComment:comment || "", reviewedAt:Date.now()}); }
+
+  // 写真は圧縮して案件ドキュメントに直接保存（Storage・従量課金プラン不要）
+  async uploadPhotos(files){
+    const out = [];
+    for(const f of files) out.push(await blobToDataURL(await resizeImage(f, 800, 0.65)));
+    return out;
+  }
+}
+
+/* =========================================================
+   画面の状態と描画
+   ========================================================= */
+const S = {api:null, user:null, profile:null, tok:0, lastHash:null, filter:{pref:"", trade:"", mine:false}, editPhotos:[], pending:0, crafts:new Map(), pressStamp:null};
+const api = () => S.api;
+
+const ICONS = {
+  jobs:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="M8.5 7V5.2c0-.6.4-1 1-1h5c.6 0 1 .4 1 1V7M3 12.5h18"/></svg>',
+  applied:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M9.5 13.5l2 2 4-4"/></svg>',
+  work:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.3 5.3L3.5 17.5l3 3 5.9-5.9a4 4 0 0 0 5.3-5.3l-2.4 2.4-2.3-.6-.6-2.3z"/></svg>',
+  profile:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1-3.8 4.2-5.6 7.5-5.6s6.5 1.8 7.5 5.6"/></svg>'
+};
+
+function demoBar(){
+  if(api()?.mode !== "demo") return "";
+  return `<div class="demo" role="note"><b>デモモード</b><span>データはこのブラウザの中だけに保存されます。</span>
+    <button data-act="demo-login" data-email="admin@demo.jp">管理者で入る</button>
+    <button data-act="demo-login" data-email="yamada@demo.jp">職人（承認済み）で入る</button>
+    <button data-act="demo-login" data-email="tanaka@demo.jp">職人（審査中）で入る</button>
+    <button data-act="demo-reset">データを初期化</button></div>`;
+}
+function adminNav(){
+  const onC = location.hash.startsWith("#/admin/craftsm");
+  return `<nav class="admin-nav" aria-label="管理メニュー">
+    <a href="#/admin" ${!onC ? 'aria-current="page"' : ""}>案件</a>
+    <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a></nav>`;
+}
+function craftTabs(){
+  const a = location.hash.replace(/^#\/?/, "").split("/")[0] || "jobs";
+  const cur = a === "job" ? "jobs" : a;
+  const tabs = [["jobs","案件",ICONS.jobs],["applied","応募状況",ICONS.applied],["work","受注",ICONS.work],["profile","登録情報",ICONS.profile]];
+  return `<nav class="tabbar" aria-label="メニュー">${tabs.map(([k,l,i]) => `<a href="#/${k}" ${cur === k ? 'aria-current="page"' : ""}>${i}<span>${l}</span></a>`).join("")}</nav>`;
+}
+function paint(content, {bare = false} = {}){
+  const app = $("#app");
+  if(bare || !S.profile){ app.innerHTML = demoBar() + content; return; }
+  const p = S.profile, isAdmin = p.role === "admin";
+  const header = `<header class="top"><div class="top-in">
+      <a class="brand" href="${isAdmin ? "#/admin" : "#/jobs"}"><span class="brand-mark" aria-hidden="true">R</span><span><b>Refore 協力業者ポータル</b><small>${isAdmin ? "管理画面" : esc(p.name) + " さん"}</small></span></a>
+      <button class="link" data-act="logout">ログアウト</button></div>${isAdmin ? adminNav() : ""}</header>`;
+  const tabs = (!isAdmin && p.status === "approved") ? craftTabs() : "";
+  app.innerHTML = demoBar() + header + tabs + `<main class="main">${content}</main>`;
+}
+const back = (href, label) => `<a class="back" href="${href}">‹ ${esc(label)}</a>`;
+const stamp = (label, mute = false, extra = "") => `<span class="stamp${mute ? " mute" : ""}${extra}">${esc(label)}</span>`;
+const tagsHtml = t => `<div class="tags">${(t || []).map(x => `<span class="tag">${esc(x)}</span>`).join("")}</div>`;
+function photosGrid(urls){
+  if(!urls?.length) return "";
+  return `<div class="photos">${urls.map((u, i) => `<div class="ph"><button type="button" class="zoom" data-act="zoom" data-src="${esc(u)}" aria-label="写真${i+1}を拡大"><img src="${esc(u)}" alt="" loading="lazy"></button></div>`).join("")}</div>`;
+}
+function jobCard(j, {href, stampHtml = "", foot = ""} = {}){
+  return `<a class="job" href="${href}">
+    ${tagsHtml(j.trades)}
+    <h3>${esc(j.title)}</h3>
+    <dl class="meta"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
+    <div class="price"><span class="num">${yen(j.price)}</span><small>${esc(j.priceNote)}</small></div>
+    ${foot}${stampHtml}</a>`;
+}
+function jobDetailBlock(j){
+  return `<article class="panel detail">
+    ${tagsHtml(j.trades)}
+    <h1>${esc(j.title)}</h1>
+    <div class="price big"><span class="num">${yen(j.price)}</span><small>${esc(j.priceNote)}</small></div>
+    <dl class="kv"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
+    <h2>作業内容</h2><p class="pre">${esc(j.description) || "記載なし"}</p>
+    ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
+  </article>`;
+}
+function privateBlock(p, title = "現場情報"){
+  const map = p.address ? `<p style="margin:12px 0 0"><a class="btn sub" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}">地図アプリで開く</a></p>` : "";
+  return `<section class="panel"><h2>${title}</h2><dl class="kv">
+    <dt>住所</dt><dd>${esc(p.address) || "未登録"}</dd>
+    <dt>物件名・部屋</dt><dd>${esc(p.building) || "未登録"}</dd>
+    <dt>鍵・入室方法</dt><dd>${esc(p.keyInfo) || "未登録"}</dd>
+    <dt>管理会社</dt><dd>${esc(p.manager) || "未登録"}</dd>
+    <dt>連絡事項</dt><dd>${esc(p.contact) || "なし"}</dd></dl>${map}</section>`;
+}
+function reportsBlock(rs, admin){
+  if(!rs.length) return admin ? `<section class="panel"><h2>完了報告</h2><p class="small" style="margin:0">まだ届いていません。業者さまからは ${esc(REPORT_EMAIL)} にメールで届きます。</p></section>` : "";
+  return rs.map(r => `<section class="panel">
+    <div class="row between"><h2 style="margin:0">完了報告</h2><span class="pill ${r.status}">${REPORT_STATUS[r.status]}</span></div>
+    <p class="small" style="margin:4px 0 8px">${fmtTime(r.createdAt)} にメール送信済み${admin ? `　${esc(r.craftsmanName)}` : ""}</p>
+    ${admin ? `<p class="small" style="margin:0 0 8px">写真と報告内容は ${esc(REPORT_EMAIL)} の受信箱で確認してください。件名に「案件番号 ${esc(r.jobId)}」が入っています。</p>` : ""}
+    ${r.note ? `<p class="pre" style="margin:0 0 8px">${esc(r.note)}</p>` : ""}
+    ${photosGrid(r.photos)}
+    ${r.reviewComment ? `<div class="note" style="margin-top:10px">Reforeからのコメント：${esc(r.reviewComment)}</div>` : ""}
+    ${admin && r.status === "submitted" ? `<div class="row" style="margin-top:10px"><button class="btn" data-act="report-ok" data-id="${esc(r.id)}" data-job="${esc(r.jobId)}">確認済みにする</button><button class="btn danger" data-act="report-return" data-id="${esc(r.id)}">差し戻す</button></div>` : ""}
+  </section>`).join("");
+}
+
+/* ---------- ログイン・登録 ---------- */
+function authHead(){
+  return `<div class="auth-brand"><span class="brand-mark" aria-hidden="true">R</span><div><b>Refore 協力業者ポータル</b><small>株式会社Refore</small></div></div>
+    <p class="lead">原状回復・クリーニング・修繕の案件に応募できる、協力業者さま専用のページです。</p>`;
+}
+function viewLogin(){
+  return `<div class="auth-wrap">${authHead()}
+    <form class="panel" data-form="login">
+      <h2>ログイン</h2>
+      <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="email"></label>
+      <label class="field"><span>パスワード</span><input type="password" name="password" required autocomplete="current-password"></label>
+      <button class="btn block">ログイン</button>
+      <p class="center" style="margin:12px 0 0"><button type="button" class="textlink" data-act="forgot">パスワードを忘れた場合</button></p>
+    </form>
+    <p class="center">はじめての方は <a href="#/signup">協力業者として登録する</a></p></div>`;
+}
+function viewSignup(){
+  return `<div class="auth-wrap">${authHead()}
+    <form class="panel" data-form="signup">
+      <h2>アカウントを作る</h2>
+      <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="email"></label>
+      <label class="field"><span>パスワード <small>6文字以上</small></span><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
+      <label class="field"><span>パスワード（確認）</span><input type="password" name="password2" required minlength="6" autocomplete="new-password"></label>
+      <button class="btn block">次へ（業者情報の入力）</button>
+    </form>
+    <p class="center">登録済みの方は <a href="#/">ログイン</a></p></div>`;
+}
+function viewProfileForm(p, isNew){
+  const v = p || {};
+  const chk = (arr, x) => (arr || []).includes(x) ? "checked" : "";
+  const ins = ["加入済み","手続き中","未加入"];
+  const form = `<form class="panel" data-form="profile">
+    <div class="two">
+      <label class="field"><span>氏名</span><input type="text" name="name" required value="${esc(v.name)}" autocomplete="name"></label>
+      <label class="field"><span>屋号・会社名 <small>任意</small></span><input type="text" name="tradeName" value="${esc(v.tradeName)}" autocomplete="organization"></label>
+      <label class="field"><span>電話番号</span><input type="tel" name="phone" required value="${esc(v.phone)}" autocomplete="tel"></label>
+      <label class="field"><span>経験年数 <small>任意</small></span><input type="number" name="years" min="0" max="70" inputmode="numeric" value="${esc(v.years)}"></label>
+    </div>
+    <fieldset class="field"><legend>対応できる工種 <small>複数選べます</small></legend><div class="checks">${TRADES.map(t => `<label><input type="checkbox" name="trades" value="${esc(t)}" ${chk(v.trades, t)}>${esc(t)}</label>`).join("")}</div></fieldset>
+    <fieldset class="field"><legend>対応エリア</legend><div class="checks">${PREFS.map(t => `<label><input type="checkbox" name="prefs" value="${esc(t)}" ${chk(v.prefs, t)}>${esc(t)}</label>`).join("")}</div></fieldset>
+    <label class="field"><span>エリアの補足 <small>任意</small></span><input type="text" name="areaNote" value="${esc(v.areaNote)}" placeholder="例：墨田区・江東区は即日対応できます"></label>
+    <label class="field"><span>保有資格 <small>任意</small></span><input type="text" name="licenses" value="${esc(v.licenses)}"></label>
+    <div class="two">
+      <label class="field"><span>インボイス登録番号 <small>お持ちの場合</small></span><input type="text" name="invoiceNumber" value="${esc(v.invoiceNumber)}" pattern="[Tt]?[0-9]{13}" title="Tと13桁の数字" placeholder="T1234567890123" inputmode="text"></label>
+      <label class="field"><span>賠償責任保険</span><select name="insurance">${ins.map(o => `<option ${v.insurance === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>
+    </div>
+    <label class="field"><span>自己PR <small>任意</small></span><textarea name="pr" placeholder="得意な作業や、対応できる時間帯など">${esc(v.pr)}</textarea></label>
+    <button class="btn block">${isNew ? "審査を申し込む" : "登録情報を保存"}</button>
+  </form>`;
+  if(isNew) return `<div class="auth-wrap wide"><h1>協力業者の登録</h1><p class="lead">Reforeが内容を確認し、承認後に案件へ応募できるようになります。</p>${form}<p class="center"><button class="textlink" data-act="logout">ログアウト</button></p></div>`;
+  return `<h1>登録情報</h1><p class="lead">${esc(v.email)}　${CRAFT_STATUS[v.status] || ""}</p>${form}`;
+}
+function viewPending(){
+  return `<div class="note"><b>審査中です。</b>Reforeが登録内容を確認しています。承認されると案件一覧が表示され、応募できるようになります。</div>${viewProfileForm(S.profile, false)}`;
+}
+function viewSuspended(){
+  return `<div class="empty">現在、このアカウントでは案件の閲覧と応募を停止しています。<br>くわしくはReforeまでお問い合わせください（${CONTACT_TEL}）。</div>`;
+}
+
+/* ---------- 職人：案件一覧・詳細 ---------- */
+async function viewJobs(){
+  const uid = S.user.uid;
+  const [jobs, apps] = await Promise.all([api().listJobs({status:"open"}), api().listApplications({craftsmanId:uid})]);
+  const applied = new Map(apps.map(a => [a.jobId, a]));
+  const f = S.filter, p = S.profile;
+  let list = jobs.sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
+  const total = list.length;
+  if(f.pref) list = list.filter(j => j.pref === f.pref);
+  if(f.trade) list = list.filter(j => (j.trades || []).includes(f.trade));
+  if(f.mine) list = list.filter(j => (j.trades || []).some(t => (p.trades || []).includes(t)) && (p.prefs || []).includes(j.pref));
+  const opt = (arr, cur, all) => `<option value="">${all}</option>` + arr.map(x => `<option ${cur === x ? "selected" : ""}>${esc(x)}</option>`).join("");
+  const empty = total === 0
+    ? `<div class="empty">いま募集中の案件はありません。<br>新しい案件が出ると、この一覧に表示されます。</div>`
+    : `<div class="empty">条件に合う案件はありません。<br>絞り込みを外すと、ほかの案件も表示されます。</div>`;
+  return `<div class="page-head"><div><h1>募集中の案件</h1><p class="lead">${list.length}件${list.length !== total ? `（全${total}件）` : ""}</p></div></div>
+    <div class="filters">
+      <select data-filter="pref" aria-label="エリアで絞り込む">${opt(PREFS, f.pref, "すべてのエリア")}</select>
+      <select data-filter="trade" aria-label="工種で絞り込む">${opt(TRADES, f.trade, "すべての工種")}</select>
+      <label class="toggle"><input type="checkbox" data-filter="mine" ${f.mine ? "checked" : ""}>自分の工種・エリアだけ</label>
+    </div>
+    ${list.length ? `<div class="list grid">${list.map(j => jobCard(j, {href:`#/job/${j.id}`, stampHtml: applied.has(j.id) && applied.get(j.id).status !== "withdrawn" ? stamp("応募済") : ""})).join("")}</div>` : empty}`;
+}
+async function viewJobDetail(id){
+  const uid = S.user.uid;
+  const job = await api().getJob(id);
+  if(!job) return `${back("#/jobs", "案件一覧")}<div class="empty">この案件は募集が終了したため表示できません。</div>`;
+  const apps = await api().listApplications({craftsmanId:uid});
+  const app = apps.find(a => a.jobId === id);
+  let action;
+  if(job.assignedTo === uid){
+    action = `<div class="panel"><p style="margin-top:0">この案件はあなたに発注されました。</p><a class="btn block" href="#/work/${esc(id)}">現場情報と完了報告へ</a></div>`;
+  } else if(app && app.status !== "withdrawn"){
+    const press = S.pressStamp === id ? " press" : ""; S.pressStamp = null;
+    action = `<div class="panel"><div class="row" style="gap:16px;flex-wrap:nowrap">${stamp("応募済", false, " inline" + press)}<div>
+        <p style="margin:0">応募状況：<span class="pill ${app.status}">${APP_STATUS[app.status]}</span></p>
+        <p class="small" style="margin:4px 0 0">${fmtTime(app.createdAt)} に応募しました。発注が決まると、ここに現場情報が表示されます。</p></div></div>
+      ${app.message ? `<div class="msg pre">${esc(app.message)}</div>` : ""}
+      ${app.status === "applied" ? `<button class="btn danger" data-act="withdraw" data-id="${esc(app.id)}" style="margin-top:8px">応募を取り下げる</button>` : ""}</div>`;
+  } else if(app){
+    action = `<div class="panel"><p class="small" style="margin:0">この案件への応募は取り下げました。</p></div>`;
+  } else if(job.status !== "open"){
+    action = `<div class="panel"><p style="margin:0">この案件の募集は終了しました。</p></div>`;
+  } else {
+    action = `<form class="panel" data-form="apply" data-id="${esc(id)}">
+      <h2>この案件に応募する</h2>
+      <label class="field"><span>Reforeへのメッセージ <small>任意</small></span><textarea name="message" maxlength="1000" placeholder="例：当日は9時から作業できます。前日の下見も可能です。"></textarea></label>
+      <button class="btn block">応募する</button>
+      <p class="small" style="margin:10px 0 0">住所や入室方法は、発注が決まった業者さまにだけ表示されます。</p></form>`;
+  }
+  return `${back("#/jobs", "案件一覧")}<div class="cols"><div class="stack">${jobDetailBlock(job)}</div><div class="stack">${action}</div></div>`;
+}
+async function viewApplied(){
+  const apps = (await api().listApplications({craftsmanId:S.user.uid})).sort((a, b) => b.createdAt - a.createdAt);
+  const head = `<h1>応募状況</h1><p class="lead">応募した案件と、その結果です。</p>`;
+  if(!apps.length) return head + `<div class="empty">まだ応募した案件はありません。<br><a href="#/jobs">募集中の案件を見る</a></div>`;
+  return head + `<div class="list">${apps.map(a => `<a class="row-item" href="${a.status === "selected" ? `#/work/${esc(a.jobId)}` : `#/job/${esc(a.jobId)}`}">
+      <span class="row-main"><b>${esc(a.jobTitle)}</b><span class="small">${esc(a.jobArea)}　${fmtRange(a.jobStart, a.jobEnd)}　${yen(a.price)}</span><span class="small">${fmtTime(a.createdAt)} 応募</span></span>
+      <span class="pill ${a.status}">${APP_STATUS[a.status]}</span></a>`).join("")}</div>`;
+}
+
+/* ---------- 職人：受注・完了報告 ---------- */
+async function viewWork(){
+  const jobs = (await api().listJobs({assignedTo:S.user.uid})).sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+  const active = jobs.filter(j => j.status === "assigned"), done = jobs.filter(j => j.status === "completed").reverse();
+  const head = `<h1>受注した案件</h1><p class="lead">現場情報の確認と、完了報告の送信はここから行います。</p>`;
+  if(!jobs.length) return head + `<div class="empty">受注した案件はまだありません。<br>採用されると、ここに表示されます。</div>`;
+  return head
+    + (active.length ? `<h2>対応中</h2><div class="list grid" style="margin-bottom:24px">${active.map(j => jobCard(j, {href:`#/work/${j.id}`, stampHtml:stamp("発注済")})).join("")}</div>` : "")
+    + (done.length ? `<h2>完了</h2><div class="list grid">${done.map(j => jobCard(j, {href:`#/work/${j.id}`, stampHtml:stamp("完了", true)})).join("")}</div>` : "");
+}
+async function viewWorkDetail(id){
+  const uid = S.user.uid;
+  const job = await api().getJob(id);
+  if(!job || job.assignedTo !== uid) return `${back("#/work", "受注した案件")}<div class="empty">この案件は表示できません。</div>`;
+  const [priv, reports] = await Promise.all([api().getJobPrivate(id), api().listReports({craftsmanId:uid})]);
+  const rs = reports.filter(r => r.jobId === id).sort((a, b) => b.createdAt - a.createdAt);
+  const canReport = job.status === "assigned" && !rs.some(r => r.status === "submitted" || r.status === "approved");
+  const form = canReport ? `<form class="panel" data-form="report" data-id="${esc(id)}">
+      <h2>完了報告</h2>
+      ${rs[0]?.status === "returned" ? `<div class="note">差し戻しの内容を確認して、もう一度送ってください。</div>` : ""}
+      <p style="margin:0 0 12px">作業が終わったら、施工前・施工後の写真を添付して <b>${esc(REPORT_EMAIL)}</b> にメールで送ってください。</p>
+      <a class="btn block" href="${reportMailto(job, priv)}">報告メールを作成する</a>
+      <p class="small" style="margin:8px 0 16px">メールアプリが開き、宛先・件名・案件情報が入った状態になります。写真を添付して送信してください。</p>
+      <button class="btn sub block">メールを送ったので「報告済み」にする</button></form>` : "";
+  const status = job.status === "completed" ? `<div class="note" style="margin:0">この案件は完了しました。</div>` : "";
+  return `${back("#/work", "受注した案件")}<div class="cols">
+    <div class="stack">${privateBlock(priv)}${jobDetailBlock(job)}</div>
+    <div class="stack">${status}${form}${reportsBlock(rs, false)}</div></div>`;
+}
+
+function reportMailto(job, priv){
+  const p = S.profile;
+  const subject = `【完了報告】${job.title}（案件番号 ${job.id}）`;
+  const body = [
+    "株式会社Refore 御中", "",
+    "下記案件の作業が完了しましたので報告します。", "",
+    `案件番号：${job.id}`,
+    `案件名：${job.title}`,
+    `現場：${priv.address || (job.pref || "") + (job.city || "")} ${priv.building || ""}`.trim(),
+    `作業日：${fmtRange(job.startDate, job.endDate)}`, "",
+    "■ 報告内容（気になった箇所・追加で必要な補修など）", "", "", "",
+    "■ 写真：施工前・施工後を添付しています", "",
+    "――――――――――",
+    `${p.name}${p.tradeName ? "（" + p.tradeName + "）" : ""}`,
+    `電話：${p.phone || ""}`
+  ].join("\n");
+  return `mailto:${REPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/* ---------- 管理：案件 ---------- */
+async function viewAdminJobs(sf){
+  const [jobs, apps] = await Promise.all([api().listJobs({}), api().listApplications({})]);
+  const cnt = {};
+  apps.forEach(a => { if(a.status === "applied" || a.status === "selected") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
+  const segs = [["open","募集中"],["draft","下書き"],["closed","締切"],["assigned","発注済み"],["completed","完了"],["all","すべて"]];
+  const n = s => s === "all" ? jobs.length : jobs.filter(j => j.status === s).length;
+  const list = jobs.filter(j => sf === "all" || j.status === sf).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
+  const st = {draft:["下書", true], closed:["締切", true], assigned:["発注済", false], completed:["完了", true]};
+  return `<div class="page-head"><div><h1>案件</h1><p class="lead">協力業者に公開する案件の作成と、発注先の選定を行います。</p></div><a class="btn" href="#/admin/new">新しい案件を作る</a></div>
+    <nav class="seg" aria-label="状態で絞り込む">${segs.map(([k, l]) => `<a href="#/admin/list/${k}" ${sf === k ? 'aria-current="true"' : ""}>${l}（${n(k)}）</a>`).join("")}</nav>
+    ${list.length ? `<div class="list grid">${list.map(j => {
+      const c = S.crafts.get(j.assignedTo);
+      const foot = `<p class="foot">応募 <span class="count">${cnt[j.id] || 0}</span> 件${c ? `　発注先：${esc(c.name)}` : ""}</p>`;
+      return jobCard(j, {href:`#/admin/job/${j.id}`, foot, stampHtml: st[j.status] ? stamp(st[j.status][0], st[j.status][1]) : ""});
+    }).join("")}</div>` : `<div class="empty">この状態の案件はありません。<br><a href="#/admin/new">新しい案件を作る</a></div>`}`;
+}
+function editPhotosHtml(){
+  return S.editPhotos.map((u, i) => `<div class="ph"><img src="${esc(u)}" alt=""><button type="button" class="x" data-act="rm-photo" data-i="${i}" aria-label="この写真を外す">×</button></div>`).join("");
+}
+async function viewJobEdit(id){
+  const job = id ? await api().getJob(id) : {trades:[], pref:"東京都", status:"draft", photos:[]};
+  if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
+  const priv = id ? await api().getJobPrivate(id) : {};
+  S.editPhotos = [...(job.photos || [])];
+  const chk = t => (job.trades || []).includes(t) ? "checked" : "";
+  const isDraft = !id || job.status === "draft";
+  const buttons = isDraft
+    ? `<button class="btn" name="mode" value="open">公開して募集する</button><button class="btn sub" name="mode" value="draft">下書き保存</button>`
+    : `<button class="btn" name="mode" value="keep">変更を保存</button>`;
+  return `${back(id ? `#/admin/job/${id}` : "#/admin", id ? "案件の管理" : "案件")}
+    <h1>${id ? "案件を編集" : "新しい案件"}</h1>
+    <p class="lead">「募集情報」は承認済みの協力業者全員に公開されます。「現場情報」は発注した業者にだけ表示されます。</p>
+    <form data-form="job" data-id="${esc(id || "")}" class="stack">
+      <section class="panel"><h2>募集情報</h2>
+        <label class="field"><span>案件名</span><input type="text" name="title" required maxlength="80" value="${esc(job.title)}" placeholder="例：1K 退去後ハウスクリーニング"></label>
+        <fieldset class="field"><legend>工種</legend><div class="checks">${TRADES.map(t => `<label><input type="checkbox" name="trades" value="${esc(t)}" ${chk(t)}>${esc(t)}</label>`).join("")}</div></fieldset>
+        <div class="two">
+          <label class="field"><span>都道府県</span><select name="pref">${PREFS.map(p => `<option ${job.pref === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+          <label class="field"><span>市区町村 <small>公開されます</small></span><input type="text" name="city" required value="${esc(job.city)}" placeholder="例：墨田区"></label>
+          <label class="field"><span>作業日（開始）</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
+          <label class="field"><span>作業日（終了） <small>1日なら空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
+          <label class="field"><span>報酬（円） <small>0で「応相談」</small></span><input type="number" name="price" min="0" step="100" inputmode="numeric" value="${esc(job.price ?? "")}"></label>
+          <label class="field"><span>報酬の補足</span><input type="text" name="priceNote" value="${esc(job.priceNote)}" placeholder="例：税別・材料支給"></label>
+        </div>
+        <label class="field"><span>作業内容</span><textarea name="description" required>${esc(job.description)}</textarea></label>
+        <div class="field"><span>写真 <small>間取り図や現況写真など（${JOB_PHOTO_MAX}枚まで）</small></span>
+          <div class="photos" id="photo-edit">${editPhotosHtml()}</div>
+          <input type="file" name="photos" accept="image/*" multiple aria-label="写真を追加"></div>
+      </section>
+      <section class="panel"><h2>現場情報<small>発注した業者にだけ表示</small></h2>
+        <label class="field"><span>住所</span><input type="text" name="address" value="${esc(priv.address)}" autocomplete="off"></label>
+        <label class="field"><span>物件名・部屋番号</span><input type="text" name="building" value="${esc(priv.building)}"></label>
+        <label class="field"><span>鍵・入室方法</span><input type="text" name="keyInfo" value="${esc(priv.keyInfo)}"></label>
+        <label class="field"><span>管理会社</span><input type="text" name="manager" value="${esc(priv.manager)}"></label>
+        <label class="field"><span>連絡事項</span><textarea name="contact">${esc(priv.contact)}</textarea></label>
+      </section>
+      <div class="row">${buttons}</div>
+    </form>`;
+}
+async function viewAdminJob(id){
+  const job = await api().getJob(id);
+  if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
+  const [apps, priv, reports] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id})]);
+  const order = {selected:0, applied:1, rejected:2, withdrawn:3};
+  apps.sort((a, b) => (order[a.status] - order[b.status]) || (a.createdAt - b.createdAt));
+  const canAssign = job.status === "open" || job.status === "closed";
+  const acts = {
+    draft:`<button class="btn" data-act="job-status" data-id="${esc(id)}" data-status="open">公開して募集する</button>`,
+    open:`<button class="btn sub" data-act="job-status" data-id="${esc(id)}" data-status="closed">募集を締め切る</button>`,
+    closed:`<button class="btn sub" data-act="job-status" data-id="${esc(id)}" data-status="open">募集を再開する</button>`,
+    assigned:`<button class="btn sub" data-act="job-status" data-id="${esc(id)}" data-status="completed">完了にする</button>`,
+    completed:""
+  }[job.status];
+  const assigned = S.crafts.get(job.assignedTo);
+  const applicantHtml = a => {
+    const c = S.crafts.get(a.craftsmanId) || {};
+    return `<div class="applicant${a.status === "withdrawn" || a.status === "rejected" ? " dim" : ""}">
+      <div class="row between"><span><b>${esc(c.name || a.craftsmanName)}</b> <span class="small">${esc(c.tradeName)}</span></span><span class="pill ${a.status}">${APP_STATUS[a.status]}</span></div>
+      <p class="small" style="margin:4px 0 0">${esc((c.trades || []).join("、"))}<br>${esc((c.prefs || []).join("、"))}${c.years ? `　経験${esc(c.years)}年` : ""}　保険：${esc(c.insurance || "不明")}</p>
+      ${a.message ? `<div class="msg pre">${esc(a.message)}</div>` : ""}
+      <p class="small" style="margin:6px 0 0">${fmtTime(a.createdAt)} 応募　<a href="#/admin/craftsman/${esc(a.craftsmanId)}">登録情報を見る</a></p>
+      ${canAssign && a.status === "applied" ? `<button class="btn" style="margin-top:10px" data-act="assign" data-job="${esc(id)}" data-uid="${esc(a.craftsmanId)}" data-name="${esc(c.name || a.craftsmanName)}">この業者に発注する</button>` : ""}
+    </div>`;
+  };
+  return `${back("#/admin", "案件")}
+    <div class="page-head"><div class="row"><span class="pill ${job.status}">${JOB_STATUS[job.status]}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span></div>
+      <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a></div></div>
+    <div class="cols">
+      <div class="stack">${jobDetailBlock(job)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
+      <div class="stack">
+        ${assigned ? `<section class="panel"><h2>発注先</h2><p style="margin:0"><b>${esc(assigned.name)}</b> ${esc(assigned.tradeName)}<br><a href="tel:${esc(assigned.phone)}">${esc(assigned.phone)}</a></p></section>` : ""}
+        ${job.assignedTo ? reportsBlock(reports.sort((a, b) => b.createdAt - a.createdAt), true) : ""}
+        <section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
+          ${apps.length ? apps.map(applicantHtml).join("") : `<p class="small" style="margin:0">${job.status === "draft" ? "公開すると、協力業者からの応募がここに届きます。" : "まだ応募はありません。"}</p>`}
+        </section>
+      </div></div>`;
+}
+
+/* ---------- 管理：協力業者 ---------- */
+async function viewCraftsmen(){
+  const list = [...S.crafts.values()].sort((a, b) => ((a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)) || (b.createdAt - a.createdAt));
+  const head = `<h1>協力業者</h1><p class="lead">登録の審査と、登録情報の確認を行います。審査待ちの業者が上に表示されます。</p>`;
+  if(!list.length) return head + `<div class="empty">まだ登録はありません。<br>登録ページのURLを協力業者さまに送ってください。</div>`;
+  return head + `<div class="list">${list.map(c => `<a class="row-item" href="#/admin/craftsman/${esc(c.uid)}">
+    <span class="row-main"><b>${esc(c.name)} <span class="small">${esc(c.tradeName)}</span></b>
+      <span class="small">${esc((c.trades || []).join("、"))}</span><span class="small">${esc((c.prefs || []).join("、"))}　登録 ${fmtTime(c.createdAt)}</span></span>
+    <span class="pill ${c.status}">${CRAFT_STATUS[c.status]}</span></a>`).join("")}</div>`;
+}
+async function viewCraftsman(uid){
+  const c = await api().getProfile(uid);
+  if(!c || c.role !== "craftsman") return `${back("#/admin/craftsmen", "協力業者")}<div class="empty">見つかりません。</div>`;
+  const apps = (await api().listApplications({craftsmanId:uid})).sort((a, b) => b.createdAt - a.createdAt);
+  const btn = (s, l, cls = "") => `<button class="btn ${cls}" data-act="craft-status" data-uid="${esc(uid)}" data-status="${s}">${l}</button>`;
+  const acts = c.status === "pending" ? btn("approved", "承認する") + btn("suspended", "登録を見送る", "danger")
+    : c.status === "approved" ? btn("suspended", "利用を停止する", "danger") : btn("approved", "利用を再開する");
+  return `${back("#/admin/craftsmen", "協力業者")}
+    <div class="page-head"><div><h1>${esc(c.name)}</h1><p class="lead">${esc(c.tradeName)}　<span class="pill ${c.status}">${CRAFT_STATUS[c.status]}</span></p></div><div class="row">${acts}</div></div>
+    <div class="cols">
+      <section class="panel"><h2>登録情報</h2><dl class="kv">
+        <dt>電話番号</dt><dd><a href="tel:${esc(c.phone)}">${esc(c.phone)}</a></dd>
+        <dt>メール</dt><dd>${esc(c.email)}</dd>
+        <dt>工種</dt><dd>${esc((c.trades || []).join("、"))}</dd>
+        <dt>エリア</dt><dd>${esc((c.prefs || []).join("、"))}${c.areaNote ? `\n${esc(c.areaNote)}` : ""}</dd>
+        <dt>経験年数</dt><dd>${c.years ? esc(c.years) + "年" : "未記入"}</dd>
+        <dt>保有資格</dt><dd>${esc(c.licenses) || "未記入"}</dd>
+        <dt>インボイス</dt><dd>${esc(c.invoiceNumber) || "登録なし"}</dd>
+        <dt>賠償責任保険</dt><dd>${esc(c.insurance)}</dd>
+        <dt>自己PR</dt><dd>${esc(c.pr) || "未記入"}</dd>
+        <dt>登録日</dt><dd>${fmtTime(c.createdAt)}</dd></dl></section>
+      <section class="panel"><h2>応募の履歴（${apps.length}件）</h2>
+        ${apps.length ? `<div class="list">${apps.map(a => `<a class="row-item" href="#/admin/job/${esc(a.jobId)}"><span class="row-main"><b>${esc(a.jobTitle)}</b><span class="small">${fmtTime(a.createdAt)} 応募</span></span><span class="pill ${a.status}">${APP_STATUS[a.status]}</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">まだ応募はありません。</p>`}
+      </section></div>`;
+}
+
+/* ---------- ルーティング ---------- */
+function go(hash){ if(location.hash === hash) route(); else location.hash = hash; }
+async function route(){
+  const token = ++S.tok;
+  const hash = location.hash || "#/";
+  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  const moved = hash !== S.lastHash; S.lastHash = hash;
+  const done = (html, opts) => { if(token !== S.tok) return; paint(html, opts); if(moved) window.scrollTo(0, 0); };
+  if(!api()) return;
+  try {
+    if(!S.user) return done(parts[0] === "signup" ? viewSignup() : viewLogin(), {bare:true});
+    if(!S.profile) return done(viewProfileForm(null, true), {bare:true});
+    const p = S.profile;
+    if(p.role === "admin"){
+      if(parts[0] !== "admin"){ location.replace("#/admin"); return; }
+      const crafts = await api().listCraftsmen();
+      S.crafts = new Map(crafts.map(c => [c.uid, c]));
+      S.pending = crafts.filter(c => c.status === "pending").length;
+      const [, a, b, c] = parts;
+      let html;
+      if(!a || a === "list") html = await viewAdminJobs(b || "open");
+      else if(a === "new") html = await viewJobEdit(null);
+      else if(a === "job" && c === "edit") html = await viewJobEdit(b);
+      else if(a === "job") html = await viewAdminJob(b);
+      else if(a === "craftsmen") html = await viewCraftsmen();
+      else if(a === "craftsman") html = await viewCraftsman(b);
+      else { location.replace("#/admin"); return; }
+      return done(html);
+    }
+    if(p.status === "suspended") return done(viewSuspended());
+    if(p.status !== "approved") return done(viewPending());
+    const [a, b] = parts;
+    let html;
+    if(a === "job") html = await viewJobDetail(b);
+    else if(a === "applied") html = await viewApplied();
+    else if(a === "work") html = b ? await viewWorkDetail(b) : await viewWork();
+    else if(a === "profile") html = viewProfileForm(p, false);
+    else if(!a || a === "jobs") html = await viewJobs();
+    else { location.replace("#/jobs"); return; }
+    done(html);
+  } catch(err) {
+    console.error(err);
+    done(`<div class="empty">読み込めませんでした（${esc(err.message || err)}）<br><br><button class="btn sub" data-act="reload">もう一度読み込む</button></div>`);
+  }
+}
+
+/* ---------- モーダル・通知 ---------- */
+let toastTimer;
+function toast(msg){
+  let t = $(".toast");
+  if(!t){ t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3400);
+}
+function ask({title, body = "", ok = "OK", danger = false, input = null, placeholder = ""}){
+  return new Promise(res => {
+    const bg = document.createElement("div"); bg.className = "modal-bg";
+    const field = input === "textarea" ? `<textarea class="m-in" placeholder="${esc(placeholder)}"></textarea>`
+      : input ? `<input class="m-in" type="${input}" placeholder="${esc(placeholder)}">` : "";
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title"><h2 id="m-title">${esc(title)}</h2>${body ? `<p>${esc(body)}</p>` : ""}${field}
+      <div class="row end"><button type="button" class="btn sub m-no">キャンセル</button><button type="button" class="btn${danger ? " danger" : ""} m-ok">${esc(ok)}</button></div></div>`;
+    const close = v => { bg.remove(); document.removeEventListener("keydown", key); res(v); };
+    const key = e => { if(e.key === "Escape") close(false); };
+    bg.querySelector(".m-no").onclick = () => close(false);
+    bg.querySelector(".m-ok").onclick = () => close(input ? bg.querySelector(".m-in").value : true);
+    bg.addEventListener("click", e => { if(e.target === bg) close(false); });
+    document.addEventListener("keydown", key);
+    document.body.appendChild(bg);
+    (bg.querySelector(".m-in") || bg.querySelector(".m-ok")).focus();
+  });
+}
+function lightbox(src){
+  const bg = document.createElement("div"); bg.className = "modal-bg lightbox";
+  bg.innerHTML = `<img src="${esc(src)}" alt="拡大した写真">`;
+  const close = () => { bg.remove(); document.removeEventListener("keydown", key); };
+  const key = e => { if(e.key === "Escape") close(); };
+  bg.addEventListener("click", close); document.addEventListener("keydown", key);
+  document.body.appendChild(bg);
+}
+
+/* ---------- 操作 ---------- */
+const ACTIONS = {
+  async logout(){ await api().signOut(); location.hash = "#/"; },
+  async "demo-login"(el){ location.hash = "#/"; await api().signIn(el.dataset.email, "demo1234"); },
+  async "demo-reset"(){
+    if(!await ask({title:"デモのデータを初期化しますか？", body:"作成した案件や応募はすべて消え、最初の状態に戻ります。", ok:"初期化する", danger:true})) return;
+    S.filter = {pref:"", trade:"", mine:false}; location.hash = "#/"; api().reset(); toast("初期化しました");
+  },
+  async forgot(){
+    const email = await ask({title:"パスワードの再設定", body:"登録したメールアドレスに、再設定用のメールを送ります。", input:"email", ok:"送信する"});
+    if(email === false) return;
+    if(!email.trim()) throw new Error("メールアドレスを入力してください");
+    await api().resetPassword(email); toast("再設定用のメールを送りました");
+  },
+  async reload(){ route(); },
+  async zoom(el){ lightbox(el.dataset.src); },
+  async "rm-photo"(el){ S.editPhotos.splice(Number(el.dataset.i), 1); $("#photo-edit").innerHTML = editPhotosHtml(); },
+  async withdraw(el){
+    if(!await ask({title:"応募を取り下げますか？", body:"取り下げると、この案件にはもう一度応募できません。", ok:"取り下げる", danger:true})) return;
+    await api().withdraw(el.dataset.id); toast("応募を取り下げました"); route();
+  },
+  async "job-status"(el){
+    const {id, status} = el.dataset;
+    const conf = {
+      closed:{title:"募集を締め切りますか？", body:"協力業者の一覧に表示されなくなります。応募済みの業者から発注先を選ぶことはできます。", ok:"締め切る"},
+      completed:{title:"この案件を完了にしますか？", body:"完了報告の確認が済んでいることを確かめてから完了にしてください。", ok:"完了にする"}
+    }[status];
+    if(conf && !await ask(conf)) return;
+    await api().setJobStatus(id, status);
+    toast({open:"公開しました", closed:"締め切りました", completed:"完了にしました"}[status]); route();
+  },
+  async assign(el){
+    const {job, uid, name} = el.dataset;
+    if(!await ask({title:`${name} さんに発注しますか？`, body:"現場情報がこの業者に表示されます。ほかの応募者は「見送り」になります。", ok:"発注する"})) return;
+    await api().assign(job, uid); toast(`${name} さんに発注しました`); route();
+  },
+  async "report-ok"(el){
+    await api().setReportStatus(el.dataset.id, "approved", "");
+    if(await ask({title:"完了報告を確認済みにしました", body:"続けて、この案件を完了にしますか？", ok:"完了にする"})) await api().setJobStatus(el.dataset.job, "completed");
+    route();
+  },
+  async "report-return"(el){
+    const comment = await ask({title:"完了報告を差し戻す", body:"直してほしい点を書いてください。業者さまの画面に表示されます。", input:"textarea", ok:"差し戻す", danger:true, placeholder:"例：浴室の施工後写真が見当たりません"});
+    if(comment === false) return;
+    await api().setReportStatus(el.dataset.id, "returned", comment.trim()); toast("差し戻しました"); route();
+  },
+  async "craft-status"(el){
+    const {uid, status} = el.dataset;
+    if(status === "suspended" && !await ask({title:"この業者の利用を止めますか？", body:"案件の閲覧と応募ができなくなります。あとから再開できます。", ok:"止める", danger:true})) return;
+    await api().setCraftsmanStatus(uid, status);
+    toast(status === "approved" ? "承認しました" : "利用を止めました"); route();
+  }
+};
+const FORMS = {
+  async login(form){
+    const fd = new FormData(form);
+    await api().signIn(fd.get("email"), fd.get("password"));
+    location.hash = "#/";
+  },
+  async signup(form){
+    const fd = new FormData(form);
+    if(fd.get("password") !== fd.get("password2")) throw new Error("確認用のパスワードが一致しません");
+    await api().signUp(fd.get("email"), fd.get("password"));
+    location.hash = "#/";
+  },
+  async profile(form){
+    const fd = new FormData(form);
+    const trades = fd.getAll("trades"), prefs = fd.getAll("prefs");
+    if(!trades.length) throw new Error("対応できる工種を1つ以上選んでください");
+    if(!prefs.length) throw new Error("対応エリアを1つ以上選んでください");
+    let inv = String(fd.get("invoiceNumber") || "").trim().toUpperCase();
+    if(inv && !inv.startsWith("T")) inv = "T" + inv;
+    const g = k => String(fd.get(k) || "").trim();
+    const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr")};
+    if(!S.profile){
+      await api().createProfile(S.user.uid, {...data, role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now()});
+      toast("審査を申し込みました");
+    } else {
+      await api().updateProfile(S.user.uid, data);
+      toast("登録情報を保存しました");
+    }
+    S.profile = await api().getProfile(S.user.uid);
+    route();
+  },
+  async apply(form){
+    const id = form.dataset.id;
+    const job = await api().getJob(id);
+    if(!job || job.status !== "open") throw new Error("この案件の募集は終了しています");
+    const p = S.profile;
+    await api().apply({
+      id:`${id}_${S.user.uid}`, jobId:id, craftsmanId:S.user.uid, craftsmanName:p.name,
+      jobTitle:job.title, jobArea:(job.pref || "") + (job.city || ""), jobStart:job.startDate || "", jobEnd:job.endDate || "", price:job.price || 0,
+      message:form.elements.message.value.trim(), status:"applied", createdAt:Date.now()
+    });
+    S.pressStamp = id; toast("応募しました"); route();
+  },
+  async job(form, e){
+    const fd = new FormData(form);
+    const id = form.dataset.id || null;
+    const mode = e.submitter?.value || "keep";
+    const g = k => String(fd.get(k) || "").trim();
+    const trades = fd.getAll("trades");
+    if(!trades.length) throw new Error("工種を1つ以上選んでください");
+    const startDate = g("startDate"), endDate = g("endDate") || startDate;
+    if(endDate < startDate) throw new Error("終了日が開始日より前になっています");
+    const files = [...form.elements.photos.files];
+    if(files.length + S.editPhotos.length > JOB_PHOTO_MAX) throw new Error(`案件の写真は${JOB_PHOTO_MAX}枚までにしてください`);
+    const data = {title:g("title"), trades, pref:g("pref"), city:g("city"), startDate, endDate, price:Number(g("price")) || 0, priceNote:g("priceNote"), description:g("description"), photos:[...S.editPhotos]};
+    if(mode === "open" || mode === "draft") data.status = mode;
+    if(!id && !data.status) data.status = "draft";
+    if(files.length) toast("写真を保存しています…");
+    if(files.length) data.photos = [...data.photos, ...await api().uploadPhotos(files)];
+    const jid = await api().saveJob(id, data);
+    await api().setJobPrivate(jid, {address:g("address"), building:g("building"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact")});
+    toast(mode === "open" ? "公開しました" : "保存しました");
+    go(`#/admin/job/${jid}`);
+  },
+  async report(form){
+    const id = form.dataset.id;
+    if(!await ask({title:"報告メールは送りましたか？", body:`写真を添付したメールを ${REPORT_EMAIL} に送ってから「報告済み」にしてください。`, ok:"送ったので報告済みにする"})) return;
+    const job = await api().getJob(id);
+    await api().submitReport({jobId:id, jobTitle:job?.title || "", craftsmanId:S.user.uid, craftsmanName:S.profile.name, method:"email"});
+    toast("報告済みにしました"); route();
+  }
+};
+
+document.addEventListener("click", async e => {
+  const el = e.target.closest("[data-act]");
+  if(!el || !ACTIONS[el.dataset.act]) return;
+  e.preventDefault();
+  if(el.disabled) return;
+  el.disabled = true;
+  try { await ACTIONS[el.dataset.act](el); }
+  catch(err) { console.error(err); toast(err.message || String(err)); }
+  finally { el.disabled = false; }
+});
+document.addEventListener("submit", async e => {
+  const form = e.target.closest("form[data-form]");
+  if(!form || !FORMS[form.dataset.form]) return;
+  e.preventDefault();
+  const btns = [...form.querySelectorAll("button")];
+  btns.forEach(b => b.disabled = true);
+  try { await FORMS[form.dataset.form](form, e); }
+  catch(err) { console.error(err); toast(err.message || String(err)); }
+  finally { btns.forEach(b => b.disabled = false); }
+});
+document.addEventListener("change", e => {
+  const el = e.target.closest("[data-filter]");
+  if(!el) return;
+  S.filter[el.dataset.filter] = el.type === "checkbox" ? el.checked : el.value;
+  route();
+});
+
+/* ---------- 起動 ---------- */
+function loadScript(src){
+  return new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = src;
+    s.onload = res; s.onerror = () => rej(new Error("読み込みに失敗：" + src));
+    document.head.appendChild(s);
+  });
+}
+async function boot(){
+  try {
+    if(FIREBASE_CONFIG.apiKey){
+      for(const m of ["app","auth","firestore"]) await loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-${m}-compat.js`);
+      S.api = new FirebaseBackend();
+    } else {
+      S.api = new DemoBackend();
+    }
+  } catch(err) {
+    $("#app").innerHTML = `<div class="auth-wrap"><div class="empty">起動できませんでした（${esc(err.message)}）。通信環境を確認して、ページを読み込み直してください。</div></div>`;
+    return;
+  }
+  S.api.onAuth(async u => {
+    S.user = u;
+    try { S.profile = u ? await S.api.getProfile(u.uid) : null; } catch(e) { console.error(e); S.profile = null; }
+    route();
+  });
+  window.addEventListener("hashchange", route);
+}
+boot();
+</script>
+</body>
+</html>
