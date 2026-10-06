@@ -202,13 +202,16 @@ textarea{min-height:110px;resize:vertical}
    apiKey が空のままなら「デモモード」（ブラウザ内保存）で動きます。
    ========================================================= */
 const FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyA7V4lfZQrxV2LZTnW6UbAB-CTmmeAISGE",
+  authDomain: "shokunin-portal.firebaseapp.com",
+  projectId: "shokunin-portal",
+  storageBucket: "shokunin-portal.firebasestorage.app",
+  messagingSenderId: "871865092461",
+  appId: "1:871865092461:web:f79a18646f7ac36f1af264",
+  measurementId: "G-F4M6CHYWFV"
 };
+// URLの末尾に ?demo を付けると、本番データに触れずにデモモードで開けます
+const FORCE_DEMO = new URLSearchParams(location.search).has("demo");
 const FIREBASE_SDK_VERSION = "10.12.2";
 const COMPANY_ID = "refore";
 const CONTACT_TEL = "03-6824-7282";
@@ -1127,7 +1130,7 @@ function loadScript(src){
 }
 async function boot(){
   try {
-    if(FIREBASE_CONFIG.apiKey){
+    if(FIREBASE_CONFIG.apiKey && !FORCE_DEMO){
       for(const m of ["app","auth","firestore"]) await loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-${m}-compat.js`);
       S.api = new FirebaseBackend();
     } else {
