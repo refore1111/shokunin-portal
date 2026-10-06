@@ -586,7 +586,8 @@ function reportsBlock(rs, admin){
 /* ---------- ログイン・登録 ---------- */
 function authHead(){
   return `<div class="auth-brand"><span class="brand-mark" aria-hidden="true">R</span><div><b>Refore 協力業者ポータル</b><small>株式会社Refore</small></div></div>
-    <p class="lead">原状回復・クリーニング・修繕の案件に応募できる、協力業者さま専用のページです。</p>`;
+    <p class="lead">原状回復・クリーニング・修繕の案件に応募できる、協力業者さま専用のページです。</p>
+    ${api()?.mode === "firebase" ? `<p class="small" style="margin:-12px 0 16px">接続先：${esc(FIREBASE_CONFIG.projectId)}（本番）</p>` : ""}`;
 }
 function viewLogin(){
   return `<div class="auth-wrap">${authHead()}
