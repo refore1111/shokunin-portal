@@ -215,6 +215,24 @@ textarea{min-height:110px;resize:vertical}
 .doc-row:first-of-type{border-top:0;padding-top:0}
 .doc-row .row-main b{font-size:15px}
 .doc-row .btn{flex:none;white-space:nowrap;min-height:40px;padding:8px 14px;font-size:14px}
+.itbl{width:100%;border-collapse:collapse;font-size:14px}
+.itbl td{border-top:1px solid var(--line);padding:8px 0;vertical-align:top}
+.itbl td span{display:block}
+.itbl .r{text-align:right;white-space:nowrap;padding-left:12px;font-variant-numeric:tabular-nums}
+.itbl tr.sum td{font-weight:700;border-top:2px solid var(--ink)}
+.items-ed{display:grid;gap:8px}
+.item-row{display:grid;grid-template-columns:1fr 76px 72px 110px 96px 34px;gap:6px;align-items:center}
+.item-row input{padding:8px 10px;font-size:15px}
+.item-row .i-amt{text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
+.i-x{width:34px;height:34px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--sub);cursor:pointer;font-size:16px;padding:0}
+@media (max-width:680px){
+  .item-row{grid-template-columns:1fr 1fr 1fr 34px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--paper)}
+  .item-row [name=i_name]{grid-column:1/-1}
+  .item-row .i-amt{grid-column:1/-1;grid-row:3}
+}
+.i-total{font-family:var(--num);font-size:24px;font-weight:600}
+.import{border:2px dashed var(--kon-text)}
+.pdftext{white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:var(--paper);padding:8px;border-radius:4px;margin:6px 0 0}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -250,6 +268,8 @@ const COMPANY = {name:"株式会社Refore", address:"東京都墨田区本所4-1
 const PAYMENT_TERMS = "作業完了の確認後、60日以内に指定口座へお振込みします。";   // ← 実際の支払条件に合わせて書き換えてください
 const TAX_RATE = 0.1;
 const HTML2PDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+const PDFJS_BASE = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+const UNITS = ["式","㎡","m","枚","台","箇所","個","本","室","セット","日","人工"];
 
 const TRADES = ["ハウスクリーニング","エアコンクリーニング","クロス張替え","床（CF・フロアタイル）","塗装","設備交換","簡易修繕","退去立会","その他"];
 const PREFS = ["東京都","神奈川県","埼玉県","千葉県"];
@@ -302,13 +322,190 @@ const STATUS_TIME = {open:"publishedAt", assigned:"assignedAt", working:"started
 const stampFor = st => STATUS_TIME[st] ? {[STATUS_TIME[st]]:Date.now()} : {};
 
 /* 書類データの作成（PDFはダウンロードのたびにこのデータから作ります） */
+const itemAmount = i => Math.round((Number(i.qty) || 0) * (Number(i.unitPrice) || 0));
+const itemsTotal = items => (items || []).reduce((a, i) => a + itemAmount(i), 0);
+const fmtQty = q => (Number(q) || 0).toLocaleString("ja-JP", {maximumFractionDigits:2});
+function itemsTable(j){
+  return `<table class="itbl"><tbody>${j.items.map(i => `<tr><td><b>${esc(i.name)}</b><span class="small">${fmtQty(i.qty)}${esc(i.unit)} × ${yenFull(i.unitPrice)}</span></td><td class="r">${yenFull(itemAmount(i))}</td></tr>`).join("")}
+    <tr class="sum"><td>合計（${esc(taxModeOf(j))}）</td><td class="r">${yenFull(itemsTotal(j.items))}</td></tr></tbody></table>`;
+}
+function itemRowHtml(i = {qty:1, unit:"式"}){
+  return `<div class="item-row">
+    <input type="text" name="i_name" value="${esc(i.name)}" placeholder="作業名（例：クロス張替え 壁）" aria-label="作業名">
+    <input type="number" name="i_qty" value="${esc(i.qty ?? "")}" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
+    <input type="text" name="i_unit" value="${esc(i.unit)}" list="unit-list" placeholder="単位" aria-label="単位">
+    <input type="number" name="i_price" value="${esc(i.unitPrice ?? "")}" min="0" inputmode="numeric" placeholder="単価" aria-label="単価">
+    <span class="i-amt">${yenFull(itemAmount(i))}</span>
+    <button type="button" class="i-x" data-act="rm-item" aria-label="この作業を削除">×</button></div>`;
+}
+function readItems(form){
+  return [...form.querySelectorAll(".item-row")].map(r => ({
+    name:r.querySelector("[name=i_name]").value.trim(), qty:Number(r.querySelector("[name=i_qty]").value) || 0,
+    unit:r.querySelector("[name=i_unit]").value.trim(), unitPrice:Number(r.querySelector("[name=i_price]").value) || 0
+  }));
+}
+function syncItems(form){
+  const rows = [...form.querySelectorAll(".item-row")];
+  const items = readItems(form);
+  rows.forEach((r, k) => { r.querySelector(".i-amt").textContent = yenFull(itemAmount(items[k])); });
+  const used = items.filter(i => i.name || i.unitPrice);
+  const total = itemsTotal(used);
+  form.querySelector(".i-total").textContent = yenFull(total);
+  const price = form.elements.price;
+  price.readOnly = used.length > 0;
+  if(used.length) price.value = total;
+}
+
+/* ---------- 案件PDFの読み込み ---------- */
+async function extractPdfText(file){
+  if(!window.pdfjsLib) await loadScript(PDFJS_BASE + "pdf.min.js");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "pdf.worker.min.js";
+  const pdf = await pdfjsLib.getDocument({data:await file.arrayBuffer(), cMapUrl:PDFJS_BASE + "cmaps/", cMapPacked:true}).promise;
+  const out = [];
+  for(let n = 1; n <= Math.min(pdf.numPages, 5); n++){
+    const tc = await (await pdf.getPage(n)).getTextContent();
+    const its = tc.items.filter(i => typeof i.str === "string" && i.str !== "").map(i => ({s:i.str, x:i.transform[4], y:i.transform[5], w:i.width || 0, h:Math.abs(i.height || i.transform[3]) || 10}));
+    its.sort((a, b) => b.y - a.y || a.x - b.x);
+    const lines = [];
+    its.forEach(i => {
+      const L = lines[lines.length - 1];
+      if(L && Math.abs(L.y - i.y) <= Math.max(2, i.h * 0.45)) L.items.push(i); else lines.push({y:i.y, items:[i]});
+    });
+    lines.forEach(L => {
+      L.items.sort((a, b) => a.x - b.x);
+      let t = "", end = null;
+      L.items.forEach(i => { if(end !== null && i.x - end > i.h * 0.6) t += " "; t += i.s; end = i.x + i.w; });
+      out.push(t);
+    });
+    out.push("");
+  }
+  return out.join("\n");
+}
+function findDates(line){
+  const now = new Date(), res = [];
+  let l = line;
+  const push = (y, m, d) => { if(m >= 1 && m <= 12 && d >= 1 && d <= 31) res.push(`${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`); };
+  l = l.replace(/令和\s*(\d+|元)\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/g, (_, y, m, d) => { push(2018 + (y === "元" ? 1 : +y), +m, +d); return " "; });
+  l = l.replace(/(20\d{2})\s*[年\/.\-]\s*(\d{1,2})\s*[月\/.\-]\s*(\d{1,2})\s*日?/g, (_, y, m, d) => { push(+y, +m, +d); return " "; });
+  l.replace(/(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日/g, (_, m, d) => { push(+m < now.getMonth() - 1 ? now.getFullYear() + 1 : now.getFullYear(), +m, +d); return " "; });
+  return res;
+}
+function parseJobText(raw){
+  const lines = raw.normalize("NFKC").split("\n").map(l => l.replace(/[ \t　]+/g, " ").trim()).filter(Boolean);
+  const all = lines.join("\n");
+  const r = {items:[], trades:[]};
+  const labeled = re => { for(const l of lines){ const m = l.match(re); if(m && m[1] && m[1].trim()) return m[1].trim(); } return ""; };
+  const num = v => Number(String(v).replace(/[,¥\s]/g, "")) || 0;
+
+  r.title = labeled(/(?:件名|工事名|案件名|工事件名|作業名称)\s*[:]?\s*(.+)/);
+  r.manager = labeled(/管理会社(?:名)?\s*[:]?\s*(.+)/);
+  r.keyInfo = labeled(/(?:鍵|キー|入室方法)(?:の受け渡し|情報)?\s*[:]\s*(.+)/);
+  let building = labeled(/(?:物件名|建物名|マンション名)\s*[:]?\s*(.+)/);
+  const room = labeled(/(?:号室|部屋番号|部屋)\s*[:]\s*(.+)/);
+
+  // 住所：ラベル付きを優先、なければ最初に見つかった住所
+  const PREF = /(東京都|神奈川県|埼玉県|千葉県)\s*([^\s\d]+?[市区町村])((?:[^\s\d]+?区)?)/;
+  let addrLine = labeled(/(?:現場住所|物件住所|所在地|住所|現場)\s*[:]?\s*((?:東京都|神奈川県|埼玉県|千葉県).+)/) || (lines.find(l => PREF.test(l)) || "");
+  if(addrLine){
+    const m = addrLine.match(PREF);
+    if(m){
+      r.pref = m[1]; r.city = m[2] + m[3];
+      let addr = addrLine.slice(addrLine.indexOf(m[0])).split(/\s*(?:TEL|電話|FAX)/i)[0].trim();
+      const b = addr.match(/\s(\S*(?:マンション|ハイツ|コーポ|レジデンス|アパート|荘|ビル|テラス|メゾン|パレス|ハイム|コート|プラザ|タワー|ハウス)\S*(?:\s*\d+号?室?)?)$/) || addr.match(/\s(\S+\s*\d+号室)$/);
+      if(b){ if(!building) building = b[1]; addr = addr.slice(0, b.index).trim(); }
+      r.address = addr.replace(/\s+/g, "");
+    }
+  }
+  r.building = [building, room && !building.includes(room) ? room : ""].filter(Boolean).join(" ");
+
+  // 作業日：工期・作業日などの行から
+  const dates = [];
+  lines.forEach((l, k) => {
+    if(/工期|作業日|施工日|着工|完工|作業予定|施工予定|日程|希望日|実施日|工事日/.test(l)){
+      let d = findDates(l);
+      if(!d.length && lines[k + 1]) d = findDates(lines[k + 1]);
+      dates.push(...d);
+    }
+  });
+  if(dates.length){ r.startDate = dates[0]; const e = dates[dates.length - 1]; r.endDate = e > dates[0] ? e : ""; }
+
+  // 作業内訳：「作業名 数量 単位 単価 金額」の並びを拾う
+  const UNIT = "式|m2|m|平米|枚|台|箇所|ヶ所|か所|カ所|ケ所|個|本|室|セット|組|日|人工|回|ヶ月|kg|L";
+  const reA = new RegExp(`^(?:No\\.?\\s*)?(?:\\d{1,2}[.)]?\\s+)?(.*?[^\\d\\s,].*?)\\s+(\\d+(?:\\.\\d+)?)\\s*(${UNIT})\\s+¥?\\s*([\\d,]+)(?:\\s+¥?\\s*([\\d,]+))?`);
+  const reB = /^(?:\d{1,2}[.)]?\s+)?(.*?[^\d\s,].*?)\s+(\d+(?:\.\d+)?)\s+¥?\s*([\d,]{3,})\s+¥?\s*([\d,]{3,})\s*$/;
+  lines.forEach(l => {
+    if(/合計|小計|消費税|税込|値引|総額|見積金額|請求金額|発注金額|振込|口座/.test(l)) return;
+    let m = l.match(reA);
+    if(m){ r.items.push({name:m[1].trim(), qty:+m[2], unit:m[3] === "m2" || m[3] === "平米" ? "㎡" : m[3], unitPrice:num(m[4])}); return; }
+    m = l.match(reB);
+    if(m) r.items.push({name:m[1].trim(), qty:+m[2], unit:"式", unitPrice:num(m[3])});
+  });
+  r.items = r.items.filter(i => i.unitPrice > 0 && i.name.length <= 60);
+
+  // 金額と税区分
+  const sub = labeled(/小計\s*[:]?\s*¥?\s*([\d,]{3,})/);
+  const tot = labeled(/(?:合計金額|合計|総額|御見積金額|見積金額|発注金額|請負金額)\s*(?:\(税込\)|\(税抜\)|\(税別\))?\s*[:]?\s*¥?\s*([\d,]{3,})/);
+  if(r.items.length){ r.price = itemsTotal(r.items); r.taxMode = "税別"; }
+  else if(sub){ r.price = num(sub); r.taxMode = "税別"; }
+  else if(tot){ r.price = num(tot); r.taxMode = /税込/.test(all) && !/税抜|税別/.test(all) ? "税込" : "税別"; }
+
+  // 工種
+  const T = [["エアコンクリーニング", /エアコン/], ["クロス張替え", /クロス|壁紙/], ["床（CF・フロアタイル）", /CF|クッションフロア|フロアタイル|フローリング/],
+    ["塗装", /塗装/], ["設備交換", /交換|取替|取り替え|取付/], ["簡易修繕", /補修|修繕|修理|網戸/], ["退去立会", /立会/]];
+  T.forEach(([t, re]) => { if(re.test(all)) r.trades.push(t); });
+  if(/(ハウス|ルーム|室内|退去|美装)\s*クリーニング|清掃|美装/.test(all) || (/クリーニング/.test(all) && !r.trades.includes("エアコンクリーニング"))) r.trades.unshift("ハウスクリーニング");
+
+  // 作業内容・備考
+  const notes = [];
+  lines.forEach(l => { const m = l.match(/^(?:作業内容|工事内容|備考|特記事項|注意事項|連絡事項)\s*[:]?\s*(.+)/); if(m) notes.push(m[1].trim()); });
+  r.description = notes.length ? notes.join("\n") : r.items.length ? r.items.map(i => `・${i.name}`).join("\n") : "";
+  if(!r.title && r.items.length) r.title = r.items[0].name + (r.items.length > 1 ? " ほか" : "");
+  return r;
+}
+async function importPdf(input){
+  const file = input.files[0]; if(!file) return;
+  const form = input.closest("form"), box = form.querySelector("#pdf-result");
+  box.innerHTML = `<p class="small">「${esc(file.name)}」を読み取っています…</p>`;
+  const text = await extractPdfText(file);
+  input.value = "";
+  if(text.replace(/\s/g, "").length < 10){
+    box.innerHTML = `<div class="note">文字を読み取れませんでした。スキャンした画像のPDFは読み込めないため、手で入力してください。</div>`;
+    return;
+  }
+  const r = parseJobText(text), done = [], miss = [];
+  const set = (name, v, label) => { if(v){ form.elements[name].value = v; done.push(label); } else if(label) miss.push(label); };
+  set("title", r.title, "案件名");
+  if(r.pref){ form.elements.pref.value = r.pref; }
+  set("city", r.city, "市区町村");
+  set("startDate", r.startDate, "作業日");
+  if(r.startDate) form.elements.endDate.value = r.endDate || "";
+  set("address", r.address, "住所");
+  set("building", r.building, "物件名・部屋");
+  set("manager", r.manager, "管理会社");
+  set("keyInfo", r.keyInfo, "");
+  set("description", r.description, "作業内容");
+  if(r.taxMode) form.elements.taxMode.value = r.taxMode;
+  if(r.trades.length){ form.querySelectorAll("input[name=trades]").forEach(c => { c.checked = r.trades.includes(c.value); }); done.push("工種"); } else miss.push("工種");
+  if(r.items.length){
+    form.querySelector("#items-ed").innerHTML = r.items.map(itemRowHtml).join("");
+    done.push(`作業内訳（${r.items.length}件）`);
+  } else {
+    miss.push("作業内訳");
+    if(r.price){ form.querySelector("#items-ed").innerHTML = ""; form.elements.price.value = r.price; done.push("報酬"); }
+  }
+  syncItems(form);
+  box.innerHTML = `<div class="note" style="margin:12px 0 0"><b>読み取った内容を入力しました。</b>保存する前に、必ず中身を確認してください。<br>
+      入力した項目：${esc(done.join("、") || "なし")}${miss.length ? `<br>読み取れなかった項目：${esc(miss.join("、"))}` : ""}</div>
+    <details style="margin-top:8px"><summary class="small">PDFから読み取った文字を見る</summary><pre class="pdftext">${esc(text)}</pre></details>`;
+}
+
 function buildOrderDoc(job, priv, c){
   const taxMode = taxModeOf(job);
   return {
     id:`${job.id}_order`, type:"order", jobId:job.id, craftsmanId:c.uid, number:docNumber("PO", job.id), status:"issued", issuedAt:Date.now(),
     to:{name:c.name || "", tradeName:c.tradeName || "", phone:c.phone || "", invoiceNumber:c.invoiceNumber || ""},
     job:{title:job.title || "", pref:job.pref || "", city:job.city || "", address:priv.address || "", building:priv.building || "",
-      startDate:job.startDate || "", endDate:job.endDate || "", description:job.description || "", priceNote:job.priceNote || ""},
+      startDate:job.startDate || "", endDate:job.endDate || "", description:job.description || "", priceNote:job.priceNote || "", items:clone(job.items || [])},
     amount:calcAmount(job.price, taxMode), taxMode, terms:PAYMENT_TERMS, company:{...COMPANY}
   };
 }
@@ -370,6 +567,7 @@ function seedDemo(){
         description:"1K（約22㎡）の退去後クリーニング一式です。\nキッチン、浴室、トイレ、洗面、床、窓、ベランダ。\nエアコンは別手配のため対象外です。", photos:[], assignedTo:null, createdAt:now - 2*day, publishedAt:now - 2*day},
       j2: {id:"j2", companyId:COMPANY_ID, status:"open", title:"2LDK クロス張替え（天井含む 約120㎡）", trades:["クロス張替え"], pref:"東京都", city:"江東区",
         startDate:iso(9), endDate:iso(10), price:110000, taxMode:"税別", priceNote:"材料支給（量産品）",
+        items:[{name:"クロス張替え 壁（量産品）", qty:90, unit:"㎡", unitPrice:800}, {name:"クロス張替え 天井（量産品）", qty:30, unit:"㎡", unitPrice:800}, {name:"下地補修（パテ処理）", qty:1, unit:"式", unitPrice:14000}],
         description:"居室2部屋とLDKの壁・天井。\n下地補修が数か所あります（パテで対応できる範囲）。\n残置物なし、駐車場は近隣コインパーキングをご利用ください。", photos:[], assignedTo:null, createdAt:now - day, publishedAt:now - day},
       j3: {id:"j3", companyId:COMPANY_ID, status:"open", title:"エアコンクリーニング 壁掛け2台", trades:["エアコンクリーニング"], pref:"千葉県", city:"市川市",
         startDate:iso(7), endDate:iso(7), price:16000, taxMode:"税別", priceNote:"2台分",
@@ -382,6 +580,7 @@ function seedDemo(){
         description:"襖は両面、障子は普通紙での張替えです。", photos:[], assignedTo:null, createdAt:now - hour},
       j5: {id:"j5", companyId:COMPANY_ID, status:"assigned", title:"1R 退去後クリーニング（浴室カビ取り含む）", trades:["ハウスクリーニング"], pref:"東京都", city:"台東区",
         startDate:iso(1), endDate:iso(1), price:20000, taxMode:"税別", priceNote:"",
+        items:[{name:"退去後クリーニング 1R", qty:1, unit:"式", unitPrice:16000}, {name:"浴室カビ取り", qty:1, unit:"式", unitPrice:4000}],
         description:"1R（約18㎡）の退去後クリーニング一式。\n浴室のカビが強めなので、カビ取りを含めてお願いします。", photos:[], assignedTo:"c1",
         createdAt:now - 6*day, publishedAt:now - 6*day, assignedAt:now - 4*day},
       j6: {id:"j6", companyId:COMPANY_ID, status:"completed", title:"2K エアコン・換気扇クリーニング", trades:["エアコンクリーニング","ハウスクリーニング"], pref:"千葉県", city:"市川市",
@@ -416,7 +615,7 @@ function seedDemo(){
 
 class DemoBackend {
   constructor(){
-    this.mode = "demo"; this.key = "refore_shokunin_demo_v2"; this.listeners = [];
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v3"; this.listeners = [];
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
@@ -671,6 +870,7 @@ function jobDetailBlock(j){
     <h1>${esc(j.title)}</h1>
     <div class="price big"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>
     <dl class="kv"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
+    ${j.items?.length ? `<h2>作業内訳</h2>${itemsTable(j)}` : ""}
     <h2>作業内容</h2><p class="pre">${esc(j.description) || "記載なし"}</p>
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
   </article>`;
@@ -976,6 +1176,10 @@ async function viewJobEdit(id){
     <h1>${id ? "案件を編集" : "新しい案件"}</h1>
     <p class="lead">「募集情報」は承認済みの協力業者全員に公開されます。「現場情報」は発注した業者にだけ表示されます。</p>
     <form data-form="job" data-id="${esc(id || "")}" class="stack">
+      <section class="panel import"><h2>案件PDFから読み込む</h2>
+        <p class="small" style="margin:0 0 10px">管理会社からの発注書・依頼書のPDFを選ぶと、読み取れた内容（案件名・住所・作業日・作業内訳など）を下の欄に自動で入力します。</p>
+        <input type="file" accept="application/pdf,.pdf" data-pdfimport aria-label="案件PDFを選ぶ">
+        <div id="pdf-result"></div></section>
       <section class="panel"><h2>募集情報</h2>
         <label class="field"><span>案件名</span><input type="text" name="title" required maxlength="80" value="${esc(job.title)}" placeholder="例：1K 退去後ハウスクリーニング"></label>
         <fieldset class="field"><legend>工種</legend><div class="checks">${TRADES.map(t => `<label><input type="checkbox" name="trades" value="${esc(t)}" ${chk(t)}>${esc(t)}</label>`).join("")}</div></fieldset>
@@ -984,12 +1188,16 @@ async function viewJobEdit(id){
           <label class="field"><span>市区町村 <small>公開されます</small></span><input type="text" name="city" required value="${esc(job.city)}" placeholder="例：墨田区"></label>
           <label class="field"><span>作業日（開始）</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
           <label class="field"><span>作業日（終了） <small>1日なら空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
-          <label class="field"><span>報酬（円） <small>0で「応相談」</small></span><input type="number" name="price" min="0" step="100" inputmode="numeric" value="${esc(job.price ?? "")}"></label>
+          <label class="field"><span>報酬（円） <small>内訳があれば合計が入ります</small></span><input type="number" name="price" min="0" inputmode="numeric" value="${esc(job.price ?? "")}" ${job.items?.length ? "readonly" : ""}></label>
           <label class="field"><span>税区分 <small>発注書の金額計算に使います</small></span><select name="taxMode">${["税別","税込"].map(t => `<option ${taxModeOf(job) === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>
         </div>
         <label class="field"><span>報酬の補足 <small>任意</small></span><input type="text" name="priceNote" value="${esc(job.priceNote)}" placeholder="例：材料支給・駐車場代込み"></label>
         <div>
         </div>
+        <div class="field"><span>作業内訳 <small>作業ごとに入力すると、合計が報酬に入ります</small></span>
+          <div class="items-ed" id="items-ed">${(job.items || []).map(itemRowHtml).join("")}</div>
+          <div class="row between" style="margin-top:4px"><button type="button" class="btn sub" data-act="add-item">＋ 作業を追加</button><span>合計（${esc(taxModeOf(job))}）<b class="i-total">${yenFull(itemsTotal(job.items))}</b></span></div>
+          <datalist id="unit-list">${UNITS.map(u => `<option value="${u}">`).join("")}</datalist></div>
         <label class="field"><span>作業内容</span><textarea name="description" required>${esc(job.description)}</textarea></label>
         <div class="field"><span>写真 <small>間取り図や現況写真など（${JOB_PHOTO_MAX}枚まで）</small></span>
           <div class="photos" id="photo-edit">${editPhotosHtml()}</div>
@@ -1144,8 +1352,9 @@ function docOrderHtml(d){
       <tr><th>現場</th><td>${esc(j.address || j.pref + j.city)}${j.building ? `　${esc(j.building)}` : ""}</td></tr>
       <tr><th>工期</th><td>${pdfPeriod(j.startDate, j.endDate) || "別途調整"}</td></tr>
       <tr><th>作業内容</th><td class="pre">${esc(j.description)}</td></tr></table>
-    <table class="t items"><tr><th>品目</th><th>数量</th><th>単価（税抜）</th><th>金額（税抜）</th></tr>
-      <tr><td>${esc(j.title)}</td><td class="r">1式</td><td class="r">${yenFull(a.base)}</td><td class="r">${yenFull(a.base)}</td></tr></table>
+    <table class="t items"><tr><th>品目</th><th>数量</th><th>単価（${d.taxMode === "税込" ? "税込" : "税抜"}）</th><th>金額（${d.taxMode === "税込" ? "税込" : "税抜"}）</th></tr>
+      ${(j.items?.length ? j.items : [{name:j.title, qty:1, unit:"式", unitPrice:d.taxMode === "税込" ? a.total : a.base}]).map(i =>
+        `<tr><td>${esc(i.name)}</td><td class="r">${fmtQty(i.qty)}${esc(i.unit)}</td><td class="r">${yenFull(i.unitPrice)}</td><td class="r">${yenFull(itemAmount(i))}</td></tr>`).join("")}</table>
     <table class="t sum"><tr><th>小計（税抜）</th><td class="r">${yenFull(a.base)}</td></tr>
       <tr><th>消費税（10%）</th><td class="r">${yenFull(a.tax)}</td></tr>
       <tr><th>合計（税込）</th><td class="r"><b>${yenFull(a.total)}</b></td></tr></table>
@@ -1288,6 +1497,13 @@ const ACTIONS = {
   },
   async reload(){ route(); },
   async zoom(el){ lightbox(el.dataset.src); },
+  async "add-item"(el){
+    const form = el.closest("form");
+    form.querySelector("#items-ed").insertAdjacentHTML("beforeend", itemRowHtml());
+    syncItems(form);
+    form.querySelector(".item-row:last-child [name=i_name]").focus();
+  },
+  async "rm-item"(el){ const form = el.closest("form"); el.closest(".item-row").remove(); syncItems(form); },
   async "rm-photo"(el){ S.editPhotos.splice(Number(el.dataset.i), 1); $("#photo-edit").innerHTML = editPhotosHtml(); },
   async withdraw(el){
     if(!await ask({title:"応募を取り下げますか？", body:"取り下げると、この案件にはもう一度応募できません。", ok:"取り下げる", danger:true})) return;
@@ -1414,6 +1630,10 @@ const FORMS = {
     const files = [...form.elements.photos.files];
     if(files.length + S.editPhotos.length > JOB_PHOTO_MAX) throw new Error(`案件の写真は${JOB_PHOTO_MAX}枚までにしてください`);
     const data = {title:g("title"), trades, pref:g("pref"), city:g("city"), startDate, endDate, price:Number(g("price")) || 0, taxMode:g("taxMode") || "税別", priceNote:g("priceNote"), description:g("description"), photos:[...S.editPhotos]};
+    const items = readItems(form).filter(i => i.name || i.unitPrice);
+    if(items.some(i => !i.name)) throw new Error("作業名が空欄の内訳があります");
+    data.items = items;
+    if(items.length) data.price = itemsTotal(items);
     if(mode === "open" || mode === "draft") data.status = mode;
     if(mode === "open") data.publishedAt = Date.now();
     if(!id && !data.status) data.status = "draft";
@@ -1464,7 +1684,12 @@ document.addEventListener("submit", async e => {
   catch(err) { console.error(err); toast(err.message || String(err)); }
   finally { btns.forEach(b => b.disabled = false); }
 });
+document.addEventListener("input", e => { if(e.target.closest(".item-row")) syncItems(e.target.form); });
 document.addEventListener("change", e => {
+  if(e.target.matches("[data-pdfimport]")){
+    importPdf(e.target).catch(err => { console.error(err); toast("PDFを読み込めませんでした（" + (err.message || err) + "）"); const b = $("#pdf-result"); if(b) b.innerHTML = ""; });
+    return;
+  }
   if(e.target.matches("[data-adminsort]")){ S.adminSort = e.target.value; route(); return; }
   const el = e.target.closest("[data-filter]");
   if(!el) return;
