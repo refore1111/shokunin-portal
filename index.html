@@ -449,10 +449,8 @@ function pdfAttachHtml(){
 function pdfViewHtml(a, note = ""){
   if(!a?.pages?.length) return "";
   if(a.src?.data && !a.url){ try { a.url = URL.createObjectURL(dataUrlToBlob(a.src.data)); } catch(e) {} }
-  const wide = window.matchMedia && matchMedia("(min-width:720px) and (pointer:fine)").matches;
-  const body = wide && a.url
-    ? `<iframe class="pdfframe" src="${a.url}#view=FitH" title="案件PDF"></iframe>`
-    : a.pages.map((u, i) => `<button type="button" class="zoom" data-act="zoom" data-doc="1" data-src="${esc(u)}" aria-label="${i+1}ページ目を拡大"><img src="${esc(u)}" alt="${i+1}ページ目" loading="lazy"></button>`).join("");
+  // ブラウザごとのPDF表示の差をなくすため、どの端末でも高解像度の画像で表示する
+  const body = a.pages.map((u, i) => `<button type="button" class="zoom" data-act="zoom" data-doc="1" data-src="${esc(u)}" aria-label="${i+1}ページ目を拡大"><img src="${esc(u)}" alt="${i+1}ページ目" loading="lazy"></button>`).join("");
   return `<section class="panel pdfview"><div class="row between"><h2 style="margin:0">案件PDF <small>${esc(a.name)}</small></h2>
       <span class="row">${note ? `<span class="small">${esc(note)}</span>` : ""}${a.url ? `<a class="btn sub" href="${a.url}" target="_blank" rel="noopener">PDFを開く</a>` : ""}</span></div>
     ${body}</section>`;
