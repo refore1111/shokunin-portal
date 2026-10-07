@@ -59,7 +59,7 @@ h2{font-size:16px;line-height:1.5;margin:0 0 12px}
 .badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:var(--caution);color:#1d1600;font-size:12px;font-weight:700;text-align:center;line-height:20px;margin-left:4px}
 
 /* 職人用タブ（スマホは下、PCは上） */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 .tabbar a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 10px;font-size:11px;text-decoration:none;color:var(--sub)}
 .tabbar svg{width:22px;height:22px}
 .tabbar a[aria-current="page"]{color:var(--kon-text);font-weight:700}
@@ -233,6 +233,54 @@ textarea{min-height:110px;resize:vertical}
 .i-total{font-family:var(--num);font-size:24px;font-weight:600}
 .import{border:2px dashed var(--kon-text)}
 .pdftext{white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:var(--paper);padding:8px;border-radius:4px;margin:6px 0 0}
+.pdf-thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.pdf-thumbs .zoom{flex:none;width:110px;border:1px solid var(--line);border-radius:4px;padding:0;background:#fff;cursor:zoom-in}
+.pdfview{padding:16px}
+.pdfview .zoom{display:block;width:100%;max-width:1000px;margin:12px auto 0;padding:0;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:zoom-in}
+.pdfview img{width:100%;height:auto}
+.lightbox.doc{display:block;overflow:auto;padding:16px}
+.lightbox.doc img{max-height:none;width:min(100%,1400px);margin:0 auto;display:block}
+.cal-tool{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.cal-tool h2{margin:0;font-size:20px;min-width:7.5em;text-align:center}
+.cal-tool .btn{min-height:36px;padding:4px 14px;font-size:18px}
+.cal-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:10px}
+.cal-legend .cal-bar{cursor:default;margin:0;font-size:12px}
+.cal{background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.cal-head{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:var(--paper);font-size:12px;text-align:center;padding:4px 0;color:var(--sub)}
+.sun{color:var(--shu)} .sat{color:var(--kon-text)}
+.cal-week{position:relative;min-height:92px;border-top:1px solid var(--line)}
+.cal-bg{position:absolute;inset:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.cal-bg div + div{border-left:1px solid var(--line)}
+.cal-bg .other{background:var(--paper)}
+.cal-fg{position:relative;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:min-content;row-gap:3px;padding-bottom:8px}
+.cal-num{grid-row:1;font-size:12px;padding:4px 6px 2px;font-variant-numeric:tabular-nums}
+.cal-num.other{opacity:.45}
+.cal-num.today span{display:inline-block;min-width:22px;text-align:center;background:var(--kon);color:#fff;border-radius:999px}
+.cal-bar{display:block;min-width:0;margin:0;border:0;padding:3px 6px;font:inherit;font-size:12px;line-height:1.35;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;border-radius:0}
+.cal-bar.s{margin-left:3px;border-top-left-radius:4px;border-bottom-left-radius:4px}
+.cal-bar.e{margin-right:3px;border-top-right-radius:4px;border-bottom-right-radius:4px}
+.cal-bar.c-open{background:var(--warn-soft);color:var(--ink);box-shadow:inset 0 0 0 1px var(--caution)}
+.cal-bar.c-closed{background:var(--paper);color:var(--sub);box-shadow:inset 0 0 0 1px var(--line)}
+.cal-bar.c-work{background:var(--kon);color:var(--kon-ink)}
+.cal-bar.c-done{background:var(--line);color:var(--ink)}
+.cal-bar:hover{filter:brightness(.95)}
+@media (max-width:600px){
+  .cal-week{min-height:72px}
+  .cal-bar{font-size:10px;padding:2px 3px}
+  .cal-num{padding:2px 3px}
+}
+.pill.issued{color:var(--warn)}
+.inv-lines{display:grid;gap:8px;margin-bottom:12px}
+.inv-line{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:6px;padding:10px 12px;cursor:pointer}
+.inv-line input[type=checkbox]{width:20px;height:20px;accent-color:var(--kon);flex:none}
+.inv-line .row-main{flex:1}
+.inv-amt{display:flex;align-items:center;gap:2px;flex:none}
+.inv-amt input{width:120px;text-align:right;padding:8px}
+.inv-sum{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px 18px;margin:0 0 14px;font-size:14px}
+.inv-sum b{font-size:18px;font-variant-numeric:tabular-nums}
+.inv-right{display:grid;justify-items:end;gap:6px;flex:none}
+.inv-money{font-size:18px;font-variant-numeric:tabular-nums}
+@media (max-width:560px){.inv-line{flex-wrap:wrap}.inv-amt{margin-left:30px}.inv-right .row .btn{padding:8px 10px;font-size:13px}}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -263,11 +311,12 @@ const CONTACT_TEL = "03-6824-7282";
 const REPORT_EMAIL = "info@refore.co.jp";   // 完了報告メールの送信先
 const JOB_PHOTO_MAX = 4;                      // 案件写真の上限（Firestoreに直接保存するため）
 
-// 発注書・支払明細に載せる自社情報（テンプレート確定後に調整）
+// 発注書・請求書に載せる自社情報（テンプレート確定後に調整）
 const COMPANY = {name:"株式会社Refore", address:"東京都墨田区本所4-1-3-502", tel:CONTACT_TEL, email:REPORT_EMAIL, invoiceNumber:""};
 const PAYMENT_TERMS = "作業完了の確認後、60日以内に指定口座へお振込みします。";   // ← 実際の支払条件に合わせて書き換えてください
 const TAX_RATE = 0.1;
 const HTML2PDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+const JSPDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 const PDFJS_BASE = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
 const UNITS = ["式","㎡","m","枚","台","箇所","個","本","室","セット","日","人工"];
 
@@ -357,10 +406,44 @@ function syncItems(form){
 }
 
 /* ---------- 案件PDFの読み込み ---------- */
-async function extractPdfText(file){
+async function openPdf(file){
   if(!window.pdfjsLib) await loadScript(PDFJS_BASE + "pdf.min.js");
   pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "pdf.worker.min.js";
-  const pdf = await pdfjsLib.getDocument({data:await file.arrayBuffer(), cMapUrl:PDFJS_BASE + "cmaps/", cMapPacked:true}).promise;
+  return pdfjsLib.getDocument({data:await file.arrayBuffer(), cMapUrl:PDFJS_BASE + "cmaps/", cMapPacked:true}).promise;
+}
+// PDFの各ページを画像にする（Firestoreの1件あたりの上限に収まるよう、大きすぎれば画質を下げる）
+const PDF_MAX_PAGES = 6, PDF_MAX_CHARS = 900000;
+async function renderPdfPages(pdf){
+  const n = Math.min(pdf.numPages, PDF_MAX_PAGES);
+  for(const [w, q] of [[1400, 0.7], [1200, 0.6], [1000, 0.5], [850, 0.45]]){
+    const pages = [];
+    for(let i = 1; i <= n; i++){
+      const page = await pdf.getPage(i);
+      const v1 = page.getViewport({scale:1});
+      const vp = page.getViewport({scale:w / v1.width});
+      const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({canvasContext:ctx, viewport:vp}).promise;
+      pages.push(c.toDataURL("image/jpeg", q));
+    }
+    if(pages.join("").length <= PDF_MAX_CHARS) return pages;
+  }
+  throw new Error("PDFが大きすぎて添付できません（ページ数を減らしてください）");
+}
+function pdfAttachHtml(){
+  const a = S.editPdf;
+  if(!a) return `<p class="small" style="margin:8px 0 0">添付なし</p>`;
+  return `<div class="row between" style="margin:12px 0 6px"><span class="small">添付中：<b>${esc(a.name)}</b>（${a.pages.length}ページ）</span>
+      <button type="button" class="btn danger" data-act="rm-pdf">添付を外す</button></div>
+    <div class="pdf-thumbs">${a.pages.map((u, i) => `<button type="button" class="zoom" data-act="zoom" data-doc="1" data-src="${esc(u)}" aria-label="${i+1}ページ目を拡大"><img src="${esc(u)}" alt=""></button>`).join("")}</div>`;
+}
+function pdfViewHtml(a, note = ""){
+  if(!a?.pages?.length) return "";
+  return `<section class="panel pdfview"><div class="row between"><h2 style="margin:0">案件PDF <small>${esc(a.name)}</small></h2>${note ? `<span class="small">${esc(note)}</span>` : ""}</div>
+    ${a.pages.map((u, i) => `<button type="button" class="zoom" data-act="zoom" data-doc="1" data-src="${esc(u)}" aria-label="${i+1}ページ目を拡大"><img src="${esc(u)}" alt="${i+1}ページ目" loading="lazy"></button>`).join("")}</section>`;
+}
+async function extractPdfText(file, pdf){
+  pdf = pdf || await openPdf(file);
   const out = [];
   for(let n = 1; n <= Math.min(pdf.numPages, 5); n++){
     const tc = await (await pdf.getPage(n)).getTextContent();
@@ -466,34 +549,34 @@ async function importPdf(input){
   const file = input.files[0]; if(!file) return;
   const form = input.closest("form"), box = form.querySelector("#pdf-result");
   box.innerHTML = `<p class="small">「${esc(file.name)}」を読み取っています…</p>`;
-  const text = await extractPdfText(file);
+  const pdf = await openPdf(file);
+  const src = await blobToDataURL(file);
+  S.editPdf = {name:file.name, pages:await renderPdfPages(pdf), addedAt:Date.now()};
+  S.editPdfSrc = src.length <= PDF_MAX_CHARS ? {name:file.name, data:src} : null; S.editPdfChanged = true;
+  const fallbackTitle = file.name.replace(/\.pdf$/i, "");
+  form.elements.title.value = fallbackTitle; form.querySelector("#title-view").textContent = fallbackTitle;
+  form.querySelector("#pdf-attach").innerHTML = pdfAttachHtml();
+  const text = await extractPdfText(file, pdf);
   input.value = "";
   if(text.replace(/\s/g, "").length < 10){
-    box.innerHTML = `<div class="note">文字を読み取れませんでした。スキャンした画像のPDFは読み込めないため、手で入力してください。</div>`;
+    box.innerHTML = `<div class="note" style="margin:12px 0 0">PDFは添付しましたが、文字を読み取れませんでした（スキャンした画像のPDFの可能性があります）。工種と作業日は手で入力してください。</div>`;
     return;
   }
   const r = parseJobText(text), done = [], miss = [];
-  const set = (name, v, label) => { if(v){ form.elements[name].value = v; done.push(label); } else if(label) miss.push(label); };
+  const set = (name, v, label) => { if(!form.elements[name]) return; if(v){ form.elements[name].value = v; if(label) done.push(label); } else if(label) miss.push(label); };
   set("title", r.title, "案件名");
+  if(r.title) form.querySelector("#title-view").textContent = r.title;
   if(r.pref){ form.elements.pref.value = r.pref; }
-  set("city", r.city, "市区町村");
+  set("city", r.city, "");
+  form.querySelector("#place-view").textContent = (r.pref || "") + (r.city || "");
   set("startDate", r.startDate, "作業日");
   if(r.startDate) form.elements.endDate.value = r.endDate || "";
   set("address", r.address, "住所");
   set("building", r.building, "物件名・部屋");
   set("manager", r.manager, "管理会社");
   set("keyInfo", r.keyInfo, "");
-  set("description", r.description, "作業内容");
-  if(r.taxMode) form.elements.taxMode.value = r.taxMode;
+  if(r.description && form.elements.contact && !form.elements.contact.value) form.elements.contact.value = r.description;
   if(r.trades.length){ form.querySelectorAll("input[name=trades]").forEach(c => { c.checked = r.trades.includes(c.value); }); done.push("工種"); } else miss.push("工種");
-  if(r.items.length){
-    form.querySelector("#items-ed").innerHTML = r.items.map(itemRowHtml).join("");
-    done.push(`作業内訳（${r.items.length}件）`);
-  } else {
-    miss.push("作業内訳");
-    if(r.price){ form.querySelector("#items-ed").innerHTML = ""; form.elements.price.value = r.price; done.push("報酬"); }
-  }
-  syncItems(form);
   box.innerHTML = `<div class="note" style="margin:12px 0 0"><b>読み取った内容を入力しました。</b>保存する前に、必ず中身を確認してください。<br>
       入力した項目：${esc(done.join("、") || "なし")}${miss.length ? `<br>読み取れなかった項目：${esc(miss.join("、"))}` : ""}</div>
     <details style="margin-top:8px"><summary class="small">PDFから読み取った文字を見る</summary><pre class="pdftext">${esc(text)}</pre></details>`;
@@ -556,7 +639,8 @@ function seedDemo(){
       admin: {uid:"admin", role:"admin", status:"approved", name:"Refore 管理者", email:"admin@demo.jp", createdAt:now - 90*day},
       c1: {uid:"c1", role:"craftsman", status:"approved", plan:"free", name:"山田 太郎", tradeName:"山田クリーンサービス", phone:"090-0000-0000", email:"yamada@demo.jp",
         prefs:["東京都","千葉県"], areaNote:"墨田区・江東区・市川市は即日対応できます", trades:["ハウスクリーニング","エアコンクリーニング","簡易修繕"],
-        years:"8", licenses:"", invoiceNumber:"T1234567890123", insurance:"加入済み", pr:"原状回復のクリーニングが中心です。施工前後の写真報告に慣れています。", createdAt:now - 30*day},
+        years:"8", licenses:"", invoiceNumber:"T1234567890123", insurance:"加入済み", pr:"原状回復のクリーニングが中心です。施工前後の写真報告に慣れています。", createdAt:now - 30*day,
+        address:"千葉県市川市○○1-1-1", bank:{bankName:"サンプル銀行", branch:"市川支店", type:"普通", number:"1234567", holder:"ヤマダ タロウ"}},
       c2: {uid:"c2", role:"craftsman", status:"pending", plan:"free", name:"田中 健一", tradeName:"", phone:"080-0000-0000", email:"tanaka@demo.jp",
         prefs:["東京都","埼玉県"], areaNote:"", trades:["クロス張替え","床（CF・フロアタイル）"],
         years:"15", licenses:"内装仕上げ施工技能士 1級", invoiceNumber:"", insurance:"手続き中", pr:"", createdAt:now - day}
@@ -615,7 +699,7 @@ function seedDemo(){
 
 class DemoBackend {
   constructor(){
-    this.mode = "demo"; this.key = "refore_shokunin_demo_v3"; this.listeners = [];
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v4"; this.listeners = [];
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
@@ -669,6 +753,18 @@ class DemoBackend {
   async saveDocument(doc){ (this.data.documents ||= {})[doc.id] = doc; this.save(); }
   async updateDocument(id, d){ Object.assign(this.data.documents[id], d); this.save(); }
   async getJobPrivate(id){ return clone(this.data.jobPrivate[id] || {}); }
+  async getJobPdf(id){ return clone((this.data.jobPdf || {})[id] || null); }
+  async getJobPdfSource(id){ return clone((this.data.jobPdfSrc || {})[id] || null); }
+  async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
+  async saveInvoice(d){ (this.data.invoices ||= {})[d.id] = d; this.save(); }
+  async updateInvoice(id, d){ Object.assign(this.data.invoices[id], d); this.save(); }
+  async listInvoices(f = {}){ let a = Object.values(this.data.invoices || {}); if(f.month) a = a.filter(x => x.month === f.month); if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId); return a.map(clone); }
+  async setJobPdf(id, d, src){
+    this.data.jobPdf ||= {}; this.data.jobPdfSrc ||= {};
+    if(d) this.data.jobPdf[id] = d; else delete this.data.jobPdf[id];
+    if(d && src) this.data.jobPdfSrc[id] = src; else delete this.data.jobPdfSrc[id];
+    this.save();
+  }
   async setJobPrivate(id, d){ this.data.jobPrivate[id] = {...d}; this.save(); }
 
   async listApplications(f = {}){
@@ -767,6 +863,33 @@ class FirebaseBackend {
   async saveDocument(doc){ await this.col("documents").doc(doc.id).set(doc); }
   async updateDocument(id, d){ await this.col("documents").doc(id).update(d); }
   async getJobPrivate(id){ const s = await this.col("jobs").doc(id).collection("private").doc("detail").get(); return s.exists ? s.data() : {}; }
+  // 案件PDFの表示用画像（募集中は承認済みの業者全員、発注後は発注先が見られる）
+  async getJobPdf(id){
+    try { const s = await this.col("jobs").doc(id).collection("files").doc("pdf").get(); return s.exists ? s.data() : null; }
+    catch(e) { if(e.code === "permission-denied") return null; throw e; }
+  }
+  // 元のPDFファイル（発注書としてダウンロード。管理者と発注先だけ）
+  async getJobPdfSource(id){
+    try { const s = await this.col("jobs").doc(id).collection("private").doc("pdfsrc").get(); return s.exists ? s.data() : null; }
+    catch(e) { if(e.code === "permission-denied") return null; throw e; }
+  }
+  async getInvoice(id){
+    try { const s = await this.col("invoices").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
+    catch(e) { if(e.code === "permission-denied") return null; throw e; }
+  }
+  async saveInvoice(d){ await this.col("invoices").doc(d.id).set(d); }
+  async updateInvoice(id, d){ await this.col("invoices").doc(id).update(d); }
+  async listInvoices(f = {}){
+    let q = this.col("invoices");
+    if(f.month) q = q.where("month", "==", f.month);
+    if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
+    return this.docs(await q.get());
+  }
+  async setJobPdf(id, d, src){
+    const j = this.col("jobs").doc(id), view = j.collection("files").doc("pdf"), raw = j.collection("private").doc("pdfsrc");
+    if(d) await view.set(d); else await view.delete();
+    if(d && src) await raw.set(src); else await raw.delete();
+  }
   async setJobPrivate(id, d){ await this.col("jobs").doc(id).collection("private").doc("detail").set(d); }
 
   async listApplications(f = {}){
@@ -816,6 +939,7 @@ const ICONS = {
   jobs:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="M8.5 7V5.2c0-.6.4-1 1-1h5c.6 0 1 .4 1 1V7M3 12.5h18"/></svg>',
   applied:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M9.5 13.5l2 2 4-4"/></svg>',
   work:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.3 5.3L3.5 17.5l3 3 5.9-5.9a4 4 0 0 0 5.3-5.3l-2.4 2.4-2.3-.6-.6-2.3z"/></svg>',
+  invoice:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
   profile:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1-3.8 4.2-5.6 7.5-5.6s6.5 1.8 7.5 5.6"/></svg>'
 };
 
@@ -828,15 +952,17 @@ function demoBar(){
     <button data-act="demo-reset">データを初期化</button></div>`;
 }
 function adminNav(){
-  const onC = location.hash.startsWith("#/admin/craftsm");
+  const onC = location.hash.startsWith("#/admin/craftsm"), onK = location.hash.startsWith("#/admin/calendar") || location.hash.startsWith("#/admin/invoices");
   return `<nav class="admin-nav" aria-label="管理メニュー">
-    <a href="#/admin" ${!onC ? 'aria-current="page"' : ""}>案件</a>
+    <a href="#/admin" ${!onC && !onK ? 'aria-current="page"' : ""}>案件</a>
+    <a href="#/admin/calendar" ${onK ? 'aria-current="page"' : ""}>予定表</a>
+    <a href="#/admin/invoices" ${location.hash.startsWith("#/admin/invoices") ? 'aria-current="page"' : ""}>請求書</a>
     <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a></nav>`;
 }
 function craftTabs(){
   const a = location.hash.replace(/^#\/?/, "").split("/")[0] || "jobs";
   const cur = a === "job" ? "jobs" : a;
-  const tabs = [["jobs","案件",ICONS.jobs],["applied","応募状況",ICONS.applied],["work","受注",ICONS.work],["profile","登録情報",ICONS.profile]];
+  const tabs = [["jobs","案件",ICONS.jobs],["applied","応募状況",ICONS.applied],["work","受注",ICONS.work],["invoice","請求書",ICONS.invoice],["profile","登録情報",ICONS.profile]];
   return `<nav class="tabbar" aria-label="メニュー">${tabs.map(([k,l,i]) => `<a href="#/${k}" ${cur === k ? 'aria-current="page"' : ""}>${i}<span>${l}</span></a>`).join("")}</nav>`;
 }
 function paint(content, {bare = false} = {}){
@@ -861,17 +987,17 @@ function jobCard(j, {href, stampHtml = "", foot = ""} = {}){
     ${tagsHtml(j.trades)}
     <h3>${esc(j.title)}</h3>
     <dl class="meta"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
-    <div class="price"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>
+    ${Number(j.price) > 0 ? `<div class="price"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>` : ""}
     ${foot}${stampHtml}</a>`;
 }
 function jobDetailBlock(j){
   return `<article class="panel detail">
     ${tagsHtml(j.trades)}
     <h1>${esc(j.title)}</h1>
-    <div class="price big"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>
-    <dl class="kv"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
+    ${Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>` : ""}
+    <dl class="kv"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>開始日</dt><dd>${fmtDay(j.startDate)}</dd><dt>終了日</dt><dd>${fmtDay(j.endDate || j.startDate)}</dd></dl>
     ${j.items?.length ? `<h2>作業内訳</h2>${itemsTable(j)}` : ""}
-    <h2>作業内容</h2><p class="pre">${esc(j.description) || "記載なし"}</p>
+    ${j.description ? `<h2>作業内容</h2><p class="pre">${esc(j.description)}</p>` : ""}
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
   </article>`;
 }
@@ -919,11 +1045,15 @@ function progressMini(job){
   if(stage < 0) return "";
   return `<span class="mini" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i <= stage ? "on" : ""}"></i>`).join("")}</span>`;
 }
-function docRow(label, doc, note, canSee = true){
+function docRow(label, doc, note, canSee = true, attachedJob = null){
   const ok = doc && canSee;
-  return `<div class="doc-row"><span class="row-main"><b>${label}</b><span class="small">${ok ? `${esc(doc.number)}　${fmtTime(doc.issuedAt || doc.createdAt)} 作成` : esc(note)}</span></span>
-    ${ok ? `<button class="btn sub" data-act="pdf" data-id="${esc(doc.id)}">ダウンロード</button>` : ""}</div>`;
+  const btn = attachedJob ? `<button class="btn sub" data-act="dl-order" data-job="${esc(attachedJob)}">ダウンロード</button>`
+    : `<button class="btn sub" data-act="pdf" data-id="${esc(doc?.id)}">ダウンロード</button>`;
+  return `<div class="doc-row"><span class="row-main"><b>${label}</b><span class="small">${ok ? `${attachedJob ? "添付PDF" : esc(doc.number)}　${fmtTime(doc.issuedAt || doc.createdAt)} 発注` : esc(note)}</span></span>
+    ${ok ? btn : ""}</div>`;
 }
+const dataUrlToBlob = u => { const [h, b] = u.split(","); const bin = atob(b); const a = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], {type:h.match(/data:([^;]+)/)?.[1] || "application/pdf"}); };
+function saveBlob(blob, name){ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
 
 /* ---------- ログイン・登録 ---------- */
 function authHead(){
@@ -972,6 +1102,15 @@ function viewProfileForm(p, isNew){
       <label class="field"><span>インボイス登録番号 <small>お持ちの場合</small></span><input type="text" name="invoiceNumber" value="${esc(v.invoiceNumber)}" pattern="[Tt]?[0-9]{13}" title="Tと13桁の数字" placeholder="T1234567890123" inputmode="text"></label>
       <label class="field"><span>賠償責任保険</span><select name="insurance">${ins.map(o => `<option ${v.insurance === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>
     </div>
+    <label class="field"><span>住所 <small>請求書に載ります</small></span><input type="text" name="address" value="${esc(v.address)}" autocomplete="street-address"></label>
+    <fieldset class="field"><legend>振込先 <small>請求書に載ります</small></legend>
+      <div class="two">
+        <label class="field"><span>銀行名</span><input type="text" name="bankName" value="${esc(v.bank?.bankName)}" placeholder="例：○○銀行"></label>
+        <label class="field"><span>支店名</span><input type="text" name="bankBranch" value="${esc(v.bank?.branch)}"></label>
+        <label class="field"><span>口座種別</span><select name="bankType">${["普通","当座"].map(o => `<option ${v.bank?.type === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>
+        <label class="field"><span>口座番号</span><input type="text" name="bankNumber" value="${esc(v.bank?.number)}" inputmode="numeric" pattern="[0-9]{4,8}" title="数字4〜8桁"></label>
+      </div>
+      <label class="field" style="margin:0"><span>口座名義（カナ）</span><input type="text" name="bankHolder" value="${esc(v.bank?.holder)}"></label></fieldset>
     <label class="field"><span>自己PR <small>任意</small></span><textarea name="pr" placeholder="得意な作業や、対応できる時間帯など">${esc(v.pr)}</textarea></label>
     <button class="btn block">${isNew ? "審査を申し込む" : "登録情報を保存"}</button>
   </form>`;
@@ -1012,7 +1151,7 @@ async function viewJobDetail(id){
   const uid = S.user.uid;
   const job = await api().getJob(id);
   if(!job) return `${back("#/jobs", "案件一覧")}<div class="empty">この案件は募集が終了したため表示できません。</div>`;
-  const apps = await api().listApplications({craftsmanId:uid});
+  const [apps, pdfA] = await Promise.all([api().listApplications({craftsmanId:uid}), api().getJobPdf(id)]);
   const app = apps.find(a => a.jobId === id);
   let action;
   if(job.assignedTo === uid){
@@ -1035,7 +1174,7 @@ async function viewJobDetail(id){
       <button class="btn block">応募する</button>
       <p class="small" style="margin:10px 0 0">住所や入室方法は、発注が決まった業者さまにだけ表示されます。</p></form>`;
   }
-  return `${back("#/jobs", "案件一覧")}<div class="cols"><div class="stack">${jobDetailBlock(job)}</div><div class="stack">${action}</div></div>`;
+  return `${back("#/jobs", "案件一覧")}${pdfViewHtml(pdfA)}<div class="cols"><div class="stack">${jobDetailBlock(job)}</div><div class="stack">${action}</div></div>`;
 }
 async function viewApplied(){
   const apps = (await api().listApplications({craftsmanId:S.user.uid})).sort((a, b) => b.createdAt - a.createdAt);
@@ -1049,7 +1188,7 @@ async function viewApplied(){
 /* ---------- 職人：受注・完了報告 ---------- */
 async function viewWork(){
   const jobs = (await api().listJobs({assignedTo:S.user.uid})).sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
-  const head = `<h1>受注した案件</h1><p class="lead">作業の開始・完了の記録、発注書や支払明細のダウンロードはここから行います。</p>`;
+  const head = `<h1>受注した案件</h1><p class="lead">作業の開始・完了の記録と、発注書のダウンロードはここから行います。</p>`;
   if(!jobs.length) return head + `<div class="empty">受注した案件はまだありません。<br>採用されると、ここに表示されます。</div>`;
   const groups = [["対応中", ["assigned","working","finished"]], ["支払待ち", ["completed"]], ["支払済み", ["paid"]]];
   return head + groups.map(([label, sts]) => {
@@ -1064,7 +1203,7 @@ async function viewWorkDetail(id){
   const uid = S.user.uid;
   const job = await api().getJob(id);
   if(!job || job.assignedTo !== uid) return `${back("#/work", "受注した案件")}<div class="empty">この案件は表示できません。</div>`;
-  const [priv, reports, order, payment] = await Promise.all([api().getJobPrivate(id), api().listReports({craftsmanId:uid}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`)]);
+  const [priv, reports, order, payment, pdfA] = await Promise.all([api().getJobPrivate(id), api().listReports({craftsmanId:uid}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`), api().getJobPdf(id)]);
   const rs = reports.filter(r => r.jobId === id).sort((a, b) => b.createdAt - a.createdAt);
   const canReport = job.status === "finished" && !rs.some(r => r.status === "submitted" || r.status === "approved");
   let step = "";
@@ -1084,14 +1223,13 @@ async function viewWorkDetail(id){
       <button class="btn sub block">メールを送ったので「報告済み」にする</button></form>`
       : `<div class="note" style="margin:0">完了報告を受け付けました。Reforeが内容を確認しています。</div>`;
   } else if(job.status === "completed"){
-    step = `<div class="note" style="margin:0">Reforeが完了を確認しました。お支払いの手続き中です。振込が済むと、下の「書類」から支払明細をダウンロードできます。</div>`;
+    step = `<div class="note" style="margin:0">Reforeが完了を確認しました。月末に「請求書」タブから、その月の案件をまとめて請求してください。</div>`;
   } else if(job.status === "paid"){
-    step = `<div class="note" style="margin:0">お支払いが完了しました。下の「書類」から支払明細をダウンロードできます。</div>`;
+    step = `<div class="note" style="margin:0">お支払いが完了しました。</div>`;
   }
   const docs = `<section class="panel"><h2>書類</h2>
-    ${docRow("発注書", order, "準備中です")}
-    ${docRow("支払明細", payment, "振込が済むとダウンロードできます", payment?.status === "issued")}</section>`;
-  return `${back("#/work", "受注した案件")}<div class="cols">
+    ${docRow("発注書", order, "準備中です", true, pdfA ? id : null)}</section>`;
+  return `${back("#/work", "受注した案件")}${pdfViewHtml(pdfA)}<div class="cols">
     <div class="stack">${step}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${privateBlock(priv)}${jobDetailBlock(job)}</div></div>`;
 }
@@ -1155,7 +1293,7 @@ async function viewAdminJobs(sf){
   } else {
     body = `<div class="list grid">${list.sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9")).map(card).join("")}</div>`;
   }
-  return `<div class="page-head"><div><h1>案件</h1><p class="lead">案件の作成、発注、進捗の確認、支払明細の作成を行います。</p></div><a class="btn" href="#/admin/new">新しい案件を作る</a></div>
+  return `<div class="page-head"><div><h1>案件</h1><p class="lead">案件の作成、発注、進捗の確認を行います。</p></div><a class="btn" href="#/admin/new">新しい案件を作る</a></div>
     <nav class="seg" aria-label="状態で絞り込む">${segs.map(([k, l]) => `<a href="#/admin/list/${k}" ${sf === k ? 'aria-current="true"' : ""}>${l}（${jobs.filter(j => inSeg(j, k)).length}）</a>`).join("")}</nav>
     ${body}`;
 }
@@ -1165,7 +1303,8 @@ function editPhotosHtml(){
 async function viewJobEdit(id){
   const job = id ? await api().getJob(id) : {trades:[], pref:"東京都", status:"draft", photos:[]};
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
-  const priv = id ? await api().getJobPrivate(id) : {};
+  const [priv, pdfA] = id ? await Promise.all([api().getJobPrivate(id), api().getJobPdf(id)]) : [{}, null];
+  S.editPdf = pdfA; S.editPdfSrc = null; S.editPdfChanged = false;
   S.editPhotos = [...(job.photos || [])];
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
   const isDraft = !id || job.status === "draft";
@@ -1174,34 +1313,21 @@ async function viewJobEdit(id){
     : `<button class="btn" name="mode" value="keep">変更を保存</button>`;
   return `${back(id ? `#/admin/job/${id}` : "#/admin", id ? "案件の管理" : "案件")}
     <h1>${id ? "案件を編集" : "新しい案件"}</h1>
-    <p class="lead">「募集情報」は承認済みの協力業者全員に公開されます。「現場情報」は発注した業者にだけ表示されます。</p>
+    <p class="lead">添付したPDF・工種・作業日は承認済みの協力業者全員に公開されます。「現場情報」は発注した業者にだけ表示されます。</p>
     <form data-form="job" data-id="${esc(id || "")}" class="stack">
-      <section class="panel import"><h2>案件PDFから読み込む</h2>
-        <p class="small" style="margin:0 0 10px">管理会社からの発注書・依頼書のPDFを選ぶと、読み取れた内容（案件名・住所・作業日・作業内訳など）を下の欄に自動で入力します。</p>
+      <section class="panel import"><h2>案件PDFの添付・読み込み</h2>
+        <p class="small" style="margin:0 0 10px">管理会社からの発注書・依頼書のPDFを選ぶと、案件に添付して大きく表示します。読み取れた内容（工種・作業日・住所など）は下の欄に自動で入力します。PDFは募集中の案件として承認済みの業者全員に表示され、発注後は発注先の業者が「発注書」としてダウンロードできます。</p>
         <input type="file" accept="application/pdf,.pdf" data-pdfimport aria-label="案件PDFを選ぶ">
+        <div id="pdf-attach">${pdfAttachHtml()}</div>
         <div id="pdf-result"></div></section>
-      <section class="panel"><h2>募集情報</h2>
-        <label class="field"><span>案件名</span><input type="text" name="title" required maxlength="80" value="${esc(job.title)}" placeholder="例：1K 退去後ハウスクリーニング"></label>
+      <section class="panel"><h2>工種・作業日</h2>
+        <p class="small" style="margin:-6px 0 12px">案件名：<b id="title-view">${esc(job.title) || "PDFを添付すると自動で入ります"}</b>　<span id="place-view">${esc(job.pref || "")}${esc(job.city || "")}</span></p>
+        <input type="hidden" name="title" value="${esc(job.title)}"><input type="hidden" name="pref" value="${esc(job.pref || "")}"><input type="hidden" name="city" value="${esc(job.city || "")}">
         <fieldset class="field"><legend>工種</legend><div class="checks">${TRADES.map(t => `<label><input type="checkbox" name="trades" value="${esc(t)}" ${chk(t)}>${esc(t)}</label>`).join("")}</div></fieldset>
         <div class="two">
-          <label class="field"><span>都道府県</span><select name="pref">${PREFS.map(p => `<option ${job.pref === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
-          <label class="field"><span>市区町村 <small>公開されます</small></span><input type="text" name="city" required value="${esc(job.city)}" placeholder="例：墨田区"></label>
-          <label class="field"><span>作業日（開始）</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
-          <label class="field"><span>作業日（終了） <small>1日なら空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
-          <label class="field"><span>報酬（円） <small>内訳があれば合計が入ります</small></span><input type="number" name="price" min="0" inputmode="numeric" value="${esc(job.price ?? "")}" ${job.items?.length ? "readonly" : ""}></label>
-          <label class="field"><span>税区分 <small>発注書の金額計算に使います</small></span><select name="taxMode">${["税別","税込"].map(t => `<option ${taxModeOf(job) === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+          <label class="field"><span>開始日</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
+          <label class="field"><span>終了日 <small>1日で終わる場合は空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
         </div>
-        <label class="field"><span>報酬の補足 <small>任意</small></span><input type="text" name="priceNote" value="${esc(job.priceNote)}" placeholder="例：材料支給・駐車場代込み"></label>
-        <div>
-        </div>
-        <div class="field"><span>作業内訳 <small>作業ごとに入力すると、合計が報酬に入ります</small></span>
-          <div class="items-ed" id="items-ed">${(job.items || []).map(itemRowHtml).join("")}</div>
-          <div class="row between" style="margin-top:4px"><button type="button" class="btn sub" data-act="add-item">＋ 作業を追加</button><span>合計（${esc(taxModeOf(job))}）<b class="i-total">${yenFull(itemsTotal(job.items))}</b></span></div>
-          <datalist id="unit-list">${UNITS.map(u => `<option value="${u}">`).join("")}</datalist></div>
-        <label class="field"><span>作業内容</span><textarea name="description" required>${esc(job.description)}</textarea></label>
-        <div class="field"><span>写真 <small>間取り図や現況写真など（${JOB_PHOTO_MAX}枚まで）</small></span>
-          <div class="photos" id="photo-edit">${editPhotosHtml()}</div>
-          <input type="file" name="photos" accept="image/*" multiple aria-label="写真を追加"></div>
       </section>
       <section class="panel"><h2>現場情報<small>発注した業者にだけ表示</small></h2>
         <label class="field"><span>住所</span><input type="text" name="address" value="${esc(priv.address)}" autocomplete="off"></label>
@@ -1216,7 +1342,7 @@ async function viewJobEdit(id){
 async function viewAdminJob(id){
   const job = await api().getJob(id);
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
-  const [apps, priv, reports, order, payment] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`)]);
+  const [apps, priv, reports, order, payment, pdfA] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`), api().getJobPdf(id)]);
   const order0 = {selected:0, applied:1, rejected:2, withdrawn:3};
   apps.sort((a, b) => (order0[a.status] - order0[b.status]) || (a.createdAt - b.createdAt));
   const rs = reports.sort((a, b) => b.createdAt - a.createdAt);
@@ -1235,45 +1361,180 @@ async function viewAdminJob(id){
       ${canAssign && a.status === "applied" ? `<button class="btn" style="margin-top:10px" data-act="assign" data-job="${esc(id)}" data-uid="${esc(a.craftsmanId)}" data-name="${esc(c.name || a.craftsmanName)}">この業者に発注する</button>` : ""}
     </div>`;
   };
-  // 支払明細（完了確認のあと）
-  let pay = "";
-  if(job.status === "completed"){
-    const def = payment || {transferDate:todayIso(), amount:{base:order?.amount?.base ?? calcAmount(job.price, taxModeOf(job)).base}, fee:0, note:""};
-    pay = `<form class="panel" data-form="payment" data-id="${esc(id)}">
-      <h2>支払明細</h2>
-      <p class="small" style="margin:0 0 12px">銀行振込が済んだら、振込日と金額を確かめて作成してください。作成しただけでは業者さまには見えません。</p>
-      <div class="two">
-        <label class="field"><span>振込日</span><input type="date" name="transferDate" required value="${esc(def.transferDate)}"></label>
-        <label class="field"><span>報酬（税抜）</span><input type="number" name="base" min="0" inputmode="numeric" required value="${esc(def.amount.base)}"></label>
-        <label class="field"><span>振込手数料 <small>差し引く場合</small></span><input type="number" name="fee" min="0" inputmode="numeric" value="${esc(def.fee || 0)}"></label>
-        <label class="field"><span>備考 <small>任意</small></span><input type="text" name="note" value="${esc(def.note)}"></label>
-      </div>
-      <button class="btn ${payment ? "sub" : ""}">${payment ? "内容を更新する" : "支払明細を作成する"}</button></form>`;
-    if(payment) pay += `<section class="panel"><h2>支払明細（下書き）</h2><dl class="kv">
-        <dt>明細番号</dt><dd>${esc(payment.number)}</dd><dt>振込日</dt><dd>${fmtDate(payment.transferDate)}</dd>
-        <dt>報酬（税抜）</dt><dd>${yenFull(payment.amount.base)}</dd><dt>消費税</dt><dd>${yenFull(payment.amount.tax)}</dd>
-        ${payment.fee ? `<dt>振込手数料</dt><dd>−${yenFull(payment.fee)}</dd>` : ""}<dt>振込金額</dt><dd><b>${yenFull(payment.transferAmount)}</b></dd></dl>
-      <div class="row" style="margin-top:14px"><button class="btn sub" data-act="pdf" data-id="${esc(payment.id)}">PDFで確認</button>
-        <button class="btn" data-act="pay-issue" data-job="${esc(id)}">作成完了（業者に公開）</button></div></section>`;
-  }
   const docs = job.assignedTo ? `<section class="panel"><h2>書類</h2>
-    ${docRow("発注書", order, "発注すると自動で作成されます")}
-    ${order ? `<p style="margin:-4px 0 8px;text-align:right"><button class="textlink" data-act="order-regen" data-job="${esc(id)}">今の内容で発注書を作り直す</button></p>` : ""}
-    ${docRow("支払明細", payment, "完了確認のあとに作成できます", payment?.status === "issued")}
-    ${payment && payment.status !== "issued" ? `<p class="small" style="margin:0">支払明細は下書きです（業者さまにはまだ見えません）。</p>` : ""}</section>` : "";
+    ${docRow("発注書", order, pdfA ? "発注すると、添付PDFを発注書としてダウンロードできるようになります" : "発注すると自動で作成されます", true, pdfA ? id : null)}
+    ${order && !pdfA ? `<p style="margin:-4px 0 8px;text-align:right"><button class="textlink" data-act="order-regen" data-job="${esc(id)}">今の内容で発注書を作り直す</button></p>` : ""}
+    </section>` : "";
   return `${back("#/admin", "案件")}
     <div class="page-head"><div class="row"><span class="pill ${job.status}">${JOB_STATUS[job.status]}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span></div>
       <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a></div></div>
+    ${pdfViewHtml(pdfA, "発注先の業者にも表示されます")}
     <div class="cols">
       <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
         ${assigned ? `<section class="panel"><h2>発注先</h2><p style="margin:0"><b>${esc(assigned.name)}</b> ${esc(assigned.tradeName)}<br><a href="tel:${esc(assigned.phone)}">${esc(assigned.phone)}</a></p></section>` : ""}
-        ${pay}${docs}
+        ${docs}
         ${job.assignedTo ? reportsBlock(rs, true) : ""}
         <section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
           ${apps.length ? apps.map(applicantHtml).join("") : `<p class="small" style="margin:0">${job.status === "draft" ? "公開すると、協力業者からの応募がここに届きます。" : "まだ応募はありません。"}</p>`}
         </section>
       </div></div>`;
+}
+
+/* ---------- 請求書（業者→Refore、月ごとに1枚） ---------- */
+const INV_STATUS = {issued:"支払待ち", paid:"支払済み"};
+const bankText = b => b ? `${b.bankName || ""} ${b.branch || ""} ${b.type || ""} ${b.number || ""} ${b.holder || ""}`.replace(/\s+/g, " ").trim() : "";
+const jobMonth = j => (j.finishedAt ? isoOf(j.finishedAt) : j.completedAt ? isoOf(j.completedAt) : (j.endDate || j.startDate || "")).slice(0, 7);
+const invoiceable = j => ["finished","completed","paid"].includes(j.status);
+const curMonth = () => todayIso().slice(0, 7);
+const shiftMonth = (ym, n) => { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
+const fmtMonth = ym => { const [y, m] = ym.split("-").map(Number); return `${y}年${m}月`; };
+const lastDayIso = ym => { const [y, m] = ym.split("-").map(Number); return isoOf(new Date(y, m, 0).getTime()); };
+function monthNav(base, ym){
+  return `<div class="cal-tool"><a class="btn sub" href="${base}/${shiftMonth(ym, -1)}" aria-label="前の月">‹</a><h2>${fmtMonth(ym)}</h2><a class="btn sub" href="${base}/${shiftMonth(ym, 1)}" aria-label="次の月">›</a>
+    ${ym !== curMonth() ? `<a class="textlink" href="${base}">今月へ</a>` : ""}</div>`;
+}
+function docInvoiceHtml(d){
+  const f = d.from;
+  return `<div class="pdfdoc">
+    <div class="hd"><table class="meta"><tr><td>請求番号</td><td>${esc(d.number)}</td></tr><tr><td>請求日</td><td>${fmtDate(d.issuedAt)}</td></tr></table></div>
+    <h1>請求書</h1>
+    <div class="parties"><div class="to">${esc(COMPANY.name)} 御中</div>
+      <div class="from"><b>${esc(f.tradeName || f.name)}</b>${f.tradeName ? `<br>${esc(f.name)}` : ""}${f.address ? `<br>${esc(f.address)}` : ""}<br>TEL ${esc(f.phone)}<br>${esc(f.email)}${f.invoiceNumber ? `<br>登録番号 ${esc(f.invoiceNumber)}` : ""}</div></div>
+    <p style="margin:0 0 6px">${fmtMonth(d.month)}分のご請求を申し上げます。</p>
+    <div class="total"><span>ご請求金額（税込）</span><strong>${yenFull(d.total)}</strong></div>
+    <table class="t items"><tr><th>完了日</th><th>案件名</th><th>現場</th><th>金額（税抜）</th></tr>
+      ${d.lines.map(l => `<tr><td class="r">${esc(l.date)}</td><td>${esc(l.title)}</td><td>${esc(l.place)}</td><td class="r">${yenFull(l.amount)}</td></tr>`).join("")}</table>
+    <table class="t sum"><tr><th>小計（税抜）</th><td class="r">${yenFull(d.base)}</td></tr>
+      <tr><th>消費税（10%）</th><td class="r">${yenFull(d.tax)}</td></tr>
+      <tr><th>合計（税込）</th><td class="r"><b>${yenFull(d.total)}</b></td></tr></table>
+    <table class="t"><tr><th>お振込先</th><td>${esc(bankText(d.bank)) || "（未登録）"}</td></tr>
+      ${d.note ? `<tr><th>備考</th><td class="pre">${esc(d.note)}</td></tr>` : ""}</table>
+    <div class="foot">この請求書は Refore 協力業者ポータルから発行しています。</div></div>`;
+}
+async function viewInvoice(ym){
+  const uid = S.user.uid, p = S.profile;
+  if(!/^\d{4}-\d{2}$/.test(ym || "")) ym = curMonth();
+  const [jobs, inv] = await Promise.all([api().listJobs({assignedTo:uid}), api().getInvoice(`${uid}_${ym}`)]);
+  const targets = jobs.filter(j => invoiceable(j) && jobMonth(j) === ym).sort((a, b) => jobMonth(a).localeCompare(jobMonth(b)) || (a.finishedAt || 0) - (b.finishedAt || 0));
+  const head = `<h1>請求書</h1><p class="lead">月末に、その月に作業完了した案件をまとめて1枚の請求書として発行します。</p>${monthNav("#/invoice", ym)}`;
+  const issuedBox = inv ? `<section class="panel"><div class="row between"><h2 style="margin:0">${fmtMonth(ym)}分の請求書</h2><span class="pill ${inv.status}">${INV_STATUS[inv.status]}</span></div>
+      <dl class="kv" style="margin-top:10px"><dt>請求番号</dt><dd>${esc(inv.number)}</dd><dt>発行日</dt><dd>${fmtFull(inv.issuedAt)}</dd><dt>案件数</dt><dd>${inv.lines.length}件</dd><dt>請求金額</dt><dd><b>${yenFull(inv.total)}</b>（税込）</dd>${inv.paidAt ? `<dt>支払日</dt><dd>${fmtDate(inv.paidAt)}</dd>` : ""}</dl>
+      <div class="row" style="margin-top:12px"><button class="btn" data-act="inv-pdf" data-id="${esc(inv.id)}">PDFをダウンロード</button></div></section>` : "";
+  if(inv?.status === "paid") return head + issuedBox;
+  if(!targets.length) return head + issuedBox + `<div class="empty">${fmtMonth(ym)}に作業完了した案件はありません。</div>`;
+  const prev = new Map((inv?.lines || []).map(l => [l.jobId, l.amount]));
+  const lastDay = lastDayIso(ym), early = todayIso() < lastDay && ym === curMonth();
+  const b0 = targets.reduce((a, j) => a + ((!inv || prev.has(j.id)) ? Number(prev.get(j.id) ?? j.price) || 0 : 0), 0), t0 = Math.floor(b0 * TAX_RATE);
+  return head + issuedBox + `<form class="panel" data-form="invoice" data-month="${ym}">
+    <h2>${inv ? "内容を直して再発行" : `${fmtMonth(ym)}分を請求する`}</h2>
+    ${early ? `<div class="note">月末（${fmtDay(lastDay)}）より前です。月の途中で発行した場合も、あとから完了した案件を足して再発行できます。</div>` : ""}
+    ${!p.bank?.number ? `<div class="note">振込先が登録されていません。<a href="#/profile">登録情報</a>で入力してから発行してください。</div>` : ""}
+    <p class="small" style="margin:0 0 10px">各案件の金額（税抜）を確認・入力してください。チェックを外した案件は請求に含めません。</p>
+    <div class="inv-lines">${targets.map(j => `<label class="inv-line"><input type="checkbox" name="inc" value="${esc(j.id)}" ${!inv || prev.has(j.id) ? "checked" : ""}>
+      <span class="row-main"><b>${esc(j.title)}</b><span class="small">完了 ${j.finishedAt ? fmtDay(isoOf(j.finishedAt)) : fmtDay(j.endDate)}　${esc(j.pref)}${esc(j.city)}</span></span>
+      <span class="inv-amt">¥<input type="number" name="amt_${esc(j.id)}" min="0" inputmode="numeric" value="${esc(prev.get(j.id) ?? (Number(j.price) || ""))}" aria-label="${esc(j.title)}の金額"></span></label>`).join("")}</div>
+    <div class="inv-sum"><span>小計 <b class="inv-base">${yenFull(b0)}</b></span><span>消費税 <b class="inv-tax">${yenFull(t0)}</b></span><span>合計 <b class="inv-total">${yenFull(b0 + t0)}</b></span></div>
+    <label class="field"><span>備考 <small>任意</small></span><textarea name="note" style="min-height:70px">${esc(inv?.note)}</textarea></label>
+    <button class="btn block">${inv ? "請求書を再発行する" : "請求書を発行する"}</button></form>`;
+}
+function syncInvoice(form){
+  let base = 0;
+  form.querySelectorAll("input[name=inc]").forEach(c => { if(c.checked) base += Number(form.elements["amt_" + c.value].value) || 0; });
+  const tax = Math.floor(base * TAX_RATE);
+  form.querySelector(".inv-base").textContent = yenFull(base); form.querySelector(".inv-tax").textContent = yenFull(tax); form.querySelector(".inv-total").textContent = yenFull(base + tax);
+}
+async function viewAdminInvoices(ym){
+  if(!/^\d{4}-\d{2}$/.test(ym || "")) ym = curMonth();
+  const [invs, jobs] = await Promise.all([api().listInvoices({month:ym}), api().listJobs({})]);
+  const byC = new Map(invs.map(i => [i.craftsmanId, i]));
+  const waiting = new Map();
+  jobs.filter(j => j.assignedTo && invoiceable(j) && jobMonth(j) === ym).forEach(j => { if(!byC.has(j.assignedTo)) waiting.set(j.assignedTo, (waiting.get(j.assignedTo) || 0) + 1); });
+  const sum = invs.reduce((a, i) => a + i.total, 0), unpaid = invs.filter(i => i.status === "issued").reduce((a, i) => a + i.total, 0);
+  const rows = invs.sort((a, b) => a.status.localeCompare(b.status)).map(i => `<div class="row-item">
+      <span class="row-main"><b>${esc(i.from.name)}${i.from.tradeName ? ` <span class="small">${esc(i.from.tradeName)}</span>` : ""}</b>
+        <span class="small">${esc(i.number)}　${i.lines.length}件　発行 ${fmtTime(i.issuedAt)}${i.paidAt ? `　支払 ${fmtDate(i.paidAt)}` : ""}</span>
+        <span class="small">${esc(bankText(i.bank)) || "振込先未登録"}</span></span>
+      <span class="inv-right"><b class="inv-money">${yenFull(i.total)}</b><span class="pill ${i.status}">${INV_STATUS[i.status]}</span>
+        <span class="row end"><button class="btn sub" data-act="inv-pdf" data-id="${esc(i.id)}">PDF</button>${i.status === "issued" ? `<button class="btn" data-act="inv-paid" data-id="${esc(i.id)}">支払済みにする</button>` : ""}</span></span></div>`).join("");
+  const wait = [...waiting].map(([uid, n]) => { const c = S.crafts.get(uid); return `<div class="row-item"><span class="row-main"><b>${esc(c?.name || uid)}</b><span class="small">完了した案件 ${n}件　請求書はまだ届いていません</span></span>${c?.phone ? `<a class="btn sub" href="tel:${esc(c.phone)}">電話</a>` : ""}</div>`; }).join("");
+  return `<h1>請求書</h1><p class="lead">業者さまから届いた月ごとの請求書です。振込が済んだら「支払済みにする」を押すと、含まれる案件が「支払済み」になります。</p>
+    ${monthNav("#/admin/invoices", ym)}
+    <div class="inv-sum" style="margin-bottom:14px"><span>請求合計 <b>${yenFull(sum)}</b></span><span>未払い <b>${yenFull(unpaid)}</b></span><span>${invs.length}件</span></div>
+    ${rows ? `<div class="list">${rows}</div>` : `<div class="empty">${fmtMonth(ym)}分の請求書はまだありません。</div>`}
+    ${wait ? `<h2 class="day-head"><b>未発行</b>${waiting.size}社</h2><div class="list">${wait}</div>` : ""}`;
+}
+
+/* ---------- 管理：予定表 ---------- */
+const dayDiff = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return isoOf(d.getTime()); };
+const CAL_CLASS = {open:"c-open", closed:"c-closed", assigned:"c-work", working:"c-work", finished:"c-done", completed:"c-done", paid:"c-done"};
+async function viewCalendar(ym){
+  const now = new Date();
+  let [y, m] = String(ym || "").split("-").map(Number);
+  if(!y || !m){ y = now.getFullYear(); m = now.getMonth() + 1; }
+  const [jobs, apps] = await Promise.all([api().listJobs({}), api().listApplications({})]);
+  const cnt = {}; apps.forEach(a => { if(a.status === "applied") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
+  const list = jobs.filter(j => j.status !== "draft" && j.startDate).map(j => ({...j, endDate:j.endDate && j.endDate >= j.startDate ? j.endDate : j.startDate}));
+  S.cal = {jobs:new Map(list.map(j => [j.id, j])), cnt};
+  const first = isoOf(new Date(y, m - 1, 1).getTime()), last = isoOf(new Date(y, m, 0).getTime());
+  const gridStart = addDays(first, -new Date(y, m - 1, 1).getDay());
+  const gridEnd = addDays(last, 6 - new Date(y, m, 0).getDay());
+  const today = todayIso(), mm = `${y}-${String(m).padStart(2, "0")}`;
+  let weeks = "";
+  for(let ws = gridStart; ws <= gridEnd; ws = addDays(ws, 7)){
+    const we = addDays(ws, 6);
+    const evs = list.filter(j => j.startDate <= we && j.endDate >= ws)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate) || dayDiff(b.startDate, b.endDate) - dayDiff(a.startDate, a.endDate));
+    const lanes = [];
+    const bars = evs.map(j => {
+      const cs = Math.max(0, dayDiff(ws, j.startDate)) + 1, ce = Math.min(6, dayDiff(ws, j.endDate)) + 1;
+      let lane = lanes.findIndex(end => end < cs); if(lane < 0){ lane = lanes.length; lanes.push(0); } lanes[lane] = ce;
+      const isS = j.startDate >= ws, isE = j.endDate <= we;
+      const who = S.crafts.get(j.assignedTo);
+      return `<button type="button" class="cal-bar ${CAL_CLASS[j.status] || ""}${isS ? " s" : ""}${isE ? " e" : ""}" style="grid-column:${cs}/${ce + 1};grid-row:${lane + 2}"
+        data-act="cal-job" data-id="${esc(j.id)}" title="${esc(j.title)}（${esc(fmtRange(j.startDate, j.endDate))}）${who ? " " + esc(who.name) : ""}">${isS ? "" : "◀ "}${esc(j.title)}${isE ? "" : " ▶"}</button>`;
+    }).join("");
+    let bg = "", nums = "";
+    for(let i = 0; i < 7; i++){
+      const d = addDays(ws, i), other = d.slice(0, 7) !== mm;
+      bg += `<div class="${other ? "other" : ""}"></div>`;
+      nums += `<div class="cal-num${d === today ? " today" : ""}${i === 0 ? " sun" : i === 6 ? " sat" : ""}${other ? " other" : ""}" style="grid-column:${i + 1}"><span>${Number(d.slice(8))}</span></div>`;
+    }
+    weeks += `<div class="cal-week"><div class="cal-bg">${bg}</div><div class="cal-fg">${nums}${bars}</div></div>`;
+  }
+  const prev = isoOf(new Date(y, m - 2, 1).getTime()).slice(0, 7), next = isoOf(new Date(y, m, 1).getTime()).slice(0, 7);
+  const inMonth = list.filter(j => j.startDate <= last && j.endDate >= first).sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const rows = inMonth.map(j => {
+    const who = S.crafts.get(j.assignedTo);
+    return `<a class="row-item" href="#/admin/job/${esc(j.id)}"><span class="row-main"><b>${esc(j.title)}</b>
+      <span class="small">開始 ${fmtDay(j.startDate)}　終了 ${fmtDay(j.endDate)}　${esc(j.pref)}${esc(j.city)}</span>
+      <span class="small">${who ? `受注業者：${esc(who.name)}${who.tradeName ? `（${esc(who.tradeName)}）` : ""}` : `未発注　応募 ${cnt[j.id] || 0}件`}</span></span>
+      <span class="pill ${j.status}">${JOB_STATUS[j.status]}</span></a>`;
+  }).join("");
+  return `<div class="page-head"><div><h1>予定表</h1><p class="lead">案件の工期をカレンダーで確認できます。案件名を押すと受注業者が表示されます。</p></div></div>
+    <div class="cal-tool"><a class="btn sub" href="#/admin/calendar/${prev}" aria-label="前の月">‹</a><h2>${y}年${m}月</h2><a class="btn sub" href="#/admin/calendar/${next}" aria-label="次の月">›</a>
+      ${mm !== today.slice(0, 7) ? `<a class="textlink" href="#/admin/calendar">今月へ</a>` : ""}</div>
+    <div class="cal-legend"><span class="cal-bar c-open s e">募集中</span><span class="cal-bar c-closed s e">締切</span><span class="cal-bar c-work s e">発注済み・作業中</span><span class="cal-bar c-done s e">作業完了以降</span></div>
+    <div class="cal" role="grid" aria-label="${y}年${m}月の予定"><div class="cal-head">${"日月火水木金土".split("").map((d, i) => `<div class="${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${d}</div>`).join("")}</div>${weeks}</div>
+    <h2 class="day-head"><b>${m}月の案件</b>${inMonth.length}件</h2>
+    ${rows ? `<div class="list">${rows}</div>` : `<div class="empty">この月に工期がかかる案件はありません。</div>`}`;
+}
+function calPopup(j){
+  const who = S.crafts.get(j.assignedTo), n = S.cal?.cnt[j.id] || 0;
+  const bg = document.createElement("div"); bg.className = "modal-bg";
+  bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="cal-t">
+    <div class="row between" style="margin-bottom:6px"><span class="pill ${j.status}">${JOB_STATUS[j.status]}</span><span class="small">${esc(j.pref)}${esc(j.city)}</span></div>
+    <h2 id="cal-t">${esc(j.title)}</h2>
+    <dl class="kv"><dt>工事開始</dt><dd>${fmtDate(j.startDate)}${j.startedAt ? `<br><span class="small">作業開始 ${fmtFull(j.startedAt)}</span>` : ""}</dd>
+      <dt>工事終了</dt><dd>${fmtDate(j.endDate)}${j.finishedAt ? `<br><span class="small">作業完了 ${fmtFull(j.finishedAt)}</span>` : ""}</dd>
+      <dt>受注業者</dt><dd>${who ? `<b>${esc(who.name)}</b>${who.tradeName ? `（${esc(who.tradeName)}）` : ""}<br><a href="tel:${esc(who.phone)}">${esc(who.phone)}</a>` : `未発注（応募 ${n}件）`}</dd></dl>
+    <div class="row end" style="margin-top:16px"><button type="button" class="btn sub c-close">閉じる</button><a class="btn" href="#/admin/job/${esc(j.id)}">案件を開く</a></div></div>`;
+  const close = () => { bg.remove(); document.removeEventListener("keydown", key); };
+  const key = e => { if(e.key === "Escape") close(); };
+  bg.addEventListener("click", e => { if(e.target === bg || e.target.closest(".c-close") || e.target.closest("a")) close(); });
+  document.addEventListener("keydown", key);
+  document.body.appendChild(bg); bg.querySelector(".c-close").focus();
 }
 
 /* ---------- 管理：協力業者 ---------- */
@@ -1305,6 +1566,8 @@ async function viewCraftsman(uid){
         <dt>保有資格</dt><dd>${esc(c.licenses) || "未記入"}</dd>
         <dt>インボイス</dt><dd>${esc(c.invoiceNumber) || "登録なし"}</dd>
         <dt>賠償責任保険</dt><dd>${esc(c.insurance)}</dd>
+        <dt>住所</dt><dd>${esc(c.address) || "未記入"}</dd>
+        <dt>振込先</dt><dd>${c.bank?.number ? esc(bankText(c.bank)) : "未登録"}</dd>
         <dt>自己PR</dt><dd>${esc(c.pr) || "未記入"}</dd>
         <dt>登録日</dt><dd>${fmtTime(c.createdAt)}</dd></dl></section>
       <section class="panel"><h2>応募の履歴（${apps.length}件）</h2>
@@ -1426,6 +1689,8 @@ async function route(){
       else if(a === "job" && c === "edit") html = await viewJobEdit(b);
       else if(a === "job") html = await viewAdminJob(b);
       else if(a === "craftsmen") html = await viewCraftsmen();
+      else if(a === "calendar") html = await viewCalendar(b);
+      else if(a === "invoices") html = await viewAdminInvoices(b);
       else if(a === "craftsman") html = await viewCraftsman(b);
       else { location.replace("#/admin"); return; }
       return done(html);
@@ -1438,6 +1703,7 @@ async function route(){
     else if(a === "applied") html = await viewApplied();
     else if(a === "work") html = b ? await viewWorkDetail(b) : await viewWork();
     else if(a === "profile") html = viewProfileForm(p, false);
+    else if(a === "invoice") html = await viewInvoice(b);
     else if(!a || a === "jobs") html = await viewJobs();
     else { location.replace("#/jobs"); return; }
     done(html);
@@ -1472,9 +1738,9 @@ function ask({title, body = "", ok = "OK", danger = false, input = null, placeho
     (bg.querySelector(".m-in") || bg.querySelector(".m-ok")).focus();
   });
 }
-function lightbox(src){
-  const bg = document.createElement("div"); bg.className = "modal-bg lightbox";
-  bg.innerHTML = `<img src="${esc(src)}" alt="拡大した写真">`;
+function lightbox(src, doc){
+  const bg = document.createElement("div"); bg.className = "modal-bg lightbox" + (doc ? " doc" : "");
+  bg.innerHTML = `<img src="${esc(src)}" alt="拡大した画像">`;
   const close = () => { bg.remove(); document.removeEventListener("keydown", key); };
   const key = e => { if(e.key === "Escape") close(); };
   bg.addEventListener("click", close); document.addEventListener("keydown", key);
@@ -1496,7 +1762,7 @@ const ACTIONS = {
     await api().resetPassword(email); toast("再設定用のメールを送りました");
   },
   async reload(){ route(); },
-  async zoom(el){ lightbox(el.dataset.src); },
+  async zoom(el){ lightbox(el.dataset.src, el.dataset.doc); },
   async "add-item"(el){
     const form = el.closest("form");
     form.querySelector("#items-ed").insertAdjacentHTML("beforeend", itemRowHtml());
@@ -1504,6 +1770,8 @@ const ACTIONS = {
     form.querySelector(".item-row:last-child [name=i_name]").focus();
   },
   async "rm-item"(el){ const form = el.closest("form"); el.closest(".item-row").remove(); syncItems(form); },
+  async "cal-job"(el){ const j = S.cal?.jobs.get(el.dataset.id); if(j) calPopup(j); },
+  async "rm-pdf"(el){ S.editPdf = null; S.editPdfSrc = null; S.editPdfChanged = true; el.closest("form").querySelector("#pdf-attach").innerHTML = pdfAttachHtml(); },
   async "rm-photo"(el){ S.editPhotos.splice(Number(el.dataset.i), 1); $("#photo-edit").innerHTML = editPhotosHtml(); },
   async withdraw(el){
     if(!await ask({title:"応募を取り下げますか？", body:"取り下げると、この案件にはもう一度応募できません。", ok:"取り下げる", danger:true})) return;
@@ -1513,7 +1781,7 @@ const ACTIONS = {
     const {id, status} = el.dataset;
     const conf = {
       closed:{title:"募集を締め切りますか？", body:"協力業者の一覧に表示されなくなります。応募済みの業者から発注先を選ぶことはできます。", ok:"締め切る"},
-      completed:{title:"作業の完了を確認しましたか？", body:"完了確認にすると、支払明細を作成できるようになります。業者さまの「作業完了」や完了報告がまだの場合でも確定します。", ok:"完了を確認した"}
+      completed:{title:"作業の完了を確認しましたか？", body:"完了確認にすると、業者さまの月末の請求に入ります。業者さまの「作業完了」や完了報告がまだの場合でも確定します。", ok:"完了を確認した"}
     }[status];
     if(conf && !await ask(conf)) return;
     await api().setJobStatus(id, status);
@@ -1536,12 +1804,36 @@ const ACTIONS = {
     if(old?.number) d.number = old.number;
     await api().saveDocument(d); toast("発注書を作り直しました"); route();
   },
-  async "pay-issue"(el){
-    const jid = el.dataset.job;
-    if(!await ask({title:"支払明細を業者さまに公開しますか？", body:"業者さまの受注ページから支払明細をダウンロードできるようになり、案件は「支払済み」になります。", ok:"作成完了"})) return;
-    await api().updateDocument(`${jid}_payment`, {status:"issued", issuedAt:Date.now()});
-    await api().setJobStatus(jid, "paid");
-    toast("支払明細を公開しました"); route();
+  async "inv-pdf"(el){
+    const d = await api().getInvoice(el.dataset.id);
+    if(!d) throw new Error("請求書が見つかりません");
+    toast("PDFを作成しています…");
+    await downloadPdf(docInvoiceHtml(d), `請求書_${d.number}_${d.from.name}.pdf`);
+  },
+  async "inv-paid"(el){
+    const d = await api().getInvoice(el.dataset.id);
+    if(!await ask({title:`${d.from.name} さんの請求を支払済みにしますか？`, body:`${fmtMonth(d.month)}分 ${yenFull(d.total)}（${d.lines.length}件）。含まれる案件はすべて「支払済み」になります。`, ok:"支払済みにする"})) return;
+    await api().updateInvoice(d.id, {status:"paid", paidAt:Date.now()});
+    for(const l of d.lines) await api().setJobStatus(l.jobId, "paid");
+    toast("支払済みにしました"); route();
+  },
+  async "dl-order"(el){
+    const id = el.dataset.job;
+    const [src, view, order] = await Promise.all([api().getJobPdfSource(id), api().getJobPdf(id), api().getDocument(`${id}_order`)]);
+    const base = `発注書_${order?.number || id}`;
+    if(src?.data){ saveBlob(dataUrlToBlob(src.data), `${base}_${src.name}`); return; }
+    if(!view?.pages?.length) throw new Error("添付PDFが見つかりません");
+    // 元のPDFが大きくて保存できなかった場合は、表示用の画像からPDFを作り直す
+    toast("PDFを作成しています…");
+    if(!window.jspdf) await loadScript(JSPDF_URL);
+    const doc = new window.jspdf.jsPDF({unit:"mm", format:"a4"});
+    for(let i = 0; i < view.pages.length; i++){
+      const img = new Image(); img.src = view.pages[i]; await img.decode();
+      const w = 210, h = w * img.height / img.width;
+      if(i) doc.addPage([w, h]); else if(Math.abs(h - 297) > 1){ doc.deletePage(1); doc.addPage([w, h]); }
+      doc.addImage(view.pages[i], "JPEG", 0, 0, w, h);
+    }
+    doc.save(`${base}.pdf`);
   },
   async pdf(el){
     const d = await api().getDocument(el.dataset.id);
@@ -1560,7 +1852,7 @@ const ACTIONS = {
   },
   async "report-ok"(el){
     await api().setReportStatus(el.dataset.id, "approved", "");
-    if(await ask({title:"完了報告を確認済みにしました", body:"続けて、この案件を「完了確認済み」にしますか？ 支払明細を作成できるようになります。", ok:"完了確認にする"})) await api().setJobStatus(el.dataset.job, "completed");
+    if(await ask({title:"完了報告を確認済みにしました", body:"続けて、この案件を「完了確認済み」にしますか？", ok:"完了確認にする"})) await api().setJobStatus(el.dataset.job, "completed");
     route();
   },
   async "report-return"(el){
@@ -1595,7 +1887,8 @@ const FORMS = {
     let inv = String(fd.get("invoiceNumber") || "").trim().toUpperCase();
     if(inv && !inv.startsWith("T")) inv = "T" + inv;
     const g = k => String(fd.get(k) || "").trim();
-    const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr")};
+    const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr"), address:g("address"),
+      bank:{bankName:g("bankName"), branch:g("bankBranch"), type:g("bankType"), number:g("bankNumber"), holder:g("bankHolder")}};
     if(!S.profile){
       await api().createProfile(S.user.uid, {...data, role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now()});
       toast("審査を申し込みました");
@@ -1627,33 +1920,43 @@ const FORMS = {
     if(!trades.length) throw new Error("工種を1つ以上選んでください");
     const startDate = g("startDate"), endDate = g("endDate") || startDate;
     if(endDate < startDate) throw new Error("終了日が開始日より前になっています");
-    const files = [...form.elements.photos.files];
-    if(files.length + S.editPhotos.length > JOB_PHOTO_MAX) throw new Error(`案件の写真は${JOB_PHOTO_MAX}枚までにしてください`);
-    const data = {title:g("title"), trades, pref:g("pref"), city:g("city"), startDate, endDate, price:Number(g("price")) || 0, taxMode:g("taxMode") || "税別", priceNote:g("priceNote"), description:g("description"), photos:[...S.editPhotos]};
-    const items = readItems(form).filter(i => i.name || i.unitPrice);
-    if(items.some(i => !i.name)) throw new Error("作業名が空欄の内訳があります");
-    data.items = items;
-    if(items.length) data.price = itemsTotal(items);
+    if(!S.editPdf && mode === "open") throw new Error("案件PDFを添付してください");
+    const title = g("title") || (S.editPdf ? S.editPdf.name.replace(/\.pdf$/i, "") : "");
+    if(!title) throw new Error("案件PDFを添付してください");
+    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate};
+    if(!id) Object.assign(data, {price:0, taxMode:"税別", priceNote:"", description:"", items:[], photos:[]});
     if(mode === "open" || mode === "draft") data.status = mode;
     if(mode === "open") data.publishedAt = Date.now();
     if(!id && !data.status) data.status = "draft";
-    if(files.length) toast("写真を保存しています…");
-    if(files.length) data.photos = [...data.photos, ...await api().uploadPhotos(files)];
     const jid = await api().saveJob(id, data);
     await api().setJobPrivate(jid, {address:g("address"), building:g("building"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact")});
+    if(S.editPdfChanged){ await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
     toast(mode === "open" ? "公開しました" : "保存しました");
     go(`#/admin/job/${jid}`);
   },
-  async payment(form){
-    const id = form.dataset.id;
-    const fd = new FormData(form);
-    const [job, order, prev] = await Promise.all([api().getJob(id), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`)]);
-    if(prev?.status === "issued") throw new Error("この支払明細はすでに公開済みです");
-    const c = S.crafts.get(job.assignedTo) || await api().getProfile(job.assignedTo);
-    const d = buildPaymentDoc(job, c, order, {base:fd.get("base"), fee:fd.get("fee"), transferDate:fd.get("transferDate"), note:String(fd.get("note") || "").trim(), number:prev?.number});
-    if(d.transferAmount < 0) throw new Error("振込手数料が支払額を上回っています");
-    await api().saveDocument(d);
-    toast(prev ? "支払明細を更新しました" : "支払明細を作成しました（まだ業者さまには見えません）"); route();
+  async invoice(form){
+    const ym = form.dataset.month, uid = S.user.uid, p = S.profile;
+    if(!p.bank?.number) throw new Error("先に登録情報で振込先を入力してください");
+    const jobs = await api().listJobs({assignedTo:uid});
+    const lines = [];
+    for(const c of form.querySelectorAll("input[name=inc]:checked")){
+      const j = jobs.find(x => x.id === c.value); if(!j) continue;
+      const amount = Number(form.elements["amt_" + j.id].value) || 0;
+      if(amount <= 0) throw new Error(`「${j.title}」の金額を入力してください`);
+      lines.push({jobId:j.id, title:j.title, place:(j.pref || "") + (j.city || ""), date:fmtDate(j.finishedAt || j.endDate), amount});
+    }
+    if(!lines.length) throw new Error("請求する案件を1つ以上選んでください");
+    const prev = await api().getInvoice(`${uid}_${ym}`);
+    if(prev?.status === "paid") throw new Error("この月の請求書はすでに支払済みです");
+    const base = lines.reduce((a, l) => a + l.amount, 0), tax = Math.floor(base * TAX_RATE);
+    if(!await ask({title:`${fmtMonth(ym)}分の請求書を${prev ? "再" : ""}発行しますか？`, body:`${lines.length}件　合計 ${yenFull(base + tax)}（税込）。Reforeの管理画面に届きます。`, ok:"発行する"})) return;
+    await api().saveInvoice({
+      id:`${uid}_${ym}`, craftsmanId:uid, month:ym, number:prev?.number || `INV-${ym.replace("-", "")}-${uid.slice(-5).toUpperCase()}`,
+      status:"issued", issuedAt:Date.now(), lines, base, tax, total:base + tax, note:form.elements.note.value.trim(),
+      from:{name:p.name || "", tradeName:p.tradeName || "", address:p.address || "", phone:p.phone || "", email:p.email || "", invoiceNumber:p.invoiceNumber || ""},
+      bank:{...p.bank}
+    });
+    toast("請求書を発行しました"); route();
   },
   async report(form){
     const id = form.dataset.id;
@@ -1684,7 +1987,7 @@ document.addEventListener("submit", async e => {
   catch(err) { console.error(err); toast(err.message || String(err)); }
   finally { btns.forEach(b => b.disabled = false); }
 });
-document.addEventListener("input", e => { if(e.target.closest(".item-row")) syncItems(e.target.form); });
+document.addEventListener("input", e => { if(e.target.closest(".item-row")) syncItems(e.target.form); if(e.target.closest("form[data-form=invoice]")) syncInvoice(e.target.form); });
 document.addEventListener("change", e => {
   if(e.target.matches("[data-pdfimport]")){
     importPdf(e.target).catch(err => { console.error(err); toast("PDFを読み込めませんでした（" + (err.message || err) + "）"); const b = $("#pdf-result"); if(b) b.innerHTML = ""; });
