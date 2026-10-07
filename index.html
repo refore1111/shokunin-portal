@@ -236,6 +236,7 @@ textarea{min-height:110px;resize:vertical}
 .pdf-thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
 .pdf-thumbs .zoom{flex:none;width:110px;border:1px solid var(--line);border-radius:4px;padding:0;background:#fff;cursor:zoom-in}
 .pdfview{padding:16px}
+.pdfframe{display:block;width:100%;height:85vh;min-height:620px;margin-top:12px;border:1px solid var(--line);border-radius:4px;background:#fff}
 .pdfview .zoom{display:block;width:100%;max-width:1000px;margin:12px auto 0;padding:0;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:zoom-in}
 .pdfview img{width:100%;height:auto}
 .lightbox.doc{display:block;overflow:auto;padding:16px}
@@ -409,26 +410,34 @@ function syncItems(form){
 async function openPdf(file){
   if(!window.pdfjsLib) await loadScript(PDFJS_BASE + "pdf.min.js");
   pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "pdf.worker.min.js";
-  return pdfjsLib.getDocument({data:await file.arrayBuffer(), cMapUrl:PDFJS_BASE + "cmaps/", cMapPacked:true}).promise;
+  return pdfjsLib.getDocument({data:await file.arrayBuffer(), cMapUrl:PDFJS_BASE + "cmaps/", cMapPacked:true,
+    standardFontDataUrl:PDFJS_BASE + "standard_fonts/", useSystemFonts:true, isEvalSupported:false}).promise;
 }
 // PDFの各ページを画像にする（Firestoreの1件あたりの上限に収まるよう、大きすぎれば画質を下げる）
-const PDF_MAX_PAGES = 6, PDF_MAX_CHARS = 900000;
+// 1ページ＝1件で保存（Firestoreの1件1MBの上限対策）。元のPDFも分割して保存
+const PDF_MAX_PAGES = 20, PDF_MAX_CHARS = 900000, PDF_CHUNK = 900000, PDF_MAX_CHUNKS = 12;
 async function renderPdfPages(pdf){
   const n = Math.min(pdf.numPages, PDF_MAX_PAGES);
-  for(const [w, q] of [[1400, 0.7], [1200, 0.6], [1000, 0.5], [850, 0.45]]){
-    const pages = [];
-    for(let i = 1; i <= n; i++){
-      const page = await pdf.getPage(i);
-      const v1 = page.getViewport({scale:1});
-      const vp = page.getViewport({scale:w / v1.width});
+  const steps = api()?.mode === "demo" ? [[1100, 0.72], [900, 0.6]] : [[1800, 0.85], [1500, 0.78], [1200, 0.7], [1000, 0.6]];
+  const pages = [];
+  for(let i = 1; i <= n; i++){
+    const page = await pdf.getPage(i);
+    const v1 = page.getViewport({scale:1});
+    let url = "";
+    for(const [w, q] of steps){
+      const vp = page.getViewport({scale:w / Math.max(v1.width, v1.height * 0.75)});
       const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
       const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
-      await page.render({canvasContext:ctx, viewport:vp}).promise;
-      pages.push(c.toDataURL("image/jpeg", q));
+      // intent:"print" と ENABLE_STORAGE で、フォーム欄に入力された文字や注釈も画像に焼き込む
+      await page.render({canvasContext:ctx, viewport:vp, intent:"print", annotationMode:pdfjsLib.AnnotationMode.ENABLE_STORAGE}).promise;
+      url = c.toDataURL("image/jpeg", q);
+      c.width = c.height = 0;
+      if(url.length <= PDF_MAX_CHARS) break;
     }
-    if(pages.join("").length <= PDF_MAX_CHARS) return pages;
+    if(url.length > PDF_MAX_CHARS) throw new Error(`${i}ページ目が大きすぎて添付できません`);
+    pages.push(url);
   }
-  throw new Error("PDFが大きすぎて添付できません（ページ数を減らしてください）");
+  return pages;
 }
 function pdfAttachHtml(){
   const a = S.editPdf;
@@ -439,8 +448,14 @@ function pdfAttachHtml(){
 }
 function pdfViewHtml(a, note = ""){
   if(!a?.pages?.length) return "";
-  return `<section class="panel pdfview"><div class="row between"><h2 style="margin:0">案件PDF <small>${esc(a.name)}</small></h2>${note ? `<span class="small">${esc(note)}</span>` : ""}</div>
-    ${a.pages.map((u, i) => `<button type="button" class="zoom" data-act="zoom" data-doc="1" data-src="${esc(u)}" aria-label="${i+1}ページ目を拡大"><img src="${esc(u)}" alt="${i+1}ページ目" loading="lazy"></button>`).join("")}</section>`;
+  if(a.src?.data && !a.url){ try { a.url = URL.createObjectURL(dataUrlToBlob(a.src.data)); } catch(e) {} }
+  const wide = window.matchMedia && matchMedia("(min-width:720px) and (pointer:fine)").matches;
+  const body = wide && a.url
+    ? `<iframe class="pdfframe" src="${a.url}#view=FitH" title="案件PDF"></iframe>`
+    : a.pages.map((u, i) => `<button type="button" class="zoom" data-act="zoom" data-doc="1" data-src="${esc(u)}" aria-label="${i+1}ページ目を拡大"><img src="${esc(u)}" alt="${i+1}ページ目" loading="lazy"></button>`).join("");
+  return `<section class="panel pdfview"><div class="row between"><h2 style="margin:0">案件PDF <small>${esc(a.name)}</small></h2>
+      <span class="row">${note ? `<span class="small">${esc(note)}</span>` : ""}${a.url ? `<a class="btn sub" href="${a.url}" target="_blank" rel="noopener">PDFを開く</a>` : ""}</span></div>
+    ${body}</section>`;
 }
 async function extractPdfText(file, pdf){
   pdf = pdf || await openPdf(file);
@@ -553,7 +568,7 @@ async function importPdf(input){
     const pdf = await openPdf(file);
     const src = await blobToDataURL(file);
     S.editPdf = {name:file.name, pages:await renderPdfPages(pdf), addedAt:Date.now()};
-    S.editPdfSrc = src.length <= PDF_MAX_CHARS ? {name:file.name, data:src} : null; S.editPdfChanged = true;
+    S.editPdfSrc = src.length <= PDF_CHUNK * PDF_MAX_CHUNKS ? {name:file.name, data:src} : null; S.editPdfChanged = true;
     form.querySelector("#pdf-attach").innerHTML = pdfAttachHtml();
     if(!form.elements.title.value.trim()) form.elements.title.value = file.name.replace(/\.pdf$/i, "");
     box.innerHTML = "";
@@ -731,7 +746,7 @@ class DemoBackend {
   async saveDocument(doc){ (this.data.documents ||= {})[doc.id] = doc; this.save(); }
   async updateDocument(id, d){ Object.assign(this.data.documents[id], d); this.save(); }
   async getJobPrivate(id){ return clone(this.data.jobPrivate[id] || {}); }
-  async getJobPdf(id){ return clone((this.data.jobPdf || {})[id] || null); }
+  async getJobPdf(id){ const v = (this.data.jobPdf || {})[id]; return v ? clone({...v, src:(this.data.jobPdfSrc || {})[id] || null}) : null; }
   async getJobPdfSource(id){ return clone((this.data.jobPdfSrc || {})[id] || null); }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
   async saveInvoice(d){ (this.data.invoices ||= {})[d.id] = d; this.save(); }
@@ -841,10 +856,19 @@ class FirebaseBackend {
   async saveDocument(doc){ await this.col("documents").doc(doc.id).set(doc); }
   async updateDocument(id, d){ await this.col("documents").doc(id).update(d); }
   async getJobPrivate(id){ const s = await this.col("jobs").doc(id).collection("private").doc("detail").get(); return s.exists ? s.data() : {}; }
-  // 案件PDFの表示用画像（募集中は承認済みの業者全員、発注後は発注先が見られる）
+  // 案件PDF（募集中は承認済みの業者全員、発注後は発注先が見られる）
+  // files/pdf に目次、files/page_000… に各ページの画像、files/src_000… に元のPDFを分割して保存
   async getJobPdf(id){
-    try { const s = await this.col("jobs").doc(id).collection("files").doc("pdf").get(); return s.exists ? s.data() : null; }
+    let snap;
+    try { snap = await this.col("jobs").doc(id).collection("files").get(); }
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
+    const docs = new Map(snap.docs.map(d => [d.id, d.data()]));
+    const meta = docs.get("pdf");
+    if(!meta) return null;
+    if(meta.pages) return meta;   // 以前の形式
+    const part = pre => [...docs.keys()].filter(k => k.startsWith(pre)).sort().map(k => docs.get(k).data);
+    const pages = part("page_"), chunks = part("src_");
+    return {name:meta.name, addedAt:meta.addedAt, pages, src:chunks.length === meta.srcChunks && chunks.length ? {name:meta.name, data:chunks.join("")} : null};
   }
   // 元のPDFファイル（発注書としてダウンロード。管理者と発注先だけ）
   async getJobPdfSource(id){
@@ -864,9 +888,17 @@ class FirebaseBackend {
     return this.docs(await q.get());
   }
   async setJobPdf(id, d, src){
-    const j = this.col("jobs").doc(id), view = j.collection("files").doc("pdf"), raw = j.collection("private").doc("pdfsrc");
-    if(d) await view.set(d); else await view.delete();
-    if(d && src) await raw.set(src); else await raw.delete();
+    const j = this.col("jobs").doc(id), files = j.collection("files");
+    const old = await files.get();
+    for(const doc of old.docs) await doc.ref.delete();
+    try { await j.collection("private").doc("pdfsrc").delete(); } catch(e) {}
+    if(!d) return;
+    const pad = i => String(i).padStart(3, "0");
+    for(let i = 0; i < d.pages.length; i++) await files.doc(`page_${pad(i)}`).set({i, data:d.pages[i]});
+    const chunks = [];
+    if(src?.data) for(let i = 0; i < src.data.length; i += PDF_CHUNK) chunks.push(src.data.slice(i, i + PDF_CHUNK));
+    for(let i = 0; i < chunks.length; i++) await files.doc(`src_${pad(i)}`).set({i, data:chunks[i]});
+    await files.doc("pdf").set({name:d.name, addedAt:d.addedAt || Date.now(), pageCount:d.pages.length, srcChunks:chunks.length});
   }
   async setJobPrivate(id, d){ await this.col("jobs").doc(id).collection("private").doc("detail").set(d); }
 
@@ -1797,7 +1829,8 @@ const ACTIONS = {
   },
   async "dl-order"(el){
     const id = el.dataset.job;
-    const [src, view, order] = await Promise.all([api().getJobPdfSource(id), api().getJobPdf(id), api().getDocument(`${id}_order`)]);
+    const [old, view, order] = await Promise.all([api().getJobPdfSource(id), api().getJobPdf(id), api().getDocument(`${id}_order`)]);
+    const src = view?.src || old;
     const base = `発注書_${order?.number || id}`;
     if(src?.data){ saveBlob(dataUrlToBlob(src.data), `${base}_${src.name}`); return; }
     if(!view?.pages?.length) throw new Error("添付PDFが見つかりません");
@@ -1908,7 +1941,7 @@ const FORMS = {
     if(!id && !data.status) data.status = "draft";
     const jid = await api().saveJob(id, data);
     await api().setJobPrivate(jid, {address:g("address"), building:g("building"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact")});
-    if(S.editPdfChanged){ await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
+    if(S.editPdfChanged){ toast("PDFを保存しています…"); await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
     toast(mode === "open" ? "公開しました" : "保存しました");
     go(`#/admin/job/${jid}`);
   },
