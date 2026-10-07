@@ -548,38 +548,16 @@ function parseJobText(raw){
 async function importPdf(input){
   const file = input.files[0]; if(!file) return;
   const form = input.closest("form"), box = form.querySelector("#pdf-result");
-  box.innerHTML = `<p class="small">「${esc(file.name)}」を読み取っています…</p>`;
-  const pdf = await openPdf(file);
-  const src = await blobToDataURL(file);
-  S.editPdf = {name:file.name, pages:await renderPdfPages(pdf), addedAt:Date.now()};
-  S.editPdfSrc = src.length <= PDF_MAX_CHARS ? {name:file.name, data:src} : null; S.editPdfChanged = true;
-  const fallbackTitle = file.name.replace(/\.pdf$/i, "");
-  form.elements.title.value = fallbackTitle; form.querySelector("#title-view").textContent = fallbackTitle;
-  form.querySelector("#pdf-attach").innerHTML = pdfAttachHtml();
-  const text = await extractPdfText(file, pdf);
-  input.value = "";
-  if(text.replace(/\s/g, "").length < 10){
-    box.innerHTML = `<div class="note" style="margin:12px 0 0">PDFは添付しましたが、文字を読み取れませんでした（スキャンした画像のPDFの可能性があります）。工種と作業日は手で入力してください。</div>`;
-    return;
-  }
-  const r = parseJobText(text), done = [], miss = [];
-  const set = (name, v, label) => { if(!form.elements[name]) return; if(v){ form.elements[name].value = v; if(label) done.push(label); } else if(label) miss.push(label); };
-  set("title", r.title, "案件名");
-  if(r.title) form.querySelector("#title-view").textContent = r.title;
-  if(r.pref){ form.elements.pref.value = r.pref; }
-  set("city", r.city, "");
-  form.querySelector("#place-view").textContent = (r.pref || "") + (r.city || "");
-  set("startDate", r.startDate, "作業日");
-  if(r.startDate) form.elements.endDate.value = r.endDate || "";
-  set("address", r.address, "住所");
-  set("building", r.building, "物件名・部屋");
-  set("manager", r.manager, "管理会社");
-  set("keyInfo", r.keyInfo, "");
-  if(r.description && form.elements.contact && !form.elements.contact.value) form.elements.contact.value = r.description;
-  if(r.trades.length){ form.querySelectorAll("input[name=trades]").forEach(c => { c.checked = r.trades.includes(c.value); }); done.push("工種"); } else miss.push("工種");
-  box.innerHTML = `<div class="note" style="margin:12px 0 0"><b>読み取った内容を入力しました。</b>保存する前に、必ず中身を確認してください。<br>
-      入力した項目：${esc(done.join("、") || "なし")}${miss.length ? `<br>読み取れなかった項目：${esc(miss.join("、"))}` : ""}</div>
-    <details style="margin-top:8px"><summary class="small">PDFから読み取った文字を見る</summary><pre class="pdftext">${esc(text)}</pre></details>`;
+  box.innerHTML = `<p class="small">「${esc(file.name)}」を読み込んでいます…</p>`;
+  try {
+    const pdf = await openPdf(file);
+    const src = await blobToDataURL(file);
+    S.editPdf = {name:file.name, pages:await renderPdfPages(pdf), addedAt:Date.now()};
+    S.editPdfSrc = src.length <= PDF_MAX_CHARS ? {name:file.name, data:src} : null; S.editPdfChanged = true;
+    form.querySelector("#pdf-attach").innerHTML = pdfAttachHtml();
+    if(!form.elements.title.value.trim()) form.elements.title.value = file.name.replace(/\.pdf$/i, "");
+    box.innerHTML = "";
+  } finally { input.value = ""; }
 }
 
 function buildOrderDoc(job, priv, c){
@@ -986,7 +964,7 @@ function jobCard(j, {href, stampHtml = "", foot = ""} = {}){
   return `<a class="job" href="${href}">
     ${tagsHtml(j.trades)}
     <h3>${esc(j.title)}</h3>
-    <dl class="meta"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
+    <dl class="meta">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
     ${Number(j.price) > 0 ? `<div class="price"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>` : ""}
     ${foot}${stampHtml}</a>`;
 }
@@ -995,7 +973,7 @@ function jobDetailBlock(j){
     ${tagsHtml(j.trades)}
     <h1>${esc(j.title)}</h1>
     ${Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>` : ""}
-    <dl class="kv"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>開始日</dt><dd>${fmtDay(j.startDate)}</dd><dt>終了日</dt><dd>${fmtDay(j.endDate || j.startDate)}</dd></dl>
+    <dl class="kv">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>開始日</dt><dd>${fmtDay(j.startDate)}</dd><dt>終了日</dt><dd>${fmtDay(j.endDate || j.startDate)}</dd></dl>
     ${j.items?.length ? `<h2>作業内訳</h2>${itemsTable(j)}` : ""}
     ${j.description ? `<h2>作業内容</h2><p class="pre">${esc(j.description)}</p>` : ""}
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
@@ -1315,14 +1293,14 @@ async function viewJobEdit(id){
     <h1>${id ? "案件を編集" : "新しい案件"}</h1>
     <p class="lead">添付したPDF・工種・作業日は承認済みの協力業者全員に公開されます。「現場情報」は発注した業者にだけ表示されます。</p>
     <form data-form="job" data-id="${esc(id || "")}" class="stack">
-      <section class="panel import"><h2>案件PDFの添付・読み込み</h2>
-        <p class="small" style="margin:0 0 10px">管理会社からの発注書・依頼書のPDFを選ぶと、案件に添付して大きく表示します。読み取れた内容（工種・作業日・住所など）は下の欄に自動で入力します。PDFは募集中の案件として承認済みの業者全員に表示され、発注後は発注先の業者が「発注書」としてダウンロードできます。</p>
+      <section class="panel import"><h2>案件PDFの添付</h2>
+        <p class="small" style="margin:0 0 10px">管理会社からの発注書・依頼書のPDFを選ぶと、案件に添付して大きく表示します（中身の読み取りや自動入力はしません）。PDFは募集中の案件として承認済みの業者全員に表示され、発注後は発注先の業者が「発注書」としてダウンロードできます。</p>
         <input type="file" accept="application/pdf,.pdf" data-pdfimport aria-label="案件PDFを選ぶ">
         <div id="pdf-attach">${pdfAttachHtml()}</div>
         <div id="pdf-result"></div></section>
       <section class="panel"><h2>工種・作業日</h2>
-        <p class="small" style="margin:-6px 0 12px">案件名：<b id="title-view">${esc(job.title) || "PDFを添付すると自動で入ります"}</b>　<span id="place-view">${esc(job.pref || "")}${esc(job.city || "")}</span></p>
-        <input type="hidden" name="title" value="${esc(job.title)}"><input type="hidden" name="pref" value="${esc(job.pref || "")}"><input type="hidden" name="city" value="${esc(job.city || "")}">
+        <label class="field"><span>案件名 <small>一覧・予定表に表示されます（PDFのファイル名が初期値）</small></span><input type="text" name="title" maxlength="80" value="${esc(job.title)}" placeholder="例：グリーンハイツ203 原状回復"></label>
+        <input type="hidden" name="pref" value="${esc(job.pref || "")}"><input type="hidden" name="city" value="${esc(job.city || "")}">
         <fieldset class="field"><legend>工種</legend><div class="checks">${TRADES.map(t => `<label><input type="checkbox" name="trades" value="${esc(t)}" ${chk(t)}>${esc(t)}</label>`).join("")}</div></fieldset>
         <div class="two">
           <label class="field"><span>開始日</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
