@@ -141,7 +141,9 @@ h2{font-size:16px;line-height:1.5;margin:0 0 12px}
 .pill{display:inline-block;flex:none;font-size:12px;padding:1px 10px;border-radius:999px;border:1px solid currentColor;font-weight:700;white-space:nowrap}
 .pill.applied,.pill.open{color:var(--kon-text)}
 .pill.selected,.pill.approved,.pill.assigned{color:var(--ok)}
-.pill.rejected,.pill.withdrawn,.pill.suspended,.pill.closed,.pill.completed{color:var(--sub)}
+.pill.rejected,.pill.withdrawn,.pill.suspended,.pill.closed,.pill.paid{color:var(--sub)}
+.pill.working,.pill.finished{color:var(--kon-text)}
+.pill.completed{color:var(--warn)}
 .pill.pending,.pill.submitted,.pill.draft{color:var(--warn)}
 .pill.returned{color:var(--shu)}
 
@@ -190,6 +192,31 @@ textarea{min-height:110px;resize:vertical}
 .modal textarea,.modal input{margin-bottom:14px}
 .lightbox img{max-height:86vh;max-width:100%;border-radius:4px}
 
+/* 進捗 */
+.track{list-style:none;margin:0;padding:0}
+.track li{position:relative;display:flex;align-items:center;gap:10px;padding:6px 0;font-size:14px;color:var(--sub)}
+.track li:not(:last-child)::before{content:"";position:absolute;left:10px;top:28px;bottom:-6px;width:2px;background:var(--line)}
+.track li.done:not(:last-child)::before{background:var(--kon-text)}
+.track .dot{flex:none;position:relative;z-index:1;width:22px;height:22px;border-radius:50%;border:2px solid var(--line);background:var(--surface)}
+.track li.done{color:var(--ink)}
+.track li.done .dot{background:var(--kon);border-color:var(--kon)}
+.track li.done .dot::after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.track li.next{color:var(--ink);font-weight:700}
+.track li.next .dot{border:3px solid var(--caution)}
+.track .lbl{flex:1}
+.track .tm{font-size:13px;font-variant-numeric:tabular-nums;text-align:right}
+.mini{display:inline-flex;gap:3px;vertical-align:middle;margin-right:6px}
+.mini i{width:12px;height:5px;border-radius:2px;background:var(--line)}
+.mini i.on{background:var(--kon-text)}
+.day-head{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--sub);margin:22px 0 10px}
+.day-head b{color:var(--ink);font-size:16px}
+.day-head::after{content:"";flex:1;border-top:1px solid var(--line)}
+.doc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.doc-row:first-of-type{border-top:0;padding-top:0}
+.doc-row .row-main b{font-size:15px}
+.doc-row .btn{flex:none;white-space:nowrap;min-height:40px;padding:8px 14px;font-size:14px}
+.big-action{font-size:17px;min-height:56px}
+
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -218,9 +245,15 @@ const CONTACT_TEL = "03-6824-7282";
 const REPORT_EMAIL = "info@refore.co.jp";   // 完了報告メールの送信先
 const JOB_PHOTO_MAX = 4;                      // 案件写真の上限（Firestoreに直接保存するため）
 
+// 発注書・支払明細に載せる自社情報（テンプレート確定後に調整）
+const COMPANY = {name:"株式会社Refore", address:"東京都墨田区本所4-1-3-502", tel:CONTACT_TEL, email:REPORT_EMAIL, invoiceNumber:""};
+const PAYMENT_TERMS = "作業完了の確認後、60日以内に指定口座へお振込みします。";   // ← 実際の支払条件に合わせて書き換えてください
+const TAX_RATE = 0.1;
+const HTML2PDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+
 const TRADES = ["ハウスクリーニング","エアコンクリーニング","クロス張替え","床（CF・フロアタイル）","塗装","設備交換","簡易修繕","退去立会","その他"];
 const PREFS = ["東京都","神奈川県","埼玉県","千葉県"];
-const JOB_STATUS = {draft:"下書き",open:"募集中",closed:"締切",assigned:"発注済み",completed:"完了"};
+const JOB_STATUS = {draft:"下書き",open:"募集中",closed:"締切",assigned:"発注済み",working:"作業中",finished:"作業完了",completed:"完了確認済み",paid:"支払済み"};
 const APP_STATUS = {applied:"応募中",selected:"採用",rejected:"見送り",withdrawn:"取り下げ"};
 const REPORT_STATUS = {submitted:"確認待ち",approved:"確認済み",returned:"差し戻し"};
 const CRAFT_STATUS = {pending:"審査中",approved:"承認済み",suspended:"停止中"};
@@ -243,6 +276,53 @@ function fmtTime(ms){
   const d = new Date(ms);
   return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
+function fmtFull(ms){
+  if(!ms) return "";
+  const d = new Date(ms);
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+const isoOf = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const todayIso = () => isoOf(Date.now());
+function fmtDate(v){
+  if(!v) return "";
+  const d = typeof v === "number" ? new Date(v) : new Date(v + "T00:00:00");
+  return isNaN(d) ? String(v) : `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+}
+const yenFull = n => "¥" + (Number(n) || 0).toLocaleString("ja-JP");
+const taxModeOf = j => j.taxMode || (/税込/.test(j.priceNote || "") ? "税込" : "税別");
+function calcAmount(price, taxMode){
+  price = Number(price) || 0;
+  if(taxMode === "税込"){ const tax = Math.floor(price * TAX_RATE / (1 + TAX_RATE)); return {base:price - tax, tax, total:price}; }
+  const tax = Math.floor(price * TAX_RATE);
+  return {base:price, tax, total:price + tax};
+}
+const docNumber = (prefix, jobId) => `${prefix}-${isoOf(Date.now()).replace(/-/g, "")}-${String(jobId).replace(/[^a-zA-Z0-9]/g, "").slice(-5).toUpperCase()}`;
+// 状態が変わったときに記録する日時の項目
+const STATUS_TIME = {open:"publishedAt", assigned:"assignedAt", working:"startedAt", finished:"finishedAt", completed:"completedAt", paid:"paidAt"};
+const stampFor = st => STATUS_TIME[st] ? {[STATUS_TIME[st]]:Date.now()} : {};
+
+/* 書類データの作成（PDFはダウンロードのたびにこのデータから作ります） */
+function buildOrderDoc(job, priv, c){
+  const taxMode = taxModeOf(job);
+  return {
+    id:`${job.id}_order`, type:"order", jobId:job.id, craftsmanId:c.uid, number:docNumber("PO", job.id), status:"issued", issuedAt:Date.now(),
+    to:{name:c.name || "", tradeName:c.tradeName || "", phone:c.phone || "", invoiceNumber:c.invoiceNumber || ""},
+    job:{title:job.title || "", pref:job.pref || "", city:job.city || "", address:priv.address || "", building:priv.building || "",
+      startDate:job.startDate || "", endDate:job.endDate || "", description:job.description || "", priceNote:job.priceNote || ""},
+    amount:calcAmount(job.price, taxMode), taxMode, terms:PAYMENT_TERMS, company:{...COMPANY}
+  };
+}
+function buildPaymentDoc(job, c, order, input){
+  const base = Number(input.base) || 0, tax = Math.floor(base * TAX_RATE), total = base + tax, fee = Number(input.fee) || 0;
+  return {
+    id:`${job.id}_payment`, type:"payment", jobId:job.id, craftsmanId:c.uid, number:input.number || docNumber("PS", job.id),
+    status:"draft", createdAt:Date.now(), issuedAt:null,
+    to:{name:c.name || "", tradeName:c.tradeName || "", invoiceNumber:c.invoiceNumber || ""},
+    job:{title:job.title || "", pref:job.pref || "", city:job.city || "", startDate:job.startDate || "", endDate:job.endDate || "", startedAt:job.startedAt || null, finishedAt:job.finishedAt || null},
+    orderNumber:order?.number || "", amount:{base, tax, total}, fee, transferAmount:total - fee, transferDate:input.transferDate, note:input.note || "", company:{...COMPANY}
+  };
+}
+
 function resizeImage(file, max = 1280, q = 0.75){
   return new Promise((res, rej) => {
     const img = new Image();
@@ -265,9 +345,10 @@ const blobToDataURL = b => new Promise(r => { const fr = new FileReader(); fr.on
    デモ用バックエンド（ブラウザ内に保存）
    ========================================================= */
 function seedDemo(){
-  const now = Date.now(), day = 86400000;
-  const iso = off => { const d = new Date(now + off * day); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
-  return {
+  const now = Date.now(), day = 86400000, hour = 3600000;
+  const iso = off => isoOf(now + off * day);
+  const at = (off, h, m) => { const d = new Date(now + off * day); d.setHours(h, m, 0, 0); return d.getTime(); };
+  const d = {
     session: null,
     accounts: {
       admin: {email:"admin@demo.jp", pw:"demo1234"},
@@ -285,38 +366,57 @@ function seedDemo(){
     },
     jobs: {
       j1: {id:"j1", companyId:COMPANY_ID, status:"open", title:"1K 退去後ハウスクリーニング", trades:["ハウスクリーニング"], pref:"東京都", city:"墨田区",
-        startDate:iso(5), endDate:iso(5), price:18000, priceNote:"税別・洗剤等持参",
-        description:"1K（約22㎡）の退去後クリーニング一式です。\nキッチン、浴室、トイレ、洗面、床、窓、ベランダ。\nエアコンは別手配のため対象外です。", photos:[], assignedTo:null, createdAt:now - 2*day},
+        startDate:iso(5), endDate:iso(5), price:18000, taxMode:"税別", priceNote:"洗剤等持参",
+        description:"1K（約22㎡）の退去後クリーニング一式です。\nキッチン、浴室、トイレ、洗面、床、窓、ベランダ。\nエアコンは別手配のため対象外です。", photos:[], assignedTo:null, createdAt:now - 2*day, publishedAt:now - 2*day},
       j2: {id:"j2", companyId:COMPANY_ID, status:"open", title:"2LDK クロス張替え（天井含む 約120㎡）", trades:["クロス張替え"], pref:"東京都", city:"江東区",
-        startDate:iso(9), endDate:iso(10), price:110000, priceNote:"税別・材料支給（量産品）",
-        description:"居室2部屋とLDKの壁・天井。\n下地補修が数か所あります（パテで対応できる範囲）。\n残置物なし、駐車場は近隣コインパーキングをご利用ください。", photos:[], assignedTo:null, createdAt:now - day},
+        startDate:iso(9), endDate:iso(10), price:110000, taxMode:"税別", priceNote:"材料支給（量産品）",
+        description:"居室2部屋とLDKの壁・天井。\n下地補修が数か所あります（パテで対応できる範囲）。\n残置物なし、駐車場は近隣コインパーキングをご利用ください。", photos:[], assignedTo:null, createdAt:now - day, publishedAt:now - day},
       j3: {id:"j3", companyId:COMPANY_ID, status:"open", title:"エアコンクリーニング 壁掛け2台", trades:["エアコンクリーニング"], pref:"千葉県", city:"市川市",
-        startDate:iso(7), endDate:iso(7), price:16000, priceNote:"税別・2台分",
-        description:"お掃除機能なしの壁掛けエアコン2台（6畳用）。\n分解洗浄でお願いします。", photos:[], assignedTo:null, createdAt:now - 3*day},
+        startDate:iso(7), endDate:iso(7), price:16000, taxMode:"税別", priceNote:"2台分",
+        description:"お掃除機能なしの壁掛けエアコン2台（6畳用）。\n分解洗浄でお願いします。", photos:[], assignedTo:null, createdAt:now - 3*day, publishedAt:now - 3*day},
+      j7: {id:"j7", companyId:COMPANY_ID, status:"open", title:"1LDK 退去後クリーニング＋網戸張替え2枚", trades:["ハウスクリーニング","簡易修繕"], pref:"東京都", city:"墨田区",
+        startDate:iso(5), endDate:iso(5), price:26000, taxMode:"税別", priceNote:"網戸材料支給",
+        description:"1LDK（約35㎡）の退去後クリーニング一式と、ベランダ側網戸2枚の張替えです。", photos:[], assignedTo:null, createdAt:now - 5*hour, publishedAt:now - 5*hour},
       j4: {id:"j4", companyId:COMPANY_ID, status:"draft", title:"和室 襖・障子 張替え（襖4枚・障子2枚）", trades:["その他"], pref:"千葉県", city:"船橋市",
-        startDate:iso(14), endDate:iso(14), price:0, priceNote:"見積後に確定",
-        description:"襖は両面、障子は普通紙での張替えです。", photos:[], assignedTo:null, createdAt:now - 3600000},
+        startDate:iso(14), endDate:iso(14), price:0, taxMode:"税別", priceNote:"見積後に確定",
+        description:"襖は両面、障子は普通紙での張替えです。", photos:[], assignedTo:null, createdAt:now - hour},
       j5: {id:"j5", companyId:COMPANY_ID, status:"assigned", title:"1R 退去後クリーニング（浴室カビ取り含む）", trades:["ハウスクリーニング"], pref:"東京都", city:"台東区",
-        startDate:iso(-1), endDate:iso(-1), price:20000, priceNote:"税別",
-        description:"1R（約18㎡）の退去後クリーニング一式。\n浴室のカビが強めなので、カビ取りを含めてお願いします。", photos:[], assignedTo:"c1", createdAt:now - 6*day}
+        startDate:iso(1), endDate:iso(1), price:20000, taxMode:"税別", priceNote:"",
+        description:"1R（約18㎡）の退去後クリーニング一式。\n浴室のカビが強めなので、カビ取りを含めてお願いします。", photos:[], assignedTo:"c1",
+        createdAt:now - 6*day, publishedAt:now - 6*day, assignedAt:now - 4*day},
+      j6: {id:"j6", companyId:COMPANY_ID, status:"completed", title:"2K エアコン・換気扇クリーニング", trades:["エアコンクリーニング","ハウスクリーニング"], pref:"千葉県", city:"市川市",
+        startDate:iso(-6), endDate:iso(-6), price:24000, taxMode:"税別", priceNote:"",
+        description:"壁掛けエアコン1台と、キッチン換気扇（シロッコファン）の分解洗浄です。", photos:[], assignedTo:"c1",
+        createdAt:now - 12*day, publishedAt:now - 12*day, assignedAt:now - 10*day, startedAt:at(-6, 9, 12), finishedAt:at(-6, 14, 40), completedAt:at(-5, 10, 5)}
     },
     jobPrivate: {
       j1: {address:"東京都墨田区○○1-2-3", building:"サンプルハイツ 201号室", keyInfo:"現地キーボックス（番号は前日に連絡します）", manager:"○○管理", contact:"作業前後で同じ角度の写真を撮影してください。"},
       j2: {address:"東京都江東区○○4-5-6", building:"サンプルマンション 503号室", keyInfo:"管理人室で受け取り（平日9〜17時）", manager:"○○不動産", contact:"エレベーター養生をお願いします。"},
       j3: {address:"千葉県市川市○○7-8-9", building:"サンプルコーポ 102号室", keyInfo:"入居者在宅（立会いあり）", manager:"○○ホーム", contact:"入居者さまへの声かけを丁寧にお願いします。"},
-      j5: {address:"東京都台東区○○2-4-6", building:"サンプルレジデンス 305号室", keyInfo:"ポスト内（ダイヤル番号は別途連絡済み）", manager:"○○管理", contact:"作業後は鍵をポストに戻してください。"}
+      j5: {address:"東京都台東区○○2-4-6", building:"サンプルレジデンス 305号室", keyInfo:"ポスト内（ダイヤル番号は別途連絡済み）", manager:"○○管理", contact:"作業後は鍵をポストに戻してください。"},
+      j6: {address:"千葉県市川市○○3-3-3", building:"サンプルテラス 202号室", keyInfo:"現地キーボックス", manager:"○○ホーム", contact:""}
     },
     applications: {
       j3_c1: {id:"j3_c1", jobId:"j3", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"エアコンクリーニング 壁掛け2台", jobArea:"千葉県市川市", jobStart:iso(7), jobEnd:iso(7), price:16000, message:"当日は9時から作業できます。", status:"applied", createdAt:now - day},
-      j5_c1: {id:"j5_c1", jobId:"j5", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"1R 退去後クリーニング（浴室カビ取り含む）", jobArea:"東京都台東区", jobStart:iso(-1), jobEnd:iso(-1), price:20000, message:"", status:"selected", createdAt:now - 5*day}
+      j5_c1: {id:"j5_c1", jobId:"j5", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"1R 退去後クリーニング（浴室カビ取り含む）", jobArea:"東京都台東区", jobStart:iso(1), jobEnd:iso(1), price:20000, message:"", status:"selected", createdAt:now - 5*day},
+      j6_c1: {id:"j6_c1", jobId:"j6", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"2K エアコン・換気扇クリーニング", jobArea:"千葉県市川市", jobStart:iso(-6), jobEnd:iso(-6), price:24000, message:"", status:"selected", createdAt:now - 11*day}
     },
-    reports: {}
+    reports: {
+      r_seed1: {id:"r_seed1", jobId:"j6", jobTitle:"2K エアコン・換気扇クリーニング", craftsmanId:"c1", craftsmanName:"山田 太郎", method:"email", status:"approved", createdAt:at(-6, 15, 2), reviewComment:"", reviewedAt:at(-5, 10, 5)}
+    },
+    documents: {}
   };
+  for(const jid of ["j5", "j6"]){
+    const o = buildOrderDoc(d.jobs[jid], d.jobPrivate[jid], d.users.c1);
+    o.issuedAt = d.jobs[jid].assignedAt;
+    d.documents[o.id] = o;
+  }
+  return d;
 }
 
 class DemoBackend {
   constructor(){
-    this.mode = "demo"; this.key = "refore_shokunin_demo_v1"; this.listeners = [];
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v2"; this.listeners = [];
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
@@ -364,7 +464,11 @@ class DemoBackend {
     else Object.assign(this.data.jobs[id], d);
     this.data.jobs[id].updatedAt = Date.now(); this.save(); return id;
   }
-  async setJobStatus(id, status){ this.data.jobs[id].status = status; this.data.jobs[id].updatedAt = Date.now(); this.save(); }
+  async setJobStatus(id, status){ Object.assign(this.data.jobs[id], {status, ...stampFor(status), updatedAt:Date.now()}); this.save(); }
+  async setWorkProgress(id, status){ return this.setJobStatus(id, status); }
+  async getDocument(id){ return clone((this.data.documents || {})[id] || null); }
+  async saveDocument(doc){ (this.data.documents ||= {})[doc.id] = doc; this.save(); }
+  async updateDocument(id, d){ Object.assign(this.data.documents[id], d); this.save(); }
   async getJobPrivate(id){ return clone(this.data.jobPrivate[id] || {}); }
   async setJobPrivate(id, d){ this.data.jobPrivate[id] = {...d}; this.save(); }
 
@@ -380,8 +484,9 @@ class DemoBackend {
     this.data.applications[app.id] = app; this.save();
   }
   async withdraw(id){ Object.assign(this.data.applications[id], {status:"withdrawn", updatedAt:Date.now()}); this.save(); }
-  async assign(jobId, uid){
-    Object.assign(this.data.jobs[jobId], {status:"assigned", assignedTo:uid, updatedAt:Date.now()});
+  async assign(jobId, uid, order){
+    Object.assign(this.data.jobs[jobId], {status:"assigned", assignedTo:uid, assignedAt:Date.now(), updatedAt:Date.now()});
+    (this.data.documents ||= {})[order.id] = order;
     Object.values(this.data.applications).filter(a => a.jobId === jobId && a.status === "applied")
       .forEach(a => { a.status = a.craftsmanId === uid ? "selected" : "rejected"; a.updatedAt = Date.now(); });
     this.save();
@@ -453,7 +558,15 @@ class FirebaseBackend {
     if(!id){ const ref = this.col("jobs").doc(); await ref.set({...d, companyId:COMPANY_ID, assignedTo:null, createdAt:Date.now(), updatedAt:Date.now()}); return ref.id; }
     await this.col("jobs").doc(id).update({...d, updatedAt:Date.now()}); return id;
   }
-  async setJobStatus(id, status){ await this.col("jobs").doc(id).update({status, updatedAt:Date.now()}); }
+  async setJobStatus(id, status){ await this.col("jobs").doc(id).update({status, ...stampFor(status), updatedAt:Date.now()}); }
+  // 業者が自分で押す「作業開始」「作業完了」（ルールで許可された項目だけを更新）
+  async setWorkProgress(id, status){ await this.col("jobs").doc(id).update({status, ...stampFor(status), updatedAt:Date.now()}); }
+  async getDocument(id){
+    try { const s = await this.col("documents").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
+    catch(e) { if(e.code === "permission-denied") return null; throw e; }
+  }
+  async saveDocument(doc){ await this.col("documents").doc(doc.id).set(doc); }
+  async updateDocument(id, d){ await this.col("documents").doc(id).update(d); }
   async getJobPrivate(id){ const s = await this.col("jobs").doc(id).collection("private").doc("detail").get(); return s.exists ? s.data() : {}; }
   async setJobPrivate(id, d){ await this.col("jobs").doc(id).collection("private").doc("detail").set(d); }
 
@@ -468,10 +581,11 @@ class FirebaseBackend {
     catch(e) { if(e.code === "permission-denied") throw new Error("応募できませんでした。募集が終了したか、すでに応募済みです"); throw e; }
   }
   async withdraw(id){ await this.col("applications").doc(id).update({status:"withdrawn", updatedAt:Date.now()}); }
-  async assign(jobId, uid){
+  async assign(jobId, uid, order){
     const apps = await this.col("applications").where("jobId", "==", jobId).get();
     const b = this.db.batch();
-    b.update(this.col("jobs").doc(jobId), {status:"assigned", assignedTo:uid, updatedAt:Date.now()});
+    b.update(this.col("jobs").doc(jobId), {status:"assigned", assignedTo:uid, assignedAt:Date.now(), updatedAt:Date.now()});
+    b.set(this.col("documents").doc(order.id), order);
     apps.forEach(s => { const a = s.data(); if(a.status === "applied") b.update(s.ref, {status:a.craftsmanId === uid ? "selected" : "rejected", updatedAt:Date.now()}); });
     await b.commit();
   }
@@ -496,7 +610,7 @@ class FirebaseBackend {
 /* =========================================================
    画面の状態と描画
    ========================================================= */
-const S = {api:null, user:null, profile:null, tok:0, lastHash:null, filter:{pref:"", trade:"", mine:false}, editPhotos:[], pending:0, crafts:new Map(), pressStamp:null};
+const S = {api:null, user:null, profile:null, tok:0, lastHash:null, filter:{pref:"", trade:"", mine:false}, editPhotos:[], pending:0, crafts:new Map(), pressStamp:null, adminSort:"work"};
 const api = () => S.api;
 
 const ICONS = {
@@ -548,14 +662,14 @@ function jobCard(j, {href, stampHtml = "", foot = ""} = {}){
     ${tagsHtml(j.trades)}
     <h3>${esc(j.title)}</h3>
     <dl class="meta"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
-    <div class="price"><span class="num">${yen(j.price)}</span><small>${esc(j.priceNote)}</small></div>
+    <div class="price"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>
     ${foot}${stampHtml}</a>`;
 }
 function jobDetailBlock(j){
   return `<article class="panel detail">
     ${tagsHtml(j.trades)}
     <h1>${esc(j.title)}</h1>
-    <div class="price big"><span class="num">${yen(j.price)}</span><small>${esc(j.priceNote)}</small></div>
+    <div class="price big"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>
     <dl class="kv"><dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd><dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
     <h2>作業内容</h2><p class="pre">${esc(j.description) || "記載なし"}</p>
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
@@ -581,6 +695,34 @@ function reportsBlock(rs, admin){
     ${r.reviewComment ? `<div class="note" style="margin-top:10px">Reforeからのコメント：${esc(r.reviewComment)}</div>` : ""}
     ${admin && r.status === "submitted" ? `<div class="row" style="margin-top:10px"><button class="btn" data-act="report-ok" data-id="${esc(r.id)}" data-job="${esc(r.jobId)}">確認済みにする</button><button class="btn danger" data-act="report-return" data-id="${esc(r.id)}">差し戻す</button></div>` : ""}
   </section>`).join("");
+}
+
+const priceSmall = j => esc([Number(j.price) > 0 ? taxModeOf(j) : "", j.priceNote].filter(Boolean).join("・"));
+const STATUS_STAMP = {draft:["下書", true], closed:["締切", true], assigned:["発注済", false], working:["作業中", false], finished:["完了", false], completed:["確認済", false], paid:["支払済", true]};
+const statusStamp = j => STATUS_STAMP[j.status] ? stamp(STATUS_STAMP[j.status][0], STATUS_STAMP[j.status][1]) : "";
+const STEPS = [["募集開始","publishedAt"],["発注","assignedAt"],["作業開始","startedAt"],["作業完了","finishedAt"],["完了報告",null],["完了確認","completedAt"],["支払","paidAt"]];
+const STAGE = {draft:-1, open:0, closed:0, assigned:1, working:2, finished:3, completed:5, paid:6};
+function progressTrack(job, reports = []){
+  const rep = reports.filter(r => r.jobId === job.id && r.status !== "returned").sort((a, b) => b.createdAt - a.createdAt)[0];
+  let stage = STAGE[job.status] ?? -1;
+  if(stage === 3 && rep) stage = 4;
+  const times = STEPS.map(([, k], i) => k ? job[k] : rep?.createdAt);
+  if(!times[0]) times[0] = job.createdAt;
+  return `<section class="panel"><h2>進捗</h2><ol class="track">${STEPS.map(([l], i) => {
+    const cls = i <= stage ? "done" : i === stage + 1 ? "next" : "";
+    const tm = i <= stage ? (fmtFull(times[i]) || "済") : i === stage + 1 ? "次はここ" : "";
+    return `<li class="${cls}"><span class="dot" aria-hidden="true"></span><span class="lbl">${l}</span><span class="tm">${tm}</span></li>`;
+  }).join("")}</ol></section>`;
+}
+function progressMini(job){
+  const stage = STAGE[job.status] ?? -1;
+  if(stage < 0) return "";
+  return `<span class="mini" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i <= stage ? "on" : ""}"></i>`).join("")}</span>`;
+}
+function docRow(label, doc, note, canSee = true){
+  const ok = doc && canSee;
+  return `<div class="doc-row"><span class="row-main"><b>${label}</b><span class="small">${ok ? `${esc(doc.number)}　${fmtTime(doc.issuedAt || doc.createdAt)} 作成` : esc(note)}</span></span>
+    ${ok ? `<button class="btn sub" data-act="pdf" data-id="${esc(doc.id)}">ダウンロード</button>` : ""}</div>`;
 }
 
 /* ---------- ログイン・登録 ---------- */
@@ -707,33 +849,52 @@ async function viewApplied(){
 /* ---------- 職人：受注・完了報告 ---------- */
 async function viewWork(){
   const jobs = (await api().listJobs({assignedTo:S.user.uid})).sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
-  const active = jobs.filter(j => j.status === "assigned"), done = jobs.filter(j => j.status === "completed").reverse();
-  const head = `<h1>受注した案件</h1><p class="lead">現場情報の確認と、完了報告の送信はここから行います。</p>`;
+  const head = `<h1>受注した案件</h1><p class="lead">作業の開始・完了の記録、発注書や支払明細のダウンロードはここから行います。</p>`;
   if(!jobs.length) return head + `<div class="empty">受注した案件はまだありません。<br>採用されると、ここに表示されます。</div>`;
-  return head
-    + (active.length ? `<h2>対応中</h2><div class="list grid" style="margin-bottom:24px">${active.map(j => jobCard(j, {href:`#/work/${j.id}`, stampHtml:stamp("発注済")})).join("")}</div>` : "")
-    + (done.length ? `<h2>完了</h2><div class="list grid">${done.map(j => jobCard(j, {href:`#/work/${j.id}`, stampHtml:stamp("完了", true)})).join("")}</div>` : "");
+  const groups = [["対応中", ["assigned","working","finished"]], ["支払待ち", ["completed"]], ["支払済み", ["paid"]]];
+  return head + groups.map(([label, sts]) => {
+    const js = jobs.filter(j => sts.includes(j.status));
+    if(sts[0] === "paid") js.reverse();
+    if(!js.length) return "";
+    return `<h2 class="day-head"><b>${label}</b>${js.length}件</h2><div class="list grid">${js.map(j => jobCard(j, {href:`#/work/${j.id}`, stampHtml:statusStamp(j),
+      foot:`<p class="foot">${progressMini(j)}${esc(JOB_STATUS[j.status])}</p>`})).join("")}</div>`;
+  }).join("");
 }
 async function viewWorkDetail(id){
   const uid = S.user.uid;
   const job = await api().getJob(id);
   if(!job || job.assignedTo !== uid) return `${back("#/work", "受注した案件")}<div class="empty">この案件は表示できません。</div>`;
-  const [priv, reports] = await Promise.all([api().getJobPrivate(id), api().listReports({craftsmanId:uid})]);
+  const [priv, reports, order, payment] = await Promise.all([api().getJobPrivate(id), api().listReports({craftsmanId:uid}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`)]);
   const rs = reports.filter(r => r.jobId === id).sort((a, b) => b.createdAt - a.createdAt);
-  const canReport = job.status === "assigned" && !rs.some(r => r.status === "submitted" || r.status === "approved");
-  const form = canReport ? `<form class="panel" data-form="report" data-id="${esc(id)}">
+  const canReport = job.status === "finished" && !rs.some(r => r.status === "submitted" || r.status === "approved");
+  let step = "";
+  if(job.status === "assigned"){
+    step = `<section class="panel"><h2>作業の開始</h2><p style="margin:0 0 12px">現場で作業を始めるときに押してください。押した日時が記録され、Reforeにも表示されます。</p>
+      <button class="btn block big-action" data-act="work-start" data-id="${esc(id)}">作業を開始する</button></section>`;
+  } else if(job.status === "working"){
+    step = `<section class="panel"><h2>作業の完了</h2><p class="small" style="margin:0 0 8px">開始：${fmtFull(job.startedAt)}</p><p style="margin:0 0 12px">作業が終わったら押してください。押した日時が記録され、続けて完了報告に進みます。</p>
+      <button class="btn block big-action" data-act="work-finish" data-id="${esc(id)}">作業を完了する</button></section>`;
+  } else if(job.status === "finished"){
+    step = canReport ? `<form class="panel" data-form="report" data-id="${esc(id)}">
       <h2>完了報告</h2>
       ${rs[0]?.status === "returned" ? `<div class="note">差し戻しの内容を確認して、もう一度送ってください。</div>` : ""}
-      <p style="margin:0 0 12px">作業が終わったら、施工前・施工後の写真を添付して <b>${esc(REPORT_EMAIL)}</b> にメールで送ってください。</p>
+      <p style="margin:0 0 12px">施工前・施工後の写真を添付して <b>${esc(REPORT_EMAIL)}</b> にメールで送ってください。</p>
       <a class="btn block" href="${reportMailto(job, priv)}">報告メールを作成する</a>
       <p class="small" style="margin:8px 0 16px">メールアプリが開き、宛先・件名・案件情報が入った状態になります。写真を添付して送信してください。</p>
-      <button class="btn sub block">メールを送ったので「報告済み」にする</button></form>` : "";
-  const status = job.status === "completed" ? `<div class="note" style="margin:0">この案件は完了しました。</div>` : "";
+      <button class="btn sub block">メールを送ったので「報告済み」にする</button></form>`
+      : `<div class="note" style="margin:0">完了報告を受け付けました。Reforeが内容を確認しています。</div>`;
+  } else if(job.status === "completed"){
+    step = `<div class="note" style="margin:0">Reforeが完了を確認しました。お支払いの手続き中です。振込が済むと、下の「書類」から支払明細をダウンロードできます。</div>`;
+  } else if(job.status === "paid"){
+    step = `<div class="note" style="margin:0">お支払いが完了しました。下の「書類」から支払明細をダウンロードできます。</div>`;
+  }
+  const docs = `<section class="panel"><h2>書類</h2>
+    ${docRow("発注書", order, "準備中です")}
+    ${docRow("支払明細", payment, "振込が済むとダウンロードできます", payment?.status === "issued")}</section>`;
   return `${back("#/work", "受注した案件")}<div class="cols">
-    <div class="stack">${privateBlock(priv)}${jobDetailBlock(job)}</div>
-    <div class="stack">${status}${form}${reportsBlock(rs, false)}</div></div>`;
+    <div class="stack">${step}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
+    <div class="stack">${privateBlock(priv)}${jobDetailBlock(job)}</div></div>`;
 }
-
 function reportMailto(job, priv){
   const p = S.profile;
   const subject = `【完了報告】${job.title}（案件番号 ${job.id}）`;
@@ -754,21 +915,49 @@ function reportMailto(job, priv){
 }
 
 /* ---------- 管理：案件 ---------- */
+const ADMIN_GROUPS = {open:["open"], active:["assigned","working","finished"], unpaid:["completed"], paid:["paid"], other:["draft","closed"]};
 async function viewAdminJobs(sf){
+  if(sf !== "all" && !ADMIN_GROUPS[sf]) sf = "open";
   const [jobs, apps] = await Promise.all([api().listJobs({}), api().listApplications({})]);
   const cnt = {};
   apps.forEach(a => { if(a.status === "applied" || a.status === "selected") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
-  const segs = [["open","募集中"],["draft","下書き"],["closed","締切"],["assigned","発注済み"],["completed","完了"],["all","すべて"]];
-  const n = s => s === "all" ? jobs.length : jobs.filter(j => j.status === s).length;
-  const list = jobs.filter(j => sf === "all" || j.status === sf).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
-  const st = {draft:["下書", true], closed:["締切", true], assigned:["発注済", false], completed:["完了", true]};
-  return `<div class="page-head"><div><h1>案件</h1><p class="lead">協力業者に公開する案件の作成と、発注先の選定を行います。</p></div><a class="btn" href="#/admin/new">新しい案件を作る</a></div>
-    <nav class="seg" aria-label="状態で絞り込む">${segs.map(([k, l]) => `<a href="#/admin/list/${k}" ${sf === k ? 'aria-current="true"' : ""}>${l}（${n(k)}）</a>`).join("")}</nav>
-    ${list.length ? `<div class="list grid">${list.map(j => {
-      const c = S.crafts.get(j.assignedTo);
-      const foot = `<p class="foot">応募 <span class="count">${cnt[j.id] || 0}</span> 件${c ? `　発注先：${esc(c.name)}` : ""}</p>`;
-      return jobCard(j, {href:`#/admin/job/${j.id}`, foot, stampHtml: st[j.status] ? stamp(st[j.status][0], st[j.status][1]) : ""});
-    }).join("")}</div>` : `<div class="empty">この状態の案件はありません。<br><a href="#/admin/new">新しい案件を作る</a></div>`}`;
+  const segs = [["open","募集中"],["active","進行中"],["unpaid","支払待ち"],["paid","支払済み"],["other","下書き・締切"],["all","すべて"]];
+  const inSeg = (j, k) => k === "all" || ADMIN_GROUPS[k].includes(j.status);
+  const list = jobs.filter(j => inSeg(j, sf));
+  const posted = j => j.publishedAt || j.createdAt;
+  const card = j => {
+    const c = S.crafts.get(j.assignedTo);
+    const before = ["draft","open","closed"].includes(j.status);
+    const foot = before
+      ? `<p class="foot">応募 <span class="count">${cnt[j.id] || 0}</span> 件　${j.status === "draft" ? "作成" : "掲載"} ${fmtTime(posted(j))}</p>`
+      : `<p class="foot">${progressMini(j)}${esc(JOB_STATUS[j.status])}${c ? `　${esc(c.name)}` : ""}</p>`;
+    return jobCard(j, {href:`#/admin/job/${j.id}`, foot, stampHtml:statusStamp(j)});
+  };
+  let body;
+  if(!list.length){
+    body = `<div class="empty">この状態の案件はありません。${sf === "open" ? `<br><a href="#/admin/new">新しい案件を作る</a>` : ""}</div>`;
+  } else if(sf === "open"){
+    // 募集中は時系列：作業日の近い順（または掲載の新しい順）に日付ごとにまとめる
+    const byPosted = S.adminSort === "posted";
+    const sorted = [...list].sort(byPosted ? (a, b) => posted(b) - posted(a)
+      : (a, b) => (a.startDate || "9").localeCompare(b.startDate || "9") || posted(a) - posted(b));
+    const groups = [];
+    sorted.forEach(j => {
+      const k = byPosted ? isoOf(posted(j)) : (j.startDate || "");
+      const g = groups[groups.length - 1];
+      if(g && g[0] === k) g[1].push(j); else groups.push([k, [j]]);
+    });
+    body = `<div class="filters"><select data-adminsort aria-label="並び順">
+        <option value="work" ${!byPosted ? "selected" : ""}>作業日が近い順</option>
+        <option value="posted" ${byPosted ? "selected" : ""}>掲載が新しい順</option></select></div>`
+      + groups.map(([k, js]) => `<h2 class="day-head"><b>${k ? fmtDay(k) : "日程未定"}</b>${byPosted ? "に掲載" : "の作業"}　${js.length}件</h2>
+        <div class="list grid">${js.map(card).join("")}</div>`).join("");
+  } else {
+    body = `<div class="list grid">${list.sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9")).map(card).join("")}</div>`;
+  }
+  return `<div class="page-head"><div><h1>案件</h1><p class="lead">案件の作成、発注、進捗の確認、支払明細の作成を行います。</p></div><a class="btn" href="#/admin/new">新しい案件を作る</a></div>
+    <nav class="seg" aria-label="状態で絞り込む">${segs.map(([k, l]) => `<a href="#/admin/list/${k}" ${sf === k ? 'aria-current="true"' : ""}>${l}（${jobs.filter(j => inSeg(j, k)).length}）</a>`).join("")}</nav>
+    ${body}`;
 }
 function editPhotosHtml(){
   return S.editPhotos.map((u, i) => `<div class="ph"><img src="${esc(u)}" alt=""><button type="button" class="x" data-act="rm-photo" data-i="${i}" aria-label="この写真を外す">×</button></div>`).join("");
@@ -796,7 +985,10 @@ async function viewJobEdit(id){
           <label class="field"><span>作業日（開始）</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
           <label class="field"><span>作業日（終了） <small>1日なら空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
           <label class="field"><span>報酬（円） <small>0で「応相談」</small></span><input type="number" name="price" min="0" step="100" inputmode="numeric" value="${esc(job.price ?? "")}"></label>
-          <label class="field"><span>報酬の補足</span><input type="text" name="priceNote" value="${esc(job.priceNote)}" placeholder="例：税別・材料支給"></label>
+          <label class="field"><span>税区分 <small>発注書の金額計算に使います</small></span><select name="taxMode">${["税別","税込"].map(t => `<option ${taxModeOf(job) === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+        </div>
+        <label class="field"><span>報酬の補足 <small>任意</small></span><input type="text" name="priceNote" value="${esc(job.priceNote)}" placeholder="例：材料支給・駐車場代込み"></label>
+        <div>
         </div>
         <label class="field"><span>作業内容</span><textarea name="description" required>${esc(job.description)}</textarea></label>
         <div class="field"><span>写真 <small>間取り図や現況写真など（${JOB_PHOTO_MAX}枚まで）</small></span>
@@ -816,17 +1008,14 @@ async function viewJobEdit(id){
 async function viewAdminJob(id){
   const job = await api().getJob(id);
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
-  const [apps, priv, reports] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id})]);
-  const order = {selected:0, applied:1, rejected:2, withdrawn:3};
-  apps.sort((a, b) => (order[a.status] - order[b.status]) || (a.createdAt - b.createdAt));
+  const [apps, priv, reports, order, payment] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`)]);
+  const order0 = {selected:0, applied:1, rejected:2, withdrawn:3};
+  apps.sort((a, b) => (order0[a.status] - order0[b.status]) || (a.createdAt - b.createdAt));
+  const rs = reports.sort((a, b) => b.createdAt - a.createdAt);
   const canAssign = job.status === "open" || job.status === "closed";
-  const acts = {
-    draft:`<button class="btn" data-act="job-status" data-id="${esc(id)}" data-status="open">公開して募集する</button>`,
-    open:`<button class="btn sub" data-act="job-status" data-id="${esc(id)}" data-status="closed">募集を締め切る</button>`,
-    closed:`<button class="btn sub" data-act="job-status" data-id="${esc(id)}" data-status="open">募集を再開する</button>`,
-    assigned:`<button class="btn sub" data-act="job-status" data-id="${esc(id)}" data-status="completed">完了にする</button>`,
-    completed:""
-  }[job.status];
+  const act = (st, l, cls = "sub") => `<button class="btn ${cls}" data-act="job-status" data-id="${esc(id)}" data-status="${st}">${l}</button>`;
+  const acts = {draft:act("open", "公開して募集する", ""), open:act("closed", "募集を締め切る"), closed:act("open", "募集を再開する"),
+    assigned:act("completed", "完了を確認する"), working:act("completed", "完了を確認する"), finished:act("completed", "完了を確認する")}[job.status] || "";
   const assigned = S.crafts.get(job.assignedTo);
   const applicantHtml = a => {
     const c = S.crafts.get(a.craftsmanId) || {};
@@ -838,14 +1027,41 @@ async function viewAdminJob(id){
       ${canAssign && a.status === "applied" ? `<button class="btn" style="margin-top:10px" data-act="assign" data-job="${esc(id)}" data-uid="${esc(a.craftsmanId)}" data-name="${esc(c.name || a.craftsmanName)}">この業者に発注する</button>` : ""}
     </div>`;
   };
+  // 支払明細（完了確認のあと）
+  let pay = "";
+  if(job.status === "completed"){
+    const def = payment || {transferDate:todayIso(), amount:{base:order?.amount?.base ?? calcAmount(job.price, taxModeOf(job)).base}, fee:0, note:""};
+    pay = `<form class="panel" data-form="payment" data-id="${esc(id)}">
+      <h2>支払明細</h2>
+      <p class="small" style="margin:0 0 12px">銀行振込が済んだら、振込日と金額を確かめて作成してください。作成しただけでは業者さまには見えません。</p>
+      <div class="two">
+        <label class="field"><span>振込日</span><input type="date" name="transferDate" required value="${esc(def.transferDate)}"></label>
+        <label class="field"><span>報酬（税抜）</span><input type="number" name="base" min="0" inputmode="numeric" required value="${esc(def.amount.base)}"></label>
+        <label class="field"><span>振込手数料 <small>差し引く場合</small></span><input type="number" name="fee" min="0" inputmode="numeric" value="${esc(def.fee || 0)}"></label>
+        <label class="field"><span>備考 <small>任意</small></span><input type="text" name="note" value="${esc(def.note)}"></label>
+      </div>
+      <button class="btn ${payment ? "sub" : ""}">${payment ? "内容を更新する" : "支払明細を作成する"}</button></form>`;
+    if(payment) pay += `<section class="panel"><h2>支払明細（下書き）</h2><dl class="kv">
+        <dt>明細番号</dt><dd>${esc(payment.number)}</dd><dt>振込日</dt><dd>${fmtDate(payment.transferDate)}</dd>
+        <dt>報酬（税抜）</dt><dd>${yenFull(payment.amount.base)}</dd><dt>消費税</dt><dd>${yenFull(payment.amount.tax)}</dd>
+        ${payment.fee ? `<dt>振込手数料</dt><dd>−${yenFull(payment.fee)}</dd>` : ""}<dt>振込金額</dt><dd><b>${yenFull(payment.transferAmount)}</b></dd></dl>
+      <div class="row" style="margin-top:14px"><button class="btn sub" data-act="pdf" data-id="${esc(payment.id)}">PDFで確認</button>
+        <button class="btn" data-act="pay-issue" data-job="${esc(id)}">作成完了（業者に公開）</button></div></section>`;
+  }
+  const docs = job.assignedTo ? `<section class="panel"><h2>書類</h2>
+    ${docRow("発注書", order, "発注すると自動で作成されます")}
+    ${order ? `<p style="margin:-4px 0 8px;text-align:right"><button class="textlink" data-act="order-regen" data-job="${esc(id)}">今の内容で発注書を作り直す</button></p>` : ""}
+    ${docRow("支払明細", payment, "完了確認のあとに作成できます", payment?.status === "issued")}
+    ${payment && payment.status !== "issued" ? `<p class="small" style="margin:0">支払明細は下書きです（業者さまにはまだ見えません）。</p>` : ""}</section>` : "";
   return `${back("#/admin", "案件")}
     <div class="page-head"><div class="row"><span class="pill ${job.status}">${JOB_STATUS[job.status]}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span></div>
       <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a></div></div>
     <div class="cols">
-      <div class="stack">${jobDetailBlock(job)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
+      <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
         ${assigned ? `<section class="panel"><h2>発注先</h2><p style="margin:0"><b>${esc(assigned.name)}</b> ${esc(assigned.tradeName)}<br><a href="tel:${esc(assigned.phone)}">${esc(assigned.phone)}</a></p></section>` : ""}
-        ${job.assignedTo ? reportsBlock(reports.sort((a, b) => b.createdAt - a.createdAt), true) : ""}
+        ${pay}${docs}
+        ${job.assignedTo ? reportsBlock(rs, true) : ""}
         <section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
           ${apps.length ? apps.map(applicantHtml).join("") : `<p class="small" style="margin:0">${job.status === "draft" ? "公開すると、協力業者からの応募がここに届きます。" : "まだ応募はありません。"}</p>`}
         </section>
@@ -886,6 +1102,94 @@ async function viewCraftsman(uid){
       <section class="panel"><h2>応募の履歴（${apps.length}件）</h2>
         ${apps.length ? `<div class="list">${apps.map(a => `<a class="row-item" href="#/admin/job/${esc(a.jobId)}"><span class="row-main"><b>${esc(a.jobTitle)}</b><span class="small">${fmtTime(a.createdAt)} 応募</span></span><span class="pill ${a.status}">${APP_STATUS[a.status]}</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">まだ応募はありません。</p>`}
       </section></div>`;
+}
+
+/* ---------- 書類のPDF（テンプレートはここを差し替えます） ---------- */
+const PDF_CSS = `
+.pdfdoc{width:794px;padding:56px 64px;background:#fff;color:#111;font-family:"BIZ UDPGothic","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;font-size:12.5px;line-height:1.7;box-sizing:border-box}
+.pdfdoc *{box-sizing:border-box}
+.pdfdoc .hd{display:flex;justify-content:flex-end}
+.pdfdoc .meta{border-collapse:collapse;font-size:11.5px}
+.pdfdoc .meta td{border:0;padding:0 0 0 14px;background:none}
+.pdfdoc h1{text-align:center;font-size:26px;letter-spacing:.5em;text-indent:.5em;margin:14px 0 26px;font-weight:700}
+.pdfdoc .parties{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:18px}
+.pdfdoc .to{min-width:320px;font-size:17px;border-bottom:1px solid #111;padding-bottom:4px}
+.pdfdoc .to small{display:block;font-size:11.5px;color:#444}
+.pdfdoc .from{font-size:11.5px;text-align:right;line-height:1.65}
+.pdfdoc .from b{font-size:14px}
+.pdfdoc .total{display:inline-flex;align-items:baseline;gap:20px;border:2px solid #111;padding:8px 18px;margin:6px 0 20px}
+.pdfdoc .total span{font-size:13px}
+.pdfdoc .total strong{font-size:24px}
+.pdfdoc table.t{width:100%;border-collapse:collapse;margin-bottom:16px}
+.pdfdoc table.t th,.pdfdoc table.t td{border:1px solid #666;padding:6px 10px;text-align:left;vertical-align:top}
+.pdfdoc table.t th{background:#eef1f4;font-weight:700;width:22%;white-space:nowrap}
+.pdfdoc table.items th{width:auto;text-align:center}
+.pdfdoc table.sum{width:52%;margin-left:auto}
+.pdfdoc table.sum th{width:55%}
+.pdfdoc .r{text-align:right !important;white-space:nowrap}
+.pdfdoc .pre{white-space:pre-wrap}
+.pdfdoc .foot{margin-top:24px;font-size:10.5px;color:#555;border-top:1px solid #bbb;padding-top:8px}`;
+const pdfTo = t => t.tradeName ? `<small>${esc(t.tradeName)}</small>${esc(t.name)} 様` : `${esc(t.name)} 様`;
+const pdfFrom = c => `<div class="from"><b>${esc(c.name)}</b><br>${esc(c.address)}<br>TEL ${esc(c.tel)}<br>${esc(c.email)}${c.invoiceNumber ? `<br>登録番号 ${esc(c.invoiceNumber)}` : ""}</div>`;
+const pdfPeriod = (a, b) => `${fmtDate(a)}${b && b !== a ? ` 〜 ${fmtDate(b)}` : ""}`;
+function docOrderHtml(d){
+  const j = d.job, a = d.amount;
+  return `<div class="pdfdoc">
+    <div class="hd"><table class="meta"><tr><td>発注番号</td><td>${esc(d.number)}</td></tr><tr><td>発行日</td><td>${fmtDate(d.issuedAt)}</td></tr></table></div>
+    <h1>発注書</h1>
+    <div class="parties"><div class="to">${pdfTo(d.to)}</div>${pdfFrom(d.company)}</div>
+    <p style="margin:0 0 6px">下記のとおり発注いたします。</p>
+    <div class="total"><span>発注金額（税込）</span><strong>${yenFull(a.total)}</strong></div>
+    <table class="t"><tr><th>件名</th><td>${esc(j.title)}</td></tr>
+      <tr><th>現場</th><td>${esc(j.address || j.pref + j.city)}${j.building ? `　${esc(j.building)}` : ""}</td></tr>
+      <tr><th>工期</th><td>${pdfPeriod(j.startDate, j.endDate) || "別途調整"}</td></tr>
+      <tr><th>作業内容</th><td class="pre">${esc(j.description)}</td></tr></table>
+    <table class="t items"><tr><th>品目</th><th>数量</th><th>単価（税抜）</th><th>金額（税抜）</th></tr>
+      <tr><td>${esc(j.title)}</td><td class="r">1式</td><td class="r">${yenFull(a.base)}</td><td class="r">${yenFull(a.base)}</td></tr></table>
+    <table class="t sum"><tr><th>小計（税抜）</th><td class="r">${yenFull(a.base)}</td></tr>
+      <tr><th>消費税（10%）</th><td class="r">${yenFull(a.tax)}</td></tr>
+      <tr><th>合計（税込）</th><td class="r"><b>${yenFull(a.total)}</b></td></tr></table>
+    <table class="t"><tr><th>支払条件</th><td>${esc(d.terms)}</td></tr>
+      <tr><th>完了報告</th><td>作業完了後、施工前・施工後の写真を添付して ${esc(d.company.email)} へメールでご報告ください。</td></tr>
+      ${j.priceNote ? `<tr><th>備考</th><td class="pre">${esc(j.priceNote)}</td></tr>` : ""}</table>
+    <div class="foot">この発注書は Refore 協力業者ポータルから発行しています。</div></div>`;
+}
+function docPaymentHtml(d){
+  const j = d.job, a = d.amount;
+  const period = j.startedAt && j.finishedAt ? `${fmtFull(j.startedAt)} 〜 ${fmtFull(j.finishedAt)}` : pdfPeriod(j.startDate, j.endDate);
+  return `<div class="pdfdoc">
+    <div class="hd"><table class="meta"><tr><td>明細番号</td><td>${esc(d.number)}</td></tr><tr><td>発行日</td><td>${fmtDate(d.issuedAt || d.createdAt)}</td></tr></table></div>
+    <h1>支払明細書</h1>
+    <div class="parties"><div class="to">${pdfTo(d.to)}${d.to.invoiceNumber ? `<small>登録番号 ${esc(d.to.invoiceNumber)}</small>` : ""}</div>${pdfFrom(d.company)}</div>
+    <p style="margin:0 0 6px">下記のとおりお支払いいたしました。</p>
+    <div class="total"><span>お振込金額</span><strong>${yenFull(d.transferAmount)}</strong></div>
+    <table class="t"><tr><th>件名</th><td>${esc(j.title)}</td></tr>
+      <tr><th>現場</th><td>${esc(j.pref + j.city)}</td></tr>
+      <tr><th>作業日時</th><td>${period}</td></tr>
+      ${d.orderNumber ? `<tr><th>発注番号</th><td>${esc(d.orderNumber)}</td></tr>` : ""}
+      <tr><th>振込日</th><td>${fmtDate(d.transferDate)}</td></tr></table>
+    <table class="t sum"><tr><th>報酬（税抜）</th><td class="r">${yenFull(a.base)}</td></tr>
+      <tr><th>消費税（10%）</th><td class="r">${yenFull(a.tax)}</td></tr>
+      <tr><th>合計（税込）</th><td class="r">${yenFull(a.total)}</td></tr>
+      ${d.fee ? `<tr><th>振込手数料（差引）</th><td class="r">−${yenFull(d.fee)}</td></tr>` : ""}
+      <tr><th>お振込金額</th><td class="r"><b>${yenFull(d.transferAmount)}</b></td></tr></table>
+    ${d.note ? `<table class="t"><tr><th>備考</th><td class="pre">${esc(d.note)}</td></tr></table>` : ""}
+    <div class="foot">この支払明細書は Refore 協力業者ポータルから発行しています。</div></div>`;
+}
+async function downloadPdf(html, filename){
+  if(!window.html2pdf) await loadScript(HTML2PDF_URL);
+  try { await document.fonts?.ready; } catch(e) {}
+  const holder = document.createElement("div");
+  holder.style.cssText = "position:absolute;left:-12000px;top:0;width:794px";
+  holder.innerHTML = `<style>${PDF_CSS}</style>${html}`;
+  document.body.appendChild(holder);
+  try {
+    await window.html2pdf().set({
+      margin:0, filename, image:{type:"jpeg", quality:0.95},
+      html2canvas:{scale:2, backgroundColor:"#ffffff", useCORS:true, scrollX:0, scrollY:0},
+      jsPDF:{unit:"mm", format:"a4", orientation:"portrait"}
+    }).from(holder.querySelector(".pdfdoc")).save();
+  } finally { holder.remove(); }
 }
 
 /* ---------- ルーティング ---------- */
@@ -993,20 +1297,54 @@ const ACTIONS = {
     const {id, status} = el.dataset;
     const conf = {
       closed:{title:"募集を締め切りますか？", body:"協力業者の一覧に表示されなくなります。応募済みの業者から発注先を選ぶことはできます。", ok:"締め切る"},
-      completed:{title:"この案件を完了にしますか？", body:"完了報告の確認が済んでいることを確かめてから完了にしてください。", ok:"完了にする"}
+      completed:{title:"作業の完了を確認しましたか？", body:"完了確認にすると、支払明細を作成できるようになります。業者さまの「作業完了」や完了報告がまだの場合でも確定します。", ok:"完了を確認した"}
     }[status];
     if(conf && !await ask(conf)) return;
     await api().setJobStatus(id, status);
-    toast({open:"公開しました", closed:"締め切りました", completed:"完了にしました"}[status]); route();
+    toast({open:"公開しました", closed:"締め切りました", completed:"完了確認にしました"}[status]); route();
   },
   async assign(el){
     const {job, uid, name} = el.dataset;
-    if(!await ask({title:`${name} さんに発注しますか？`, body:"現場情報がこの業者に表示されます。ほかの応募者は「見送り」になります。", ok:"発注する"})) return;
-    await api().assign(job, uid); toast(`${name} さんに発注しました`); route();
+    if(!await ask({title:`${name} さんに発注しますか？`, body:"発注書を自動で作成し、業者さまがダウンロードできるようになります。現場情報もこの業者に表示されます。ほかの応募者は「見送り」になります。", ok:"発注する"})) return;
+    const [jobD, priv] = await Promise.all([api().getJob(job), api().getJobPrivate(job)]);
+    const c = S.crafts.get(uid) || await api().getProfile(uid);
+    await api().assign(job, uid, buildOrderDoc(jobD, priv, c));
+    toast(`${name} さんに発注し、発注書を作成しました`); route();
+  },
+  async "order-regen"(el){
+    const jid = el.dataset.job;
+    if(!await ask({title:"発注書を作り直しますか？", body:"いまの案件内容・現場情報で作り直します。発注番号はそのままです。", ok:"作り直す"})) return;
+    const [job, priv, old] = await Promise.all([api().getJob(jid), api().getJobPrivate(jid), api().getDocument(`${jid}_order`)]);
+    const c = S.crafts.get(job.assignedTo) || await api().getProfile(job.assignedTo);
+    const d = buildOrderDoc(job, priv, c);
+    if(old?.number) d.number = old.number;
+    await api().saveDocument(d); toast("発注書を作り直しました"); route();
+  },
+  async "pay-issue"(el){
+    const jid = el.dataset.job;
+    if(!await ask({title:"支払明細を業者さまに公開しますか？", body:"業者さまの受注ページから支払明細をダウンロードできるようになり、案件は「支払済み」になります。", ok:"作成完了"})) return;
+    await api().updateDocument(`${jid}_payment`, {status:"issued", issuedAt:Date.now()});
+    await api().setJobStatus(jid, "paid");
+    toast("支払明細を公開しました"); route();
+  },
+  async pdf(el){
+    const d = await api().getDocument(el.dataset.id);
+    if(!d) throw new Error("書類が見つかりません");
+    toast("PDFを作成しています…");
+    const html = d.type === "order" ? docOrderHtml(d) : docPaymentHtml(d);
+    await downloadPdf(html, `${d.type === "order" ? "発注書" : "支払明細書"}_${d.number}.pdf`);
+  },
+  async "work-start"(el){
+    if(!await ask({title:"作業を開始しますか？", body:`開始日時を「${fmtFull(Date.now())}」として記録します。`, ok:"作業を開始する"})) return;
+    await api().setWorkProgress(el.dataset.id, "working"); toast("作業開始を記録しました"); route();
+  },
+  async "work-finish"(el){
+    if(!await ask({title:"作業を完了しますか？", body:`完了日時を「${fmtFull(Date.now())}」として記録します。続けて完了報告メールを送ってください。`, ok:"作業を完了する"})) return;
+    await api().setWorkProgress(el.dataset.id, "finished"); toast("作業完了を記録しました"); route();
   },
   async "report-ok"(el){
     await api().setReportStatus(el.dataset.id, "approved", "");
-    if(await ask({title:"完了報告を確認済みにしました", body:"続けて、この案件を完了にしますか？", ok:"完了にする"})) await api().setJobStatus(el.dataset.job, "completed");
+    if(await ask({title:"完了報告を確認済みにしました", body:"続けて、この案件を「完了確認済み」にしますか？ 支払明細を作成できるようになります。", ok:"完了確認にする"})) await api().setJobStatus(el.dataset.job, "completed");
     route();
   },
   async "report-return"(el){
@@ -1075,8 +1413,9 @@ const FORMS = {
     if(endDate < startDate) throw new Error("終了日が開始日より前になっています");
     const files = [...form.elements.photos.files];
     if(files.length + S.editPhotos.length > JOB_PHOTO_MAX) throw new Error(`案件の写真は${JOB_PHOTO_MAX}枚までにしてください`);
-    const data = {title:g("title"), trades, pref:g("pref"), city:g("city"), startDate, endDate, price:Number(g("price")) || 0, priceNote:g("priceNote"), description:g("description"), photos:[...S.editPhotos]};
+    const data = {title:g("title"), trades, pref:g("pref"), city:g("city"), startDate, endDate, price:Number(g("price")) || 0, taxMode:g("taxMode") || "税別", priceNote:g("priceNote"), description:g("description"), photos:[...S.editPhotos]};
     if(mode === "open" || mode === "draft") data.status = mode;
+    if(mode === "open") data.publishedAt = Date.now();
     if(!id && !data.status) data.status = "draft";
     if(files.length) toast("写真を保存しています…");
     if(files.length) data.photos = [...data.photos, ...await api().uploadPhotos(files)];
@@ -1084,6 +1423,17 @@ const FORMS = {
     await api().setJobPrivate(jid, {address:g("address"), building:g("building"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact")});
     toast(mode === "open" ? "公開しました" : "保存しました");
     go(`#/admin/job/${jid}`);
+  },
+  async payment(form){
+    const id = form.dataset.id;
+    const fd = new FormData(form);
+    const [job, order, prev] = await Promise.all([api().getJob(id), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`)]);
+    if(prev?.status === "issued") throw new Error("この支払明細はすでに公開済みです");
+    const c = S.crafts.get(job.assignedTo) || await api().getProfile(job.assignedTo);
+    const d = buildPaymentDoc(job, c, order, {base:fd.get("base"), fee:fd.get("fee"), transferDate:fd.get("transferDate"), note:String(fd.get("note") || "").trim(), number:prev?.number});
+    if(d.transferAmount < 0) throw new Error("振込手数料が支払額を上回っています");
+    await api().saveDocument(d);
+    toast(prev ? "支払明細を更新しました" : "支払明細を作成しました（まだ業者さまには見えません）"); route();
   },
   async report(form){
     const id = form.dataset.id;
@@ -1115,6 +1465,7 @@ document.addEventListener("submit", async e => {
   finally { btns.forEach(b => b.disabled = false); }
 });
 document.addEventListener("change", e => {
+  if(e.target.matches("[data-adminsort]")){ S.adminSort = e.target.value; route(); return; }
   const el = e.target.closest("[data-filter]");
   if(!el) return;
   S.filter[el.dataset.filter] = el.type === "checkbox" ? el.checked : el.value;
