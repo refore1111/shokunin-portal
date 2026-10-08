@@ -59,7 +59,7 @@ h2{font-size:16px;line-height:1.5;margin:0 0 12px}
 .badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:var(--caution);color:#1d1600;font-size:12px;font-weight:700;text-align:center;line-height:20px;margin-left:4px}
 
 /* 職人用タブ（スマホは下、PCは上） */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 .tabbar a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 10px;font-size:11px;text-decoration:none;color:var(--sub)}
 .tabbar svg{width:22px;height:22px}
 .tabbar a[aria-current="page"]{color:var(--kon-text);font-weight:700}
@@ -282,6 +282,27 @@ textarea{min-height:110px;resize:vertical}
 .inv-right{display:grid;justify-items:end;gap:6px;flex:none}
 .inv-money{font-size:18px;font-variant-numeric:tabular-nums}
 @media (max-width:560px){.inv-line{flex-wrap:wrap}.inv-amt{margin-left:30px}.inv-right .row .btn{padding:8px 10px;font-size:13px}}
+.warn{color:var(--shu)}
+.badge[hidden]{display:none}
+.tabbar .badge{margin-left:2px;min-width:16px;line-height:16px;font-size:10px;padding:0 4px}
+.chat-row .last{font-size:14px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.chat-row.unread{border-left:4px solid var(--caution)}
+.chat-row.unread b{font-weight:700}
+.chat-r{display:grid;justify-items:end;gap:4px;flex:none}
+.chat-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;padding:12px 16px}
+.chat-log{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px;height:min(58vh,560px);overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.chat-day{align-self:center;font-size:12px;color:var(--sub);background:var(--paper);border-radius:999px;padding:1px 10px}
+.msg-row{display:flex;flex-direction:column;align-items:flex-start;max-width:82%}
+.msg-row.me{align-self:flex-end;align-items:flex-end}
+.bubble{background:var(--paper);border-radius:12px 12px 12px 4px;padding:8px 12px;font-size:15px;line-height:1.6;word-break:break-word}
+.msg-row.me .bubble{background:var(--kon);color:var(--kon-ink);border-radius:12px 12px 4px 12px}
+.msg-meta{font-size:11px;color:var(--sub);margin-top:2px}
+.chat-form{display:flex;gap:8px;margin-top:10px;align-items:flex-end}
+.chat-form textarea{min-height:48px;flex:1;resize:vertical}
+.chat-form .btn{flex:none}
+.chat-head .btn{flex:none;white-space:nowrap;min-height:40px;padding:8px 14px}
+@media (pointer:coarse){.chat-hint{display:none}}
+@media (max-width:719px){.tabbar a{font-size:10px;padding:8px 2px 10px}}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -678,7 +699,17 @@ function seedDemo(){
     reports: {
       r_seed1: {id:"r_seed1", jobId:"j6", jobTitle:"2K エアコン・換気扇クリーニング", craftsmanId:"c1", craftsmanName:"山田 太郎", method:"email", status:"approved", createdAt:at(-6, 15, 2), reviewComment:"", reviewedAt:at(-5, 10, 5)}
     },
-    documents: {}
+    documents: {},
+    threads: {
+      j5_c1: {id:"j5_c1", jobId:"j5", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"1R 退去後クリーニング（浴室カビ取り含む）", createdAt:now - 3*hour,
+        lastAt:now - 2*hour, lastText:"承知しました。鍵はポストに入っています。作業後は元に戻してください。", lastFrom:"admin", adminReadAt:now - 2*hour, craftsmanReadAt:now - 3*hour}
+    },
+    messages: {
+      j5_c1: [
+        {id:"m1", from:"craftsman", uid:"c1", name:"山田 太郎", text:"明日の作業、9時から入ります。", createdAt:now - 3*hour},
+        {id:"m2", from:"admin", uid:"admin", name:"Refore", text:"承知しました。鍵はポストに入っています。作業後は元に戻してください。", createdAt:now - 2*hour}
+      ]
+    }
   };
   for(const jid of ["j5", "j6"]){
     const o = buildOrderDoc(d.jobs[jid], d.jobPrivate[jid], d.users.c1);
@@ -690,15 +721,20 @@ function seedDemo(){
 
 class DemoBackend {
   constructor(){
-    this.mode = "demo"; this.key = "refore_shokunin_demo_v4"; this.listeners = [];
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v5"; this.listeners = []; this.watchers = new Set();
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
+    // ログイン状態はタブごと（別タブで管理者と職人を同時に試せる）
+    try { this.session = sessionStorage.getItem(this.key + "_session"); } catch(e) { this.session = null; }
+    window.addEventListener("storage", e => { if(e.key !== this.key || !e.newValue) return; try { this.data = JSON.parse(e.newValue); this.fire(); } catch(err) {} });
     this.save();
   }
-  save(){ try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch(e) {} }
+  save(){ try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch(e) {} this.fire(); }
+  fire(){ clearTimeout(this._ft); this._ft = setTimeout(() => this.watchers.forEach(f => { try { f(); } catch(e) { console.error(e); } }), 0); }
+  setSession(uid){ this.session = uid; try { if(uid) sessionStorage.setItem(this.key + "_session", uid); else sessionStorage.removeItem(this.key + "_session"); } catch(e) {} }
   emit(){
-    const s = this.data.session;
+    const s = this.session;
     const u = s && this.data.accounts[s] ? {uid:s, email:this.data.accounts[s].email} : null;
     this.listeners.forEach(f => f(u));
   }
@@ -709,15 +745,15 @@ class DemoBackend {
     if(Object.values(this.data.accounts).some(a => a.email === email)) throw new Error("このメールアドレスはすでに登録されています");
     if(pw.length < 6) throw new Error("パスワードは6文字以上にしてください");
     const uid = "u_" + newId();
-    this.data.accounts[uid] = {email, pw}; this.data.session = uid; this.save(); this.emit();
+    this.data.accounts[uid] = {email, pw}; this.setSession(uid); this.save(); this.emit();
   }
   async signIn(email, pw){
     email = email.trim().toLowerCase();
     const hit = Object.entries(this.data.accounts).find(([, a]) => a.email === email && a.pw === pw);
     if(!hit) throw new Error("メールアドレスかパスワードが違います");
-    this.data.session = hit[0]; this.save(); this.emit();
+    this.setSession(hit[0]); this.emit();
   }
-  async signOut(){ this.data.session = null; this.save(); this.emit(); }
+  async signOut(){ this.setSession(null); this.emit(); }
   async resetPassword(){ throw new Error("デモモードではパスワード再設定メールは送れません"); }
 
   async getProfile(uid){ return clone(this.data.users[uid] || null); }
@@ -747,6 +783,19 @@ class DemoBackend {
   async getJobPdf(id){ const v = (this.data.jobPdf || {})[id]; return v ? clone({...v, src:(this.data.jobPdfSrc || {})[id] || null}) : null; }
   async getJobPdfSource(id){ return clone((this.data.jobPdfSrc || {})[id] || null); }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
+  // --- 連絡（チャット） ---
+  _threads(f = {}){ let a = Object.values(this.data.threads || {}); if(f.craftsmanId) a = a.filter(t => t.craftsmanId === f.craftsmanId); if(f.jobId) a = a.filter(t => t.jobId === f.jobId); return a.map(clone); }
+  async listThreads(f){ return this._threads(f); }
+  async getThread(id){ return clone((this.data.threads || {})[id] || null); }
+  async ensureThread(t){ this.data.threads ||= {}; if(!this.data.threads[t.id]){ this.data.threads[t.id] = t; this.save(); } }
+  async sendMessage(tid, m){
+    this.data.messages ||= {}; (this.data.messages[tid] ||= []).push({...m, id:newId()});
+    Object.assign(this.data.threads[tid], {lastAt:m.createdAt, lastText:m.text.slice(0, 120), lastFrom:m.from, [m.from + "ReadAt"]:m.createdAt});
+    this.save();
+  }
+  async markRead(tid, role){ const t = (this.data.threads || {})[tid]; if(t){ t[role + "ReadAt"] = Date.now(); this.save(); } }
+  watchThreads(f, cb){ const run = () => cb(this._threads(f)); this.watchers.add(run); setTimeout(run); return () => this.watchers.delete(run); }
+  watchMessages(tid, cb){ const run = () => cb(clone((this.data.messages || {})[tid] || [])); this.watchers.add(run); setTimeout(run); return () => this.watchers.delete(run); }
   async saveInvoice(d){ (this.data.invoices ||= {})[d.id] = d; this.save(); }
   async updateInvoice(id, d){ Object.assign(this.data.invoices[id], d); this.save(); }
   async listInvoices(f = {}){ let a = Object.values(this.data.invoices || {}); if(f.month) a = a.filter(x => x.month === f.month); if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId); return a.map(clone); }
@@ -878,6 +927,38 @@ class FirebaseBackend {
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
   }
   async saveInvoice(d){ await this.col("invoices").doc(d.id).set(d); }
+  // --- 連絡（チャット）: threads/{案件ID_業者UID} と その下の messages ---
+  async listThreads(f = {}){
+    let q = this.col("threads");
+    if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
+    if(f.jobId) q = q.where("jobId", "==", f.jobId);
+    return this.docs(await q.get());
+  }
+  async getThread(id){
+    try { const s = await this.col("threads").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
+    catch(e) { if(e.code === "permission-denied") return null; throw e; }
+  }
+  async ensureThread(t){
+    const ref = this.col("threads").doc(t.id);
+    let exists = false;
+    try { exists = (await ref.get()).exists; } catch(e) { if(e.code !== "permission-denied") throw e; }
+    if(!exists) await ref.set(t);
+  }
+  async sendMessage(tid, m){
+    const t = this.col("threads").doc(tid), b = this.db.batch();
+    b.set(t.collection("messages").doc(), m);
+    b.update(t, {lastAt:m.createdAt, lastText:m.text.slice(0, 120), lastFrom:m.from, [m.from + "ReadAt"]:m.createdAt});
+    await b.commit();
+  }
+  async markRead(tid, role){ await this.col("threads").doc(tid).update({[role + "ReadAt"]:Date.now()}); }
+  watchThreads(f, cb){
+    let q = this.col("threads");
+    if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
+    return q.onSnapshot(s => cb(this.docs(s)), e => console.error("連絡の受信に失敗", e));
+  }
+  watchMessages(tid, cb){
+    return this.col("threads").doc(tid).collection("messages").orderBy("createdAt").onSnapshot(s => cb(this.docs(s)), e => console.error("メッセージの受信に失敗", e));
+  }
   async updateInvoice(id, d){ await this.col("invoices").doc(id).update(d); }
   async listInvoices(f = {}){
     let q = this.col("invoices");
@@ -940,13 +1021,14 @@ class FirebaseBackend {
 /* =========================================================
    画面の状態と描画
    ========================================================= */
-const S = {api:null, user:null, profile:null, tok:0, lastHash:null, filter:{pref:"", trade:"", mine:false}, editPhotos:[], pending:0, crafts:new Map(), pressStamp:null, adminSort:"work"};
+const S = {api:null, user:null, profile:null, tok:0, lastHash:null, filter:{pref:"", trade:"", mine:false}, editPhotos:[], pending:0, crafts:new Map(), threads:new Map(), notifUnsub:null, pageUnsub:null, pressStamp:null, adminSort:"work"};
 const api = () => S.api;
 
 const ICONS = {
   jobs:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="M8.5 7V5.2c0-.6.4-1 1-1h5c.6 0 1 .4 1 1V7M3 12.5h18"/></svg>',
   applied:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M9.5 13.5l2 2 4-4"/></svg>',
   work:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.3 5.3L3.5 17.5l3 3 5.9-5.9a4 4 0 0 0 5.3-5.3l-2.4 2.4-2.3-.6-.6-2.3z"/></svg>',
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>',
   invoice:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
   profile:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1-3.8 4.2-5.6 7.5-5.6s6.5 1.8 7.5 5.6"/></svg>'
 };
@@ -960,18 +1042,19 @@ function demoBar(){
     <button data-act="demo-reset">データを初期化</button></div>`;
 }
 function adminNav(){
-  const onC = location.hash.startsWith("#/admin/craftsm"), onK = location.hash.startsWith("#/admin/calendar") || location.hash.startsWith("#/admin/invoices");
+  const onC = location.hash.startsWith("#/admin/craftsm"), onK = /^#\/admin\/(calendar|invoices|chat)/.test(location.hash);
   return `<nav class="admin-nav" aria-label="管理メニュー">
     <a href="#/admin" ${!onC && !onK ? 'aria-current="page"' : ""}>案件</a>
     <a href="#/admin/calendar" ${onK ? 'aria-current="page"' : ""}>予定表</a>
     <a href="#/admin/invoices" ${location.hash.startsWith("#/admin/invoices") ? 'aria-current="page"' : ""}>請求書</a>
+    <a href="#/admin/chat" ${location.hash.startsWith("#/admin/chat") ? 'aria-current="page"' : ""}>連絡${chatBadge()}</a>
     <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a></nav>`;
 }
 function craftTabs(){
   const a = location.hash.replace(/^#\/?/, "").split("/")[0] || "jobs";
   const cur = a === "job" ? "jobs" : a;
-  const tabs = [["jobs","案件",ICONS.jobs],["applied","応募状況",ICONS.applied],["work","受注",ICONS.work],["invoice","請求書",ICONS.invoice],["profile","登録情報",ICONS.profile]];
-  return `<nav class="tabbar" aria-label="メニュー">${tabs.map(([k,l,i]) => `<a href="#/${k}" ${cur === k ? 'aria-current="page"' : ""}>${i}<span>${l}</span></a>`).join("")}</nav>`;
+  const tabs = [["jobs","案件",ICONS.jobs],["applied","応募状況",ICONS.applied],["work","受注",ICONS.work],["chat","連絡",ICONS.chat],["invoice","請求書",ICONS.invoice],["profile","登録情報",ICONS.profile]];
+  return `<nav class="tabbar" aria-label="メニュー">${tabs.map(([k,l,i]) => `<a href="#/${k}" ${cur === k ? 'aria-current="page"' : ""}>${i}<span>${l}${k === "chat" ? chatBadge() : ""}</span></a>`).join("")}</nav>`;
 }
 function paint(content, {bare = false} = {}){
   const app = $("#app");
@@ -990,19 +1073,19 @@ function photosGrid(urls){
   if(!urls?.length) return "";
   return `<div class="photos">${urls.map((u, i) => `<div class="ph"><button type="button" class="zoom" data-act="zoom" data-src="${esc(u)}" aria-label="写真${i+1}を拡大"><img src="${esc(u)}" alt="" loading="lazy"></button></div>`).join("")}</div>`;
 }
-function jobCard(j, {href, stampHtml = "", foot = ""} = {}){
+function jobCard(j, {href, stampHtml = "", foot = "", showPrice = false} = {}){
   return `<a class="job" href="${href}">
     ${tagsHtml(j.trades)}
     <h3>${esc(j.title)}</h3>
     <dl class="meta">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
-    ${Number(j.price) > 0 ? `<div class="price"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>` : ""}
+    ${showPrice && Number(j.price) > 0 ? `<div class="price"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : ""}
     ${foot}${stampHtml}</a>`;
 }
-function jobDetailBlock(j){
+function jobDetailBlock(j, showPrice = false){
   return `<article class="panel detail">
     ${tagsHtml(j.trades)}
     <h1>${esc(j.title)}</h1>
-    ${Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>${priceSmall(j)}</small></div>` : ""}
+    ${showPrice ? (Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : `<p class="small warn" style="margin:4px 0 10px">支払金額はReforeが設定します（未設定）</p>`) : ""}
     <dl class="kv">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>開始日</dt><dd>${fmtDay(j.startDate)}</dd><dt>終了日</dt><dd>${fmtDay(j.endDate || j.startDate)}</dd></dl>
     ${j.items?.length ? `<h2>作業内訳</h2>${itemsTable(j)}` : ""}
     ${j.description ? `<h2>作業内容</h2><p class="pre">${esc(j.description)}</p>` : ""}
@@ -1153,7 +1236,7 @@ async function viewJobs(){
       <select data-filter="trade" aria-label="工種で絞り込む">${opt(TRADES, f.trade, "すべての工種")}</select>
       <label class="toggle"><input type="checkbox" data-filter="mine" ${f.mine ? "checked" : ""}>自分の工種・エリアだけ</label>
     </div>
-    ${list.length ? `<div class="list grid">${list.map(j => jobCard(j, {href:`#/job/${j.id}`, stampHtml: applied.has(j.id) && applied.get(j.id).status !== "withdrawn" ? stamp("応募済") : ""})).join("")}</div>` : empty}`;
+    ${list.length ? `<div class="list grid">${list.map(j => jobCard(j, {href:`#/job/${j.id}`, showPrice:false, stampHtml: applied.has(j.id) && applied.get(j.id).status !== "withdrawn" ? stamp("応募済") : ""})).join("")}</div>` : empty}`;
 }
 async function viewJobDetail(id){
   const uid = S.user.uid;
@@ -1182,7 +1265,9 @@ async function viewJobDetail(id){
       <button class="btn block">応募する</button>
       <p class="small" style="margin:10px 0 0">住所や入室方法は、発注が決まった業者さまにだけ表示されます。</p></form>`;
   }
-  return `${back("#/jobs", "案件一覧")}${pdfViewHtml(pdfA)}<div class="cols"><div class="stack">${jobDetailBlock(job)}</div><div class="stack">${action}</div></div>`;
+  const askBox = job.status === "open" || job.assignedTo === uid ? `<div class="panel"><p class="small" style="margin:0 0 10px">案件についてわからないことがあれば、Reforeに質問できます。</p>
+    <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">Reforeに質問する</button></div>` : "";
+  return `${back("#/jobs", "案件一覧")}${pdfViewHtml(pdfA)}<div class="cols"><div class="stack">${jobDetailBlock(job, job.assignedTo === uid)}</div><div class="stack">${action}${askBox}</div></div>`;
 }
 async function viewApplied(){
   const apps = (await api().listApplications({craftsmanId:S.user.uid})).sort((a, b) => b.createdAt - a.createdAt);
@@ -1203,7 +1288,7 @@ async function viewWork(){
     const js = jobs.filter(j => sts.includes(j.status));
     if(sts[0] === "paid") js.reverse();
     if(!js.length) return "";
-    return `<h2 class="day-head"><b>${label}</b>${js.length}件</h2><div class="list grid">${js.map(j => jobCard(j, {href:`#/work/${j.id}`, stampHtml:statusStamp(j),
+    return `<h2 class="day-head"><b>${label}</b>${js.length}件</h2><div class="list grid">${js.map(j => jobCard(j, {href:`#/work/${j.id}`, showPrice:true, stampHtml:statusStamp(j),
       foot:`<p class="foot">${progressMini(j)}${esc(JOB_STATUS[j.status])}</p>`})).join("")}</div>`;
   }).join("");
 }
@@ -1237,9 +1322,13 @@ async function viewWorkDetail(id){
   }
   const docs = `<section class="panel"><h2>書類</h2>
     ${docRow("発注書", order, "準備中です", true, pdfA ? id : null)}</section>`;
+  const t = S.threads.get(`${id}_${uid}`);
+  const contact = `<section class="panel"><h2>Reforeへの連絡</h2>
+    ${t?.lastAt ? `<p class="small" style="margin:0 0 10px">${isUnread(t) ? `<span class="badge">新着</span> ` : ""}${fmtTime(t.lastAt)}　${esc(t.lastText)}</p>` : `<p class="small" style="margin:0 0 10px">現場のことで確認したいことは、ここからReforeに連絡できます。</p>`}
+    <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${t?.lastAt ? "やりとりを開く" : "Reforeに連絡する"}</button></section>`;
   return `${back("#/work", "受注した案件")}${pdfViewHtml(pdfA)}<div class="cols">
-    <div class="stack">${step}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
-    <div class="stack">${privateBlock(priv)}${jobDetailBlock(job)}</div></div>`;
+    <div class="stack">${step}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
+    <div class="stack">${privateBlock(priv)}${jobDetailBlock(job, true)}</div></div>`;
 }
 function reportMailto(job, priv){
   const p = S.profile;
@@ -1277,7 +1366,7 @@ async function viewAdminJobs(sf){
     const foot = before
       ? `<p class="foot">応募 <span class="count">${cnt[j.id] || 0}</span> 件　${j.status === "draft" ? "作成" : "掲載"} ${fmtTime(posted(j))}</p>`
       : `<p class="foot">${progressMini(j)}${esc(JOB_STATUS[j.status])}${c ? `　${esc(c.name)}` : ""}</p>`;
-    return jobCard(j, {href:`#/admin/job/${j.id}`, foot, stampHtml:statusStamp(j)});
+    return jobCard(j, {href:`#/admin/job/${j.id}`, foot, showPrice:true, stampHtml:statusStamp(j)});
   };
   let body;
   if(!list.length){
@@ -1336,6 +1425,8 @@ async function viewJobEdit(id){
           <label class="field"><span>開始日</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
           <label class="field"><span>終了日 <small>1日で終わる場合は空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
         </div>
+        <label class="field" style="margin:0"><span>支払金額（税抜） <small>業者さまへの支払額。発注後に業者さまに表示され、月末の請求書はこの金額で作られます（業者さまは変更できません）</small></span>
+          <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000"></label>
       </section>
       <section class="panel"><h2>現場情報<small>発注した業者にだけ表示</small></h2>
         <label class="field"><span>住所</span><input type="text" name="address" value="${esc(priv.address)}" autocomplete="off"></label>
@@ -1350,7 +1441,7 @@ async function viewJobEdit(id){
 async function viewAdminJob(id){
   const job = await api().getJob(id);
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
-  const [apps, priv, reports, order, payment, pdfA] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`), api().getJobPdf(id)]);
+  const [apps, priv, reports, order, payment, pdfA, threads] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`), api().getJobPdf(id), api().listThreads({jobId:id})]);
   const order0 = {selected:0, applied:1, rejected:2, withdrawn:3};
   apps.sort((a, b) => (order0[a.status] - order0[b.status]) || (a.createdAt - b.createdAt));
   const rs = reports.sort((a, b) => b.createdAt - a.createdAt);
@@ -1365,7 +1456,7 @@ async function viewAdminJob(id){
       <div class="row between"><span><b>${esc(c.name || a.craftsmanName)}</b> <span class="small">${esc(c.tradeName)}</span></span><span class="pill ${a.status}">${APP_STATUS[a.status]}</span></div>
       <p class="small" style="margin:4px 0 0">${esc((c.trades || []).join("、"))}<br>${esc((c.prefs || []).join("、"))}${c.years ? `　経験${esc(c.years)}年` : ""}　保険：${esc(c.insurance || "不明")}</p>
       ${a.message ? `<div class="msg pre">${esc(a.message)}</div>` : ""}
-      <p class="small" style="margin:6px 0 0">${fmtTime(a.createdAt)} 応募　<a href="#/admin/craftsman/${esc(a.craftsmanId)}">登録情報を見る</a></p>
+      <p class="small" style="margin:6px 0 0">${fmtTime(a.createdAt)} 応募　<a href="#/admin/craftsman/${esc(a.craftsmanId)}">登録情報を見る</a>　<button class="textlink" data-act="chat-open" data-job="${esc(id)}" data-uid="${esc(a.craftsmanId)}">メッセージ</button></p>
       ${canAssign && a.status === "applied" ? `<button class="btn" style="margin-top:10px" data-act="assign" data-job="${esc(id)}" data-uid="${esc(a.craftsmanId)}" data-name="${esc(c.name || a.craftsmanName)}">この業者に発注する</button>` : ""}
     </div>`;
   };
@@ -1378,9 +1469,12 @@ async function viewAdminJob(id){
       <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a></div></div>
     ${pdfViewHtml(pdfA, "発注先の業者にも表示されます")}
     <div class="cols">
-      <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
+      <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
-        ${assigned ? `<section class="panel"><h2>発注先</h2><p style="margin:0"><b>${esc(assigned.name)}</b> ${esc(assigned.tradeName)}<br><a href="tel:${esc(assigned.phone)}">${esc(assigned.phone)}</a></p></section>` : ""}
+        ${assigned ? `<section class="panel"><h2>発注先</h2><p style="margin:0"><b>${esc(assigned.name)}</b> ${esc(assigned.tradeName)}<br><a href="tel:${esc(assigned.phone)}">${esc(assigned.phone)}</a></p>
+          <p style="margin:10px 0 0">支払金額（税抜）：${Number(job.price) > 0 ? `<b>${yenFull(job.price)}</b>` : `<span class="warn">未設定</span>　<a href="#/admin/job/${esc(id)}/edit">設定する</a>`}</p>
+          ${!(Number(job.price) > 0) && ["finished","completed"].includes(job.status) ? `<p class="small warn" style="margin:4px 0 0">金額が未設定のため、業者さまはこの案件を請求できません。</p>` : ""}</section>` : ""}
+        ${chatPanel(threads, id, job.assignedTo)}
         ${docs}
         ${job.assignedTo ? reportsBlock(rs, true) : ""}
         <section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
@@ -1431,20 +1525,21 @@ async function viewInvoice(ym){
       <div class="row" style="margin-top:12px"><button class="btn" data-act="inv-pdf" data-id="${esc(inv.id)}">PDFをダウンロード</button></div></section>` : "";
   if(inv?.status === "paid") return head + issuedBox;
   if(!targets.length) return head + issuedBox + `<div class="empty">${fmtMonth(ym)}に作業完了した案件はありません。</div>`;
-  const prev = new Map((inv?.lines || []).map(l => [l.jobId, l.amount]));
+  const priced = targets.filter(j => Number(j.price) > 0), unpriced = targets.filter(j => !(Number(j.price) > 0));
   const lastDay = lastDayIso(ym), early = todayIso() < lastDay && ym === curMonth();
-  const b0 = targets.reduce((a, j) => a + ((!inv || prev.has(j.id)) ? Number(prev.get(j.id) ?? j.price) || 0 : 0), 0), t0 = Math.floor(b0 * TAX_RATE);
+  const b0 = priced.reduce((a, j) => a + Number(j.price), 0), t0 = Math.floor(b0 * TAX_RATE);
+  const line = (j, ok) => `<div class="inv-line${ok ? "" : " dim"}"><span class="row-main"><b>${esc(j.title)}</b><span class="small">完了 ${j.finishedAt ? fmtDay(isoOf(j.finishedAt)) : fmtDay(j.endDate)}　${esc(j.pref)}${esc(j.city)}</span></span>
+      ${ok ? `<b class="inv-money">${yenFull(j.price)}</b>` : `<span class="small warn">金額未設定</span>`}</div>`;
   return head + issuedBox + `<form class="panel" data-form="invoice" data-month="${ym}">
-    <h2>${inv ? "内容を直して再発行" : `${fmtMonth(ym)}分を請求する`}</h2>
+    <h2>${inv ? "最新の内容で再発行" : `${fmtMonth(ym)}分を請求する`}</h2>
     ${early ? `<div class="note">月末（${fmtDay(lastDay)}）より前です。月の途中で発行した場合も、あとから完了した案件を足して再発行できます。</div>` : ""}
     ${!p.bank?.number ? `<div class="note">振込先が登録されていません。<a href="#/profile">登録情報</a>で入力してから発行してください。</div>` : ""}
-    <p class="small" style="margin:0 0 10px">各案件の金額（税抜）を確認・入力してください。チェックを外した案件は請求に含めません。</p>
-    <div class="inv-lines">${targets.map(j => `<label class="inv-line"><input type="checkbox" name="inc" value="${esc(j.id)}" ${!inv || prev.has(j.id) ? "checked" : ""}>
-      <span class="row-main"><b>${esc(j.title)}</b><span class="small">完了 ${j.finishedAt ? fmtDay(isoOf(j.finishedAt)) : fmtDay(j.endDate)}　${esc(j.pref)}${esc(j.city)}</span></span>
-      <span class="inv-amt">¥<input type="number" name="amt_${esc(j.id)}" min="0" inputmode="numeric" value="${esc(prev.get(j.id) ?? (Number(j.price) || ""))}" aria-label="${esc(j.title)}の金額"></span></label>`).join("")}</div>
-    <div class="inv-sum"><span>小計 <b class="inv-base">${yenFull(b0)}</b></span><span>消費税 <b class="inv-tax">${yenFull(t0)}</b></span><span>合計 <b class="inv-total">${yenFull(b0 + t0)}</b></span></div>
+    <p class="small" style="margin:0 0 10px">金額はReforeが案件ごとに設定した支払金額（税抜）です。変更はできません。金額に相違がある場合は、案件の「連絡」からReforeにお知らせください。</p>
+    <div class="inv-lines">${priced.map(j => line(j, true)).join("")}${unpriced.map(j => line(j, false)).join("")}</div>
+    ${unpriced.length ? `<p class="small" style="margin:-4px 0 12px">「金額未設定」の案件は、Reforeが金額を設定すると請求に含められます（設定後に再発行してください）。</p>` : ""}
+    <div class="inv-sum"><span>小計 <b>${yenFull(b0)}</b></span><span>消費税 <b>${yenFull(t0)}</b></span><span>合計 <b>${yenFull(b0 + t0)}</b></span></div>
     <label class="field"><span>備考 <small>任意</small></span><textarea name="note" style="min-height:70px">${esc(inv?.note)}</textarea></label>
-    <button class="btn block">${inv ? "請求書を再発行する" : "請求書を発行する"}</button></form>`;
+    <button class="btn block" ${priced.length ? "" : "disabled"}>${inv ? "請求書を再発行する" : "請求書を発行する"}</button></form>`;
 }
 function syncInvoice(form){
   let base = 0;
@@ -1456,13 +1551,16 @@ async function viewAdminInvoices(ym){
   if(!/^\d{4}-\d{2}$/.test(ym || "")) ym = curMonth();
   const [invs, jobs] = await Promise.all([api().listInvoices({month:ym}), api().listJobs({})]);
   const byC = new Map(invs.map(i => [i.craftsmanId, i]));
+  const jobMap = new Map(jobs.map(j => [j.id, j]));
+  const diffOf = i => i.lines.filter(l => jobMap.get(l.jobId) && Number(jobMap.get(l.jobId).price) !== Number(l.amount));
   const waiting = new Map();
   jobs.filter(j => j.assignedTo && invoiceable(j) && jobMonth(j) === ym).forEach(j => { if(!byC.has(j.assignedTo)) waiting.set(j.assignedTo, (waiting.get(j.assignedTo) || 0) + 1); });
   const sum = invs.reduce((a, i) => a + i.total, 0), unpaid = invs.filter(i => i.status === "issued").reduce((a, i) => a + i.total, 0);
   const rows = invs.sort((a, b) => a.status.localeCompare(b.status)).map(i => `<div class="row-item">
       <span class="row-main"><b>${esc(i.from.name)}${i.from.tradeName ? ` <span class="small">${esc(i.from.tradeName)}</span>` : ""}</b>
         <span class="small">${esc(i.number)}　${i.lines.length}件　発行 ${fmtTime(i.issuedAt)}${i.paidAt ? `　支払 ${fmtDate(i.paidAt)}` : ""}</span>
-        <span class="small">${esc(bankText(i.bank)) || "振込先未登録"}</span></span>
+        <span class="small">${esc(bankText(i.bank)) || "振込先未登録"}</span>
+        ${diffOf(i).length ? `<span class="small warn">設定金額と違う案件があります：${esc(diffOf(i).map(l => `${l.title}（請求 ${yenFull(l.amount)} / 設定 ${yenFull(jobMap.get(l.jobId).price)}）`).join("、"))}。業者さまに再発行を依頼してください。</span>` : ""}</span>
       <span class="inv-right"><b class="inv-money">${yenFull(i.total)}</b><span class="pill ${i.status}">${INV_STATUS[i.status]}</span>
         <span class="row end"><button class="btn sub" data-act="inv-pdf" data-id="${esc(i.id)}">PDF</button>${i.status === "issued" ? `<button class="btn" data-act="inv-paid" data-id="${esc(i.id)}">支払済みにする</button>` : ""}</span></span></div>`).join("");
   const wait = [...waiting].map(([uid, n]) => { const c = S.crafts.get(uid); return `<div class="row-item"><span class="row-main"><b>${esc(c?.name || uid)}</b><span class="small">完了した案件 ${n}件　請求書はまだ届いていません</span></span>${c?.phone ? `<a class="btn sub" href="tel:${esc(c.phone)}">電話</a>` : ""}</div>`; }).join("");
@@ -1471,6 +1569,103 @@ async function viewAdminInvoices(ym){
     <div class="inv-sum" style="margin-bottom:14px"><span>請求合計 <b>${yenFull(sum)}</b></span><span>未払い <b>${yenFull(unpaid)}</b></span><span>${invs.length}件</span></div>
     ${rows ? `<div class="list">${rows}</div>` : `<div class="empty">${fmtMonth(ym)}分の請求書はまだありません。</div>`}
     ${wait ? `<h2 class="day-head"><b>未発行</b>${waiting.size}社</h2><div class="list">${wait}</div>` : ""}`;
+}
+
+/* ---------- 連絡（チャット） ---------- */
+const BASE_TITLE = document.title;
+const myRole = () => S.profile?.role === "admin" ? "admin" : "craftsman";
+const isUnread = t => { const r = myRole(), other = r === "admin" ? "craftsman" : "admin"; return t.lastFrom === other && (t.lastAt || 0) > (t[r + "ReadAt"] || 0); };
+const unreadCount = () => [...S.threads.values()].filter(isUnread).length;
+const chatHref = t => (myRole() === "admin" ? "#/admin/chat/" : "#/chat/") + t.id;
+const peerName = t => myRole() === "admin" ? (S.crafts.get(t.craftsmanId)?.name || t.craftsmanName || "業者") : "Refore";
+const chatBadge = () => { const n = unreadCount(); return `<span class="badge" data-badge="chat" ${n ? "" : "hidden"} aria-label="未読">${n}</span>`; };
+function updateChatBadges(){
+  const n = unreadCount();
+  document.querySelectorAll("[data-badge=chat]").forEach(el => { el.textContent = n; el.hidden = !n; });
+  document.title = (n ? `(${n}) ` : "") + BASE_TITLE;
+}
+function stopNotifier(){ if(S.notifUnsub){ S.notifUnsub(); S.notifUnsub = null; } S.threads = new Map(); updateChatBadges(); }
+function startNotifier(){
+  if(S.notifUnsub || !S.profile) return;
+  if(S.profile.role !== "admin" && S.profile.status !== "approved") return;
+  let first = true;
+  S.notifUnsub = api().watchThreads(S.profile.role === "admin" ? {} : {craftsmanId:S.user.uid}, list => {
+    const prev = S.threads;
+    S.threads = new Map(list.map(t => [t.id, t]));
+    if(!first) list.forEach(t => { const o = prev.get(t.id); if(isUnread(t) && (!o || (t.lastAt || 0) > (o.lastAt || 0))) incoming(t); });
+    first = false;
+    updateChatBadges();
+    if(/^#\/(admin\/)?chat\/?$/.test(location.hash)) route();
+  });
+}
+function incoming(t){
+  if(location.hash === chatHref(t) && !document.hidden) return;   // その会話を開いていれば通知しない
+  const title = `${peerName(t)}から連絡`;
+  toast(`${title}：${t.lastText}`);
+  if("Notification" in window && Notification.permission === "granted"){
+    try {
+      const n = new Notification(title, {body:`${t.jobTitle}\n${t.lastText}`, tag:t.id});
+      n.onclick = () => { window.focus(); location.hash = chatHref(t); n.close(); };
+    } catch(e) {}
+  }
+}
+function notifyBox(){
+  if(!("Notification" in window)) return `<p class="small" style="margin:0 0 14px">このブラウザでは、ポータルを開いている間に画面内でお知らせします（新着の数はメニューに表示されます）。</p>`;
+  if(Notification.permission === "granted") return `<p class="small" style="margin:0 0 14px">通知はオンです。ポータルを開いている間（別のタブを見ている時も）新しい連絡をお知らせします。</p>`;
+  if(Notification.permission === "denied") return `<div class="note">ブラウザの設定で、このサイトの通知がブロックされています。通知を受け取るには、ブラウザの設定から許可してください。</div>`;
+  return `<div class="note row between" style="gap:10px"><span>新しい連絡が届いたときに、パソコンやスマホの通知でお知らせできます。</span><button class="btn" data-act="notif-on">通知をオンにする</button></div>`;
+}
+async function viewChatList(){
+  const admin = myRole() === "admin";
+  const list = (await api().listThreads(admin ? {} : {craftsmanId:S.user.uid})).filter(t => t.lastAt).sort((a, b) => b.lastAt - a.lastAt);
+  const rows = list.map(t => { const u = isUnread(S.threads.get(t.id) || t); return `<a class="row-item chat-row${u ? " unread" : ""}" href="${chatHref(t)}">
+      <span class="row-main"><b>${esc(peerName(t))}</b><span class="small">${esc(t.jobTitle)}</span>
+        <span class="last">${t.lastFrom === myRole() ? "あなた：" : ""}${esc(t.lastText)}</span></span>
+      <span class="chat-r"><span class="small">${fmtTime(t.lastAt)}</span>${u ? `<span class="badge">新着</span>` : ""}</span></a>`; }).join("");
+  return `<h1>連絡</h1><p class="lead">案件ごとの${admin ? "業者さま" : "Refore"}とのやりとりです。</p>${notifyBox()}
+    ${rows ? `<div class="list">${rows}</div>` : `<div class="empty">まだやりとりはありません。<br>${admin ? "案件のページから業者さまにメッセージを送れます。" : "案件や受注のページから、Reforeに連絡できます。"}</div>`}`;
+}
+async function viewChat(tid){
+  const admin = myRole() === "admin";
+  const t = await api().getThread(tid);
+  const listHref = admin ? "#/admin/chat" : "#/chat";
+  if(!t || (!admin && t.craftsmanId !== S.user.uid)) return `${back(listHref, "連絡")}<div class="empty">この連絡は表示できません。</div>`;
+  const job = await api().getJob(t.jobId);
+  const jobHref = admin ? `#/admin/job/${esc(t.jobId)}` : job?.assignedTo === S.user.uid ? `#/work/${esc(t.jobId)}` : `#/job/${esc(t.jobId)}`;
+  const c = admin ? S.crafts.get(t.craftsmanId) : null;
+  return `${back(listHref, "連絡")}
+    <div class="chat-head panel"><div><b>${esc(peerName(t))}</b>${c?.tradeName ? ` <span class="small">${esc(c.tradeName)}</span>` : ""}
+      <div class="small">案件：${job ? `<a href="${jobHref}">${esc(t.jobTitle)}</a>` : esc(t.jobTitle)}</div></div>
+      ${c?.phone ? `<a class="btn sub" href="tel:${esc(c.phone)}">電話</a>` : !admin ? `<a class="btn sub" href="tel:${esc(CONTACT_TEL)}">電話</a>` : ""}</div>
+    <div class="chat-log" id="chat-log" aria-live="polite"><p class="small center">読み込み中…</p></div>
+    <form class="chat-form" data-form="chat" data-id="${esc(tid)}">
+      <textarea name="text" rows="2" maxlength="2000" placeholder="メッセージを入力" aria-label="メッセージ"></textarea>
+      <button class="btn">送信</button></form>
+    <p class="small chat-hint" style="margin:6px 0 0">パソコンは Ctrl＋Enter（Macは ⌘＋Enter）でも送信できます。</p>`;
+}
+function startChat(tid){
+  let marked = false;
+  return api().watchMessages(tid, msgs => {
+    const log = $("#chat-log"); if(!log) return;
+    let day = "";
+    log.innerHTML = msgs.length ? msgs.map(m => {
+      const d = isoOf(m.createdAt), mine = m.from === myRole();
+      const sep = d !== day ? `<div class="chat-day">${fmtDay(d)}</div>` : ""; day = d;
+      return `${sep}<div class="msg-row${mine ? " me" : ""}"><div class="bubble pre">${esc(m.text)}</div>
+        <span class="msg-meta">${mine ? "" : esc(m.name) + "　"}${String(new Date(m.createdAt).getHours()).padStart(2,"0")}:${String(new Date(m.createdAt).getMinutes()).padStart(2,"0")}</span></div>`;
+    }).join("") : `<p class="small center" style="margin:24px 0">まだメッセージはありません。最初のメッセージを送ってください。</p>`;
+    log.scrollTop = log.scrollHeight;
+    const t = S.threads.get(tid);
+    if(!marked || (t && isUnread(t))){ marked = true; api().markRead(tid, myRole()).catch(() => {}); }
+  });
+}
+function chatPanel(threads, jobId, assignedTo){
+  const rows = threads.filter(t => t.lastAt).sort((a, b) => b.lastAt - a.lastAt).map(t => { const u = isUnread(S.threads.get(t.id) || t); return `<a class="row-item chat-row${u ? " unread" : ""}" href="${chatHref(t)}" style="margin-top:8px">
+      <span class="row-main"><b>${esc(peerName(t))}</b><span class="last">${esc(t.lastText)}</span></span>
+      <span class="chat-r"><span class="small">${fmtTime(t.lastAt)}</span>${u ? `<span class="badge">新着</span>` : ""}</span></a>`; }).join("");
+  const needBtn = assignedTo && !threads.some(t => t.craftsmanId === assignedTo && t.lastAt);
+  return `<section class="panel"><h2>連絡</h2>${rows || `<p class="small" style="margin:0">まだやりとりはありません。</p>`}
+    ${needBtn ? `<button class="btn sub" style="margin-top:10px" data-act="chat-open" data-job="${esc(jobId)}" data-uid="${esc(assignedTo)}">発注先にメッセージを送る</button>` : ""}</section>`;
 }
 
 /* ---------- 管理：予定表 ---------- */
@@ -1679,12 +1874,15 @@ async function route(){
   const hash = location.hash || "#/";
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   const moved = hash !== S.lastHash; S.lastHash = hash;
-  const done = (html, opts) => { if(token !== S.tok) return; paint(html, opts); if(moved) window.scrollTo(0, 0); };
+  if(S.pageUnsub){ S.pageUnsub(); S.pageUnsub = null; }
+  let after = null;
+  const done = (html, opts) => { if(token !== S.tok) return; paint(html, opts); if(moved) window.scrollTo(0, 0); if(after) S.pageUnsub = after(); };
   if(!api()) return;
   try {
     if(!S.user) return done(parts[0] === "signup" ? viewSignup() : viewLogin(), {bare:true});
     if(!S.profile) return done(viewProfileForm(null, true), {bare:true});
     const p = S.profile;
+    startNotifier();
     if(p.role === "admin"){
       if(parts[0] !== "admin"){ location.replace("#/admin"); return; }
       const crafts = await api().listCraftsmen();
@@ -1699,6 +1897,7 @@ async function route(){
       else if(a === "craftsmen") html = await viewCraftsmen();
       else if(a === "calendar") html = await viewCalendar(b);
       else if(a === "invoices") html = await viewAdminInvoices(b);
+      else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
       else if(a === "craftsman") html = await viewCraftsman(b);
       else { location.replace("#/admin"); return; }
       return done(html);
@@ -1712,6 +1911,7 @@ async function route(){
     else if(a === "work") html = b ? await viewWorkDetail(b) : await viewWork();
     else if(a === "profile") html = viewProfileForm(p, false);
     else if(a === "invoice") html = await viewInvoice(b);
+    else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
     else if(!a || a === "jobs") html = await viewJobs();
     else { location.replace("#/jobs"); return; }
     done(html);
@@ -1811,6 +2011,20 @@ const ACTIONS = {
     const d = buildOrderDoc(job, priv, c);
     if(old?.number) d.number = old.number;
     await api().saveDocument(d); toast("発注書を作り直しました"); route();
+  },
+  async "chat-open"(el){
+    const jid = el.dataset.job, admin = myRole() === "admin", uid = admin ? el.dataset.uid : S.user.uid;
+    const job = await api().getJob(jid);
+    const c = admin ? (S.crafts.get(uid) || await api().getProfile(uid)) : S.profile;
+    const tid = `${jid}_${uid}`;
+    await api().ensureThread({id:tid, jobId:jid, craftsmanId:uid, craftsmanName:c?.name || "", jobTitle:job?.title || "", createdAt:Date.now(),
+      lastAt:0, lastText:"", lastFrom:"", adminReadAt:0, craftsmanReadAt:0});
+    go((admin ? "#/admin/chat/" : "#/chat/") + tid);
+  },
+  async "notif-on"(){
+    const r = await Notification.requestPermission();
+    toast(r === "granted" ? "通知をオンにしました" : "通知は許可されませんでした");
+    route();
   },
   async "inv-pdf"(el){
     const d = await api().getInvoice(el.dataset.id);
@@ -1932,8 +2146,8 @@ const FORMS = {
     if(!S.editPdf && mode === "open") throw new Error("案件PDFを添付してください");
     const title = g("title") || (S.editPdf ? S.editPdf.name.replace(/\.pdf$/i, "") : "");
     if(!title) throw new Error("案件PDFを添付してください");
-    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate};
-    if(!id) Object.assign(data, {price:0, taxMode:"税別", priceNote:"", description:"", items:[], photos:[]});
+    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price:Math.max(0, Math.round(Number(g("price")) || 0)), taxMode:"税別"};
+    if(!id) Object.assign(data, {priceNote:"", description:"", items:[], photos:[]});
     if(mode === "open" || mode === "draft") data.status = mode;
     if(mode === "open") data.publishedAt = Date.now();
     if(!id && !data.status) data.status = "draft";
@@ -1943,18 +2157,22 @@ const FORMS = {
     toast(mode === "open" ? "公開しました" : "保存しました");
     go(`#/admin/job/${jid}`);
   },
+  async chat(form){
+    const ta = form.elements.text, text = ta.value.trim();
+    if(!text) return;
+    const role = myRole();
+    await api().sendMessage(form.dataset.id, {from:role, uid:S.user.uid, name:role === "admin" ? "Refore" : (S.profile.name || ""), text, createdAt:Date.now()});
+    ta.value = ""; ta.focus();
+  },
   async invoice(form){
     const ym = form.dataset.month, uid = S.user.uid, p = S.profile;
     if(!p.bank?.number) throw new Error("先に登録情報で振込先を入力してください");
     const jobs = await api().listJobs({assignedTo:uid});
-    const lines = [];
-    for(const c of form.querySelectorAll("input[name=inc]:checked")){
-      const j = jobs.find(x => x.id === c.value); if(!j) continue;
-      const amount = Number(form.elements["amt_" + j.id].value) || 0;
-      if(amount <= 0) throw new Error(`「${j.title}」の金額を入力してください`);
-      lines.push({jobId:j.id, title:j.title, place:(j.pref || "") + (j.city || ""), date:fmtDate(j.finishedAt || j.endDate), amount});
-    }
-    if(!lines.length) throw new Error("請求する案件を1つ以上選んでください");
+    // 金額は案件に設定された支払金額をそのまま使う（業者は変更できない）
+    const lines = jobs.filter(j => invoiceable(j) && jobMonth(j) === ym && Number(j.price) > 0)
+      .sort((a, b) => (a.finishedAt || 0) - (b.finishedAt || 0))
+      .map(j => ({jobId:j.id, title:j.title, place:(j.pref || "") + (j.city || ""), date:fmtDate(j.finishedAt || j.endDate), amount:Number(j.price)}));
+    if(!lines.length) throw new Error("金額が設定された案件がありません");
     const prev = await api().getInvoice(`${uid}_${ym}`);
     if(prev?.status === "paid") throw new Error("この月の請求書はすでに支払済みです");
     const base = lines.reduce((a, l) => a + l.amount, 0), tax = Math.floor(base * TAX_RATE);
@@ -1996,7 +2214,10 @@ document.addEventListener("submit", async e => {
   catch(err) { console.error(err); toast(err.message || String(err)); }
   finally { btns.forEach(b => b.disabled = false); }
 });
-document.addEventListener("input", e => { if(e.target.closest(".item-row")) syncItems(e.target.form); if(e.target.closest("form[data-form=invoice]")) syncInvoice(e.target.form); });
+document.addEventListener("keydown", e => {
+  if(e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.closest("form[data-form=chat]")){ e.preventDefault(); e.target.form.requestSubmit(); }
+});
+document.addEventListener("input", e => { if(e.target.closest(".item-row")) syncItems(e.target.form);  });
 document.addEventListener("change", e => {
   if(e.target.matches("[data-pdfimport]")){
     importPdf(e.target).catch(err => { console.error(err); toast("PDFを読み込めませんでした（" + (err.message || err) + "）"); const b = $("#pdf-result"); if(b) b.innerHTML = ""; });
@@ -2030,6 +2251,7 @@ async function boot(){
     return;
   }
   S.api.onAuth(async u => {
+    stopNotifier();
     S.user = u;
     try { S.profile = u ? await S.api.getProfile(u.uid) : null; } catch(e) { console.error(e); S.profile = null; }
     route();
