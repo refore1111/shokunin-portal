@@ -336,6 +336,19 @@ mark{background:var(--warn-soft);color:inherit;padding:0}
 .cmt-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;margin-bottom:4px}
 .cmt-head b{font-size:14px;color:var(--kon-text)}
 .cmt p.pre{margin:0;font-size:15px;line-height:1.75}
+.notice-box{background:var(--surface);border:2px solid var(--caution);border-radius:8px;padding:12px 14px;margin:0 0 16px}
+.notice-box h2{font-size:15px;margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.notice-box ul{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.notice-box li a{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 10px;padding:8px 6px;border-radius:4px;text-decoration:none;color:var(--ink)}
+.notice-box li a:hover{background:var(--paper)}
+.notice-box li + li a{border-top:1px solid var(--line)}
+.flags-in,.flags{display:flex;flex-wrap:wrap;gap:4px}
+.flags{margin:0 0 6px}
+.flag{font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;line-height:1.5;white-space:nowrap}
+.flag.blue{background:var(--kon);color:var(--kon-ink)}
+.flag.orange{background:var(--caution);color:#1d1600}
+.flag.green{background:var(--ok);color:#fff}
+.flag.gray{background:var(--line);color:var(--ink)}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -1223,7 +1236,7 @@ function reportsBlock(rs, admin){
     ${(r.additions || []).map(a => commentBox(r.craftsmanName, a.at, a.note, `追加の写真 ${a.count}枚`, admin, false)).join("")}
     ${photosGrid(r.photos)}
     ${r.reviewComment ? `<div class="note" style="margin-top:10px">Reforeからのコメント：${esc(r.reviewComment)}</div>` : ""}
-    ${admin && r.status === "submitted" ? `<div class="row" style="margin-top:10px"><button class="btn" data-act="report-ok" data-id="${esc(r.id)}" data-job="${esc(r.jobId)}">確認済みにする</button><button class="btn danger" data-act="report-return" data-id="${esc(r.id)}">差し戻す</button></div>` : ""}
+    ${admin && r.status === "submitted" ? `<div class="row" style="margin-top:10px"><button class="btn" data-act="report-ok" data-id="${esc(r.id)}" data-job="${esc(r.jobId)}">確認済みにする</button><button class="btn danger" data-act="report-return" data-id="${esc(r.id)}" data-job="${esc(r.jobId)}">差し戻す</button></div>` : ""}
   </section>`).join("");
 }
 
@@ -1318,6 +1331,7 @@ function viewProfileForm(p, isNew){
         <label class="field"><span>口座番号</span><input type="text" name="bankNumber" value="${esc(v.bank?.number)}" inputmode="numeric" pattern="[0-9]{4,8}" title="数字4〜8桁"></label>
       </div>
       <label class="field" style="margin:0"><span>口座名義（カナ）</span><input type="text" name="bankHolder" value="${esc(v.bank?.holder)}"></label></fieldset>
+    <label class="toggle" style="margin:0 0 16px"><input type="checkbox" name="emailNotify" ${v.emailNotify === false ? "" : "checked"}>受注した案件の連絡（発注・差し戻し・Reforeからのメッセージなど）をメールで受け取る</label>
     <label class="field"><span>自己PR <small>任意</small></span><textarea name="pr" placeholder="得意な作業や、対応できる時間帯など">${esc(v.pr)}</textarea></label>
     <button class="btn block">${isNew ? "審査を申し込む" : "登録情報を保存"}</button>
   </form>`;
@@ -1446,6 +1460,19 @@ async function viewWorkDetail(id){
     <div class="stack">${step}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${privateBlock(priv)}${jobDetailBlock(job, true)}</div></div>`;
 }
+/* ---------- メール通知（受注後の動き。Apps Script から info@refore.co.jp 名義で送信） ---------- */
+// to：管理者から業者に送るときの業者UID（業者からのときは空＝Reforeに届く）
+async function notifyMail(jobId, event, text = "", {to = "", kind = "event"} = {}){
+  if(!jobId) return;
+  if(api()?.mode === "demo"){ (S.demoMails ||= []).push({jobId, event, text, to, kind}); return; }
+  if(!PHOTO_UPLOAD_URL) return;
+  try {
+    const idToken = await api().getIdToken();
+    fetch(PHOTO_UPLOAD_URL, {method:"POST", body:JSON.stringify({action:"notify", idToken, jobId, event, text:String(text || "").slice(0, 1500), to, kind})})
+      .then(r => r.json()).then(j => { if(!j.ok) console.warn("メール通知に失敗", j.error); }).catch(e => console.warn("メール通知に失敗", e));
+  } catch(e) { console.warn("メール通知に失敗", e); }
+}
+
 /* ---------- 完了報告の写真送信 ---------- */
 const photoUploadOn = () => api()?.mode === "demo" || !!PHOTO_UPLOAD_URL;
 S.reportFiles = []; S.uploading = false;
@@ -1932,28 +1959,85 @@ const seenKey = k => `refore_seen_${S.user?.uid}_${k}`;
 const getSeen = k => { try { return Number(localStorage.getItem(seenKey(k))) || 0; } catch(e) { return 0; } };
 const setSeen = k => { try { localStorage.setItem(seenKey(k), String(Date.now())); } catch(e) {} };
 const BADGE_LABEL = {jobs:"新着・対応が必要", applied:"結果が出た応募", work:"対応中の案件", invoices:"支払待ちの請求書"};
-function badge(k){ const n = S.badges[k] || 0; return `<span class="badge" data-badge="${k}" ${n ? "" : "hidden"} aria-label="${BADGE_LABEL[k] || ""}${n}件">${n}</span>`; }
+function badgeTitle(k){
+  const sum = {}; (S.notices?.[k] || []).forEach(it => it.reasons.forEach(r => { sum[r.key] = (sum[r.key] || 0) + 1; }));
+  return Object.entries(sum).map(([t, c]) => `${t}：${c}件`).join("\n");
+}
+function badge(k){ const n = S.badges[k] || 0; return `<span class="badge" data-badge="${k}" ${n ? "" : "hidden"} title="${esc(badgeTitle(k))}" aria-label="${esc(badgeTitle(k) || (BADGE_LABEL[k] || "") + n + "件")}">${n}</span>`; }
 function updateBadges(){
-  document.querySelectorAll("[data-badge]").forEach(el => { const k = el.dataset.badge; if(k === "chat") return; const n = S.badges[k] || 0; el.textContent = n; el.hidden = !n; });
+  document.querySelectorAll("[data-badge]").forEach(el => {
+    const k = el.dataset.badge; if(k === "chat") return;
+    const n = S.badges[k] || 0; el.textContent = n; el.hidden = !n;
+    el.title = badgeTitle(k);
+  });
+}
+// お知らせの中身：{key:[{href, title, reasons:[{t, tone}]}]}（タブのバッジ・お知らせ欄・カードの目印に使う）
+function buildNotices(seenJobs, seenApplied){
+  const d = S.bw, out = {}, add = (k, href, title, t, tone, key = t) => {
+    const list = out[k] ||= [], it = list.find(x => x.href === href);
+    if(it) it.reasons.push({t, tone, key}); else list.push({href, title, reasons:[{t, tone, key}]});
+  };
+  if(S.profile?.role === "admin"){
+    const jobs = new Map((d.jobs || []).map(j => [j.id, j])), napp = {};
+    (d.apps || []).forEach(a => { const j = jobs.get(a.jobId); if(j && (j.status === "open" || j.status === "closed")) napp[a.jobId] = (napp[a.jobId] || 0) + 1; });
+    Object.entries(napp).forEach(([id, n]) => add("jobs", `#/admin/job/${id}`, jobs.get(id).title, `応募 ${n}件・発注先を選んでください`, "blue", "応募あり（発注先の選定待ち）"));
+    (d.jobs || []).filter(j => j.status === "finished").forEach(j => add("jobs", `#/admin/job/${j.id}`, j.title, "作業完了・完了確認をしてください", "orange"));
+    (d.reports || []).forEach(r => add("jobs", `#/admin/job/${r.jobId}`, r.jobTitle || jobs.get(r.jobId)?.title || "案件", "完了報告が届きました", "orange"));
+    (d.invoices || []).sort((a, b) => a.issuedAt - b.issuedAt).forEach(v => add("invoices", `#/admin/invoices/${v.month}`, `${v.from?.name || "業者"}　${fmtMonth(v.month)}分 ${yenFull(v.total)}`, "支払待ち", "orange"));
+  } else {
+    const appliedIds = new Set((d.myApps || []).map(a => a.jobId));
+    (d.open || []).filter(j => (j.publishedAt || j.createdAt || 0) > seenJobs && !appliedIds.has(j.id))
+      .forEach(j => add("jobs", `#/job/${j.id}`, j.title, "新着の募集", "blue"));
+    (d.myApps || []).filter(a => (a.status === "selected" || a.status === "rejected") && (a.updatedAt || 0) > seenApplied)
+      .forEach(a => add("applied", a.status === "selected" ? `#/work/${a.jobId}` : `#/job/${a.jobId}`, a.jobTitle, a.status === "selected" ? "採用されました" : "見送りになりました", a.status === "selected" ? "green" : "gray"));
+    const reported = new Set((d.myReports || []).filter(r => r.status !== "returned").map(r => r.jobId));
+    const returned = new Set((d.myReports || []).filter(r => r.status === "returned").map(r => r.jobId));
+    (d.mine || []).forEach(j => {
+      if(j.status === "assigned") add("work", `#/work/${j.id}`, j.title, `作業開始を押してください（${fmtDay(workDays(j).start)}〜）`, "blue", "作業開始待ち");
+      else if(j.status === "working") add("work", `#/work/${j.id}`, j.title, "作業完了を押してください", "blue");
+      else if(j.status === "finished" && !reported.has(j.id)) add("work", `#/work/${j.id}`, j.title, returned.has(j.id) ? "差し戻し・完了報告をやり直してください" : "完了報告をしてください", "orange");
+    });
+  }
+  return out;
 }
 function computeBadges(){
-  const d = S.bw, b = {};
+  const n = buildNotices(getSeen("jobs"), getSeen("applied"));
+  S.notices = n;
+  S.badges = Object.fromEntries(Object.entries(n).map(([k, v]) => [k, v.length]));
+  updateBadges(); decorateNotices();
+}
+// いま開いているタブの「お知らせ」：何についての通知かを一覧と目印で示す
+function currentNoticeKey(){
+  const h = location.hash || "#/";
   if(S.profile?.role === "admin"){
-    const jobs = new Map((d.jobs || []).map(j => [j.id, j])), need = new Set();
-    (d.apps || []).forEach(a => { const j = jobs.get(a.jobId); if(j && (j.status === "open" || j.status === "closed")) need.add(a.jobId); });   // 応募が来ている
-    (d.jobs || []).forEach(j => { if(j.status === "finished") need.add(j.id); });                                                         // 作業完了→完了確認待ち
-    (d.reports || []).forEach(r => need.add(r.jobId));                                                                                    // 完了報告の確認待ち
-    b.jobs = need.size;
-    b.invoices = (d.invoices || []).length;                                                                                                // 支払待ちの請求書
-  } else {
-    const seenJobs = getSeen("jobs"), seenApplied = getSeen("applied");
-    const appliedIds = new Set((d.myApps || []).map(a => a.jobId));
-    b.jobs = (d.open || []).filter(j => (j.publishedAt || j.createdAt || 0) > seenJobs && !appliedIds.has(j.id)).length;                 // 新着の募集
-    b.applied = (d.myApps || []).filter(a => (a.status === "selected" || a.status === "rejected") && (a.updatedAt || 0) > seenApplied).length; // 採用・見送りの結果
-    const reported = new Set((d.myReports || []).filter(r => r.status !== "returned").map(r => r.jobId));
-    b.work = (d.mine || []).filter(j => j.status === "assigned" || j.status === "working" || (j.status === "finished" && !reported.has(j.id))).length; // 開始・完了・報告が必要
+    if(/^#\/admin\/?$/.test(h) || h.startsWith("#/admin/list")) return "jobs";
+    if(h.startsWith("#/admin/invoices")) return "invoices";
+    return "";
   }
-  S.badges = b; updateBadges();
+  const t = h.replace(/^#\/?/, "").split("/")[0] || "jobs";
+  return ["jobs", "applied", "work"].includes(t) && !h.match(/^#\/(job|work)\/./) ? t : "";
+}
+function decorateNotices(){
+  const main = $(".main"); if(!main) return;
+  main.querySelectorAll(".notice-box, .flags").forEach(el => el.remove());
+  const k = currentNoticeKey(); if(!k) return;
+  // 新着・結果は「このタブを開く前に未読だったもの」を表示する
+  const items = (k === "jobs" || k === "applied") && S.profile?.role !== "admin"
+    ? (buildNotices(S.viewSeen?.jobs ?? getSeen("jobs"), S.viewSeen?.applied ?? getSeen("applied"))[k] || [])
+    : (S.notices?.[k] || []);
+  if(!items.length) return;
+  const flag = r => `<span class="flag ${r.tone}">${esc(r.t)}</span>`;
+  const box = document.createElement("section");
+  box.className = "notice-box"; box.setAttribute("aria-label", "お知らせ");
+  box.innerHTML = `<h2>お知らせ <span class="badge">${items.length}</span></h2><ul>${items.map(it => `<li><a href="${it.href}"><b>${esc(it.title)}</b><span class="flags-in">${it.reasons.map(flag).join("")}</span></a></li>`).join("")}</ul>`;
+  const head = main.querySelector(".page-head") || main.querySelector(".lead") || main.querySelector("h1");
+  if(head) head.after(box); else main.prepend(box);
+  // 一覧のカードにも同じ目印を付ける
+  items.forEach(it => main.querySelectorAll(`a.job[href="${it.href}"], a.row-item[href="${it.href}"]`).forEach(card => {
+    if(card.closest(".notice-box")) return;
+    const f = document.createElement("span"); f.className = "flags"; f.innerHTML = it.reasons.map(flag).join("");
+    card.classList.contains("job") ? card.prepend(f) : card.querySelector(".row-main")?.prepend(f);
+  }));
 }
 function startBadges(){
   if(S.badgeUnsubs.length || !S.profile) return;
@@ -2289,7 +2373,7 @@ async function route(){
   const moved = hash !== S.lastHash; S.lastHash = hash;
   if(S.pageUnsub){ S.pageUnsub(); S.pageUnsub = null; }
   let after = null;
-  const done = (html, opts) => { if(token !== S.tok) return; paint(html, opts); if(moved) window.scrollTo(0, 0); if(after) S.pageUnsub = after(); };
+  const done = (html, opts) => { if(token !== S.tok) return; paint(html, opts); if(moved) window.scrollTo(0, 0); if(after) S.pageUnsub = after(); decorateNotices(); };
   if(!api()) return;
   try {
     if(!S.user) return done(parts[0] === "signup" ? viewSignup() : viewLogin(), {bare:true});
@@ -2298,8 +2382,10 @@ async function route(){
     startNotifier(); startBadges();
     if(p.role !== "admin"){
       const t = parts[0] || "jobs";
-      if(t === "jobs" || t === "job"){ setSeen("jobs"); computeBadges(); }
-      if(t === "applied"){ setSeen("applied"); computeBadges(); }
+      S.viewSeen ||= {};
+      if((t === "jobs" || t === "applied") && S.lastTab !== t){ S.viewSeen[t] = getSeen(t); setSeen(t); }
+      if(t === "job" && S.lastTab !== "jobs" && S.lastTab !== "job"){ setSeen("jobs"); }
+      S.lastTab = t; computeBadges();
     }
     if(p.role === "admin"){
       if(parts[0] !== "admin"){ location.replace("#/admin"); return; }
@@ -2412,6 +2498,7 @@ const ACTIONS = {
     }[status];
     if(conf && !await ask(conf)) return;
     await api().setJobStatus(id, status);
+    if(status === "completed"){ const j = await api().getJob(id); if(j?.assignedTo) notifyMail(id, "完了確認されました", "Reforeが作業の完了を確認しました。月末に「請求書」タブからまとめて請求してください。", {to:j.assignedTo}); }
     toast({open:"公開しました", closed:"締め切りました", completed:"完了確認にしました"}[status]); route();
   },
   async assign(el){
@@ -2420,6 +2507,7 @@ const ACTIONS = {
     const [jobD, priv] = await Promise.all([api().getJob(job), api().getJobPrivate(job)]);
     const c = S.crafts.get(uid) || await api().getProfile(uid);
     await api().assign(job, uid, buildOrderDoc(jobD, priv, c));
+    notifyMail(job, "発注されました", `「${jobD.title}」をあなたに発注しました。ポータルで現場情報と発注書を確認してください。\n作業日：${fmtRange(jobD.startDate, jobD.endDate)}`, {to:uid});
     toast(`${name} さんに発注し、発注書を作成しました`); route();
   },
   async "order-regen"(el){
@@ -2470,6 +2558,7 @@ const ACTIONS = {
     location.href = reportMailto(job, priv);
     if(!await ask({title:"報告メールは送りましたか？", body:`写真を添付したメールを ${REPORT_EMAIL} に送ってから「報告済み」にしてください。`, ok:"送ったので報告済みにする"})) return;
     await api().submitReport({jobId:id, jobTitle:job?.title || "", craftsmanId:S.user.uid, craftsmanName:S.profile.name, method:"email"});
+    notifyMail(id, "完了報告が届きました（メール）", `写真と報告内容は ${REPORT_EMAIL} にメールで送られています。`);
     toast("報告済みにしました"); route();
   },
   async "chat-open"(el){
@@ -2497,6 +2586,7 @@ const ACTIONS = {
     if(!await ask({title:`${d.from.name} さんの請求を支払済みにしますか？`, body:`${fmtMonth(d.month)}分 ${yenFull(d.total)}（${d.lines.length}件）。含まれる案件はすべて「支払済み」になります。`, ok:"支払済みにする"})) return;
     await api().updateInvoice(d.id, {status:"paid", paidAt:Date.now()});
     for(const l of d.lines) await api().setJobStatus(l.jobId, "paid");
+    if(d.lines[0]) notifyMail(d.lines[0].jobId, `${fmtMonth(d.month)}分の請求書を支払済みにしました`, `請求番号：${d.number}\nお支払い金額：${yenFull(d.total)}（${d.lines.length}件）`, {to:d.craftsmanId});
     toast("支払済みにしました"); route();
   },
   async "dl-order"(el){
@@ -2534,6 +2624,7 @@ const ACTIONS = {
       (moved ? `予定の開始日（${fmtDay(job.startDate)}）と違うため、工期を「${fmtRange(today, newEnd)}」（${dur + 1}日間）に合わせて、予定表も更新します。` : "");
     if(!await ask({title:"作業を開始しますか？", body, ok:"作業を開始する"})) return;
     await api().setWorkProgress(id, "working", {startDate:today, endDate:newEnd, plannedStart:ps, plannedEnd:pe});
+    notifyMail(id, "作業を開始しました", `${S.profile.name || "業者"}さんが作業を開始しました（${fmtFull(Date.now())}）。\n工期：${fmtRange(today, newEnd)}`);
     toast(moved ? "作業開始を記録し、工期を更新しました" : "作業開始を記録しました"); route();
   },
   async "work-finish"(el){
@@ -2541,17 +2632,25 @@ const ACTIONS = {
     const body = `完了日時を「${fmtFull(Date.now())}」として記録します。続けて完了報告をしてください。`;
     if(!await ask({title:"作業を完了しますか？", body, ok:"作業を完了する"})) return;
     await api().setWorkProgress(id, "finished", {});
+    notifyMail(id, "作業が完了しました", `${S.profile.name || "業者"}さんが作業完了を押しました（${fmtFull(Date.now())}）。完了報告をお待ちください。`);
     toast("作業完了を記録しました"); route();
   },
   async "report-ok"(el){
     await api().setReportStatus(el.dataset.id, "approved", "");
-    if(await ask({title:"完了報告を確認済みにしました", body:"続けて、この案件を「完了確認済み」にしますか？", ok:"完了確認にする"})) await api().setJobStatus(el.dataset.job, "completed");
+    const j = await api().getJob(el.dataset.job);
+    const done = await ask({title:"完了報告を確認済みにしました", body:"続けて、この案件を「完了確認済み」にしますか？", ok:"完了確認にする"});
+    if(done) await api().setJobStatus(el.dataset.job, "completed");
+    if(j?.assignedTo) notifyMail(el.dataset.job, done ? "完了報告を確認し、完了確認しました" : "完了報告を確認しました",
+      done ? "月末に「請求書」タブからまとめて請求してください。" : "", {to:j.assignedTo});
     route();
   },
   async "report-return"(el){
     const comment = await ask({title:"完了報告を差し戻す", body:"直してほしい点を書いてください。業者さまの画面に表示されます。", input:"textarea", ok:"差し戻す", danger:true, placeholder:"例：浴室の施工後写真が見当たりません"});
     if(comment === false) return;
-    await api().setReportStatus(el.dataset.id, "returned", comment.trim()); toast("差し戻しました"); route();
+    await api().setReportStatus(el.dataset.id, "returned", comment.trim());
+    const j = await api().getJob(el.dataset.job);
+    if(j?.assignedTo) notifyMail(el.dataset.job, "完了報告が差し戻されました", `Reforeからのコメント：\n${comment.trim()}\n\n内容を確認して、もう一度完了報告をしてください。`, {to:j.assignedTo});
+    toast("差し戻しました"); route();
   },
   async "craft-status"(el){
     const {uid, status} = el.dataset;
@@ -2586,7 +2685,7 @@ const FORMS = {
     inv = inv ? normInvoice(inv) : "";
     if(inv && !invoiceOk(inv)) throw new Error("インボイス登録番号は「T」と13桁の数字で入力してください");
     const g = k => String(fd.get(k) || "").trim();
-    const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr"), address:g("address"),
+    const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr"), address:g("address"), emailNotify:!!form.elements.emailNotify?.checked,
       bank:{bankName:g("bankName"), branch:g("bankBranch"), type:g("bankType"), number:g("bankNumber"), holder:g("bankHolder")}};
     if(!S.profile){
       await api().createProfile(S.user.uid, {...data, role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now()});
@@ -2643,6 +2742,8 @@ const FORMS = {
     const role = myRole();
     await api().sendMessage(form.dataset.id, {from:role, uid:S.user.uid, name:role === "admin" ? "Refore" : (S.profile.name || ""), text, createdAt:Date.now()});
     ta.value = ""; ta.focus();
+    const t = S.threads.get(form.dataset.id) || await api().getThread(form.dataset.id);
+    if(t) notifyMail(t.jobId, "新しい連絡があります", text, {to:role === "admin" ? t.craftsmanId : "", kind:"chat"});
   },
   async invoice(form){
     const ym = form.dataset.month, uid = S.user.uid, p = S.profile;
@@ -2663,6 +2764,7 @@ const FORMS = {
       from:{name:p.name || "", tradeName:p.tradeName || "", address:p.address || "", phone:p.phone || "", email:p.email || "", invoiceNumber:p.invoiceNumber || ""},
       bank:{...p.bank}
     });
+    notifyMail(lines[0].jobId, `${fmtMonth(ym)}分の請求書が届きました`, `${p.name || ""}さんから請求書が${prev ? "再" : ""}発行されました。\n${lines.length}件　合計 ${yenFull(base + tax)}（税込）`);
     toast("請求書を発行しました"); route();
   },
   async report(form){
@@ -2693,16 +2795,19 @@ const FORMS = {
           await api().ensureThread({id:tid, jobId:id, craftsmanId:S.user.uid, craftsmanName:S.profile.name || "", jobTitle:job?.title || "", createdAt:Date.now(), lastAt:0, lastText:"", lastFrom:"", adminReadAt:0, craftsmanReadAt:0});
           await api().sendMessage(tid, {from:"craftsman", uid:S.user.uid, name:S.profile.name || "", text:`完了報告の写真を${sent}枚、追加で送りました。${note ? "\n" + note : ""}`, createdAt:Date.now()});
         } catch(e) { console.error(e); }
+        notifyMail(id, "完了報告の写真が追加されました", `追加の写真：${sent}枚${note ? "\nコメント：" + note : ""}`);
         toast(`写真を${sent}枚、追加で送りました`); route(); return;
       }
       await api().submitReport({jobId:id, jobTitle:job?.title || "", craftsmanId:S.user.uid, craftsmanName:S.profile.name, method:"photos",
         photoCount:sent, folderUrl:S.reportFolder || "", note:form.elements.note?.value.trim() || ""});
       S.reportFolder = "";
+      notifyMail(id, "完了報告が届きました", `写真：${sent}枚${form.elements.note?.value.trim() ? "\nコメント：" + form.elements.note.value.trim() : ""}`);
       toast(`写真${sent}枚を送り、完了報告しました`); route(); return;
     }
     if(!await ask({title:"報告メールは送りましたか？", body:`写真を添付したメールを ${REPORT_EMAIL} に送ってから「報告済み」にしてください。`, ok:"送ったので報告済みにする"})) return;
     const job = await api().getJob(id);
     await api().submitReport({jobId:id, jobTitle:job?.title || "", craftsmanId:S.user.uid, craftsmanName:S.profile.name, method:"email"});
+    notifyMail(id, "完了報告が届きました（メール）", `写真と報告内容は ${REPORT_EMAIL} にメールで送られています。`);
     toast("報告済みにしました"); route();
   }
 };
