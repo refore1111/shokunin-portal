@@ -339,7 +339,9 @@ const PAYMENT_TERMS = "作業完了の確認後、60日以内に指定口座へ�
 const TAX_RATE = 0.1;
 const HTML2PDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
 const JSPDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-const PDFJS_BASE = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+// PDF表示ライブラリ（日本語の文字データ cmaps と標準フォントを含む配信元を使う。1つ目が使えなければ2つ目）
+const PDFJS_SOURCES = ["https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/", "https://unpkg.com/pdfjs-dist@3.11.174/"];
+let PDFJS_BASE = PDFJS_SOURCES[0];
 const UNITS = ["式","㎡","m","枚","台","箇所","個","本","室","セット","日","人工"];
 
 const TRADES = ["ハウスクリーニング","エアコンクリーニング","クロス張替え","床（CF・フロアタイル）","塗装","設備交換","簡易修繕","退去立会","その他"];
@@ -429,8 +431,14 @@ function syncItems(form){
 
 /* ---------- 案件PDFの読み込み ---------- */
 async function openPdf(file){
-  if(!window.pdfjsLib) await loadScript(PDFJS_BASE + "pdf.min.js");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "pdf.worker.min.js";
+  if(!window.pdfjsLib){
+    let err;
+    for(const base of PDFJS_SOURCES){
+      try { await loadScript(base + "build/pdf.min.js"); PDFJS_BASE = base; err = null; break; } catch(e) { err = e; }
+    }
+    if(err) throw new Error("PDFを表示する部品を読み込めませんでした。通信環境を確認してください");
+  }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "build/pdf.worker.min.js";
   return pdfjsLib.getDocument({data:await file.arrayBuffer(), cMapUrl:PDFJS_BASE + "cmaps/", cMapPacked:true,
     standardFontDataUrl:PDFJS_BASE + "standard_fonts/", useSystemFonts:true, isEvalSupported:false}).promise;
 }
