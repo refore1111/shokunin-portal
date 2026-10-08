@@ -1469,7 +1469,8 @@ async function notifyMail(jobId, event, text = "", {to = "", kind = "event"} = {
   try {
     const idToken = await api().getIdToken();
     fetch(PHOTO_UPLOAD_URL, {method:"POST", body:JSON.stringify({action:"notify", idToken, jobId, event, text:String(text || "").slice(0, 1500), to, kind})})
-      .then(r => r.json()).then(j => { if(!j.ok) console.warn("メール通知に失敗", j.error); }).catch(e => console.warn("メール通知に失敗", e));
+      .then(r => r.json()).then(j => { if(!j.ok){ console.warn("メール通知に失敗", j.error); toast("メール通知を送れませんでした：" + (j.error || "原因不明")); } })
+      .catch(e => { console.warn("メール通知に失敗", e); toast("メール通知を送れませんでした（写真の受け口に接続できません）"); });
   } catch(e) { console.warn("メール通知に失敗", e); }
 }
 
