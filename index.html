@@ -1164,11 +1164,21 @@ function photosGrid(urls){
   if(!urls?.length) return "";
   return `<div class="photos">${urls.map((u, i) => `<div class="ph"><button type="button" class="zoom" data-act="zoom" data-src="${esc(u)}" aria-label="写真${i+1}を拡大"><img src="${esc(u)}" alt="" loading="lazy"></button></div>`).join("")}</div>`;
 }
+// 予定表・画面に出す工期：作業開始が押されていれば「作業開始日」から、案件作成時の工期と同じ日数
+function workDays(j){
+  const ps = j.plannedStart || j.startDate, pe = j.plannedEnd || j.endDate || ps;
+  const days = ps && pe && pe >= ps ? Math.round((new Date(pe + "T00:00:00") - new Date(ps + "T00:00:00")) / 86400000) : 0;
+  if(j.startedAt){
+    const s = isoOf(j.startedAt), d = new Date(s + "T00:00:00"); d.setDate(d.getDate() + days);
+    return {start:s, end:isoOf(d.getTime()), actual:true, ps, pe, days};
+  }
+  return {start:j.startDate, end:j.endDate && j.endDate >= j.startDate ? j.endDate : j.startDate, actual:false, ps, pe, days};
+}
 function jobCard(j, {href, stampHtml = "", foot = "", showPrice = false} = {}){
   return `<a class="job" href="${href}">
     ${tagsHtml(j.trades)}
     <h3>${esc(j.title)}</h3>
-    <dl class="meta">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>日程</dt><dd>${fmtRange(j.startDate, j.endDate)}</dd></dl>
+    <dl class="meta">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>日程</dt><dd>${fmtRange(workDays(j).start, workDays(j).end)}</dd></dl>
     ${showPrice && Number(j.price) > 0 ? `<div class="price"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : ""}
     ${foot}${stampHtml}</a>`;
 }
@@ -1177,8 +1187,7 @@ function jobDetailBlock(j, showPrice = false){
     ${tagsHtml(j.trades)}
     <h1>${esc(j.title)}</h1>
     ${showPrice ? (Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : `<p class="small warn" style="margin:4px 0 10px">支払金額はReforeが設定します（未設定）</p>`) : ""}
-    <dl class="kv">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>開始日${j.startedAt ? "（実績）" : ""}</dt><dd>${fmtDay(j.startDate)}</dd><dt>終了日${j.finishedAt ? "（実績）" : ""}</dt><dd>${fmtDay(j.endDate || j.startDate)}</dd>
-      ${j.plannedStart && (j.plannedStart !== j.startDate || (j.plannedEnd || j.plannedStart) !== (j.endDate || j.startDate)) ? `<dt>当初の予定</dt><dd>${fmtRange(j.plannedStart, j.plannedEnd)}</dd>` : ""}</dl>
+    <dl class="kv">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}${(w => `<dt>開始日</dt><dd>${fmtDay(w.start)}</dd><dt>終了日</dt><dd>${fmtDay(w.end)}</dd>`)(workDays(j))}</dl>
     ${j.items?.length ? `<h2>作業内訳</h2>${itemsTable(j)}` : ""}
     ${j.description ? `<h2>作業内容</h2><p class="pre">${esc(j.description)}</p>` : ""}
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
@@ -2063,7 +2072,7 @@ async function viewCalendar(ym, company = ""){
   const gridStart = addDays(first, -new Date(y, m - 1, 1).getDay());
   const gridEnd = addDays(last, 6 - new Date(y, m, 0).getDay());
   // 表示中の月にかかる案件だけ、管理会社（現場情報）を読み込む
-  const shown = jobs.filter(j => j.status !== "draft" && j.startDate).map(j => ({...j, endDate:j.endDate && j.endDate >= j.startDate ? j.endDate : j.startDate}))
+  const shown = jobs.filter(j => j.status !== "draft" && j.startDate).map(j => { const w = workDays(j); return {...j, startDate:w.start, endDate:w.end, _w:w}; })
     .filter(j => j.startDate <= gridEnd && j.endDate >= gridStart);
   const privs = await Promise.all(shown.map(j => api().getJobPrivate(j.id).catch(() => ({}))));
   shown.forEach((j, i) => { j.manager = String(privs[i]?.manager || "").trim(); });
@@ -2131,7 +2140,7 @@ function calPopup(j){
     <p class="small" style="margin:-6px 0 10px">管理会社：${esc(j.manager || "未設定")}</p>
     <dl class="kv"><dt>工事開始</dt><dd>${fmtDate(j.startDate)}${j.startedAt ? `<br><span class="small">作業開始 ${fmtFull(j.startedAt)}</span>` : ""}</dd>
       <dt>工事終了</dt><dd>${fmtDate(j.endDate)}${j.finishedAt ? `<br><span class="small">作業完了 ${fmtFull(j.finishedAt)}</span>` : ""}</dd>
-      ${j.plannedStart && j.plannedStart !== j.startDate ? `<dt>当初の予定</dt><dd>${fmtRange(j.plannedStart, j.plannedEnd)}</dd>` : ""}
+
       <dt>受注業者</dt><dd>${who ? `<b>${esc(who.name)}</b>${who.tradeName ? `（${esc(who.tradeName)}）` : ""}<br><a href="tel:${esc(who.phone)}">${esc(who.phone)}</a>` : `未発注（応募 ${n}件）`}</dd></dl>
     <div class="row end" style="margin-top:16px"><button type="button" class="btn sub c-close">閉じる</button><a class="btn" href="#/admin/job/${esc(j.id)}">案件を開く</a></div></div>`;
   const close = () => { bg.remove(); document.removeEventListener("keydown", key); };
@@ -2518,7 +2527,7 @@ const ACTIONS = {
   },
   async "work-start"(el){
     const id = el.dataset.id, job = await api().getJob(id), today = todayIso();
-    const ps = job.plannedStart || job.startDate || today, pe = job.plannedEnd || job.endDate || ps;
+    const ps = job.plannedStart || job.startDate || today, pe = job.plannedEnd && job.plannedEnd >= ps ? job.plannedEnd : (job.endDate && job.endDate >= ps ? job.endDate : ps);
     const dur = Math.max(0, dayDiff(ps, pe)), newEnd = addDays(today, dur);
     const moved = today !== job.startDate || newEnd !== job.endDate;
     const body = `開始日時を「${fmtFull(Date.now())}」として記録します。` +
@@ -2529,10 +2538,9 @@ const ACTIONS = {
   },
   async "work-finish"(el){
     const id = el.dataset.id, job = await api().getJob(id), today = todayIso();
-    const end = today < job.startDate ? job.startDate : today, moved = end !== job.endDate;
-    const body = `完了日時を「${fmtFull(Date.now())}」として記録します。` + (moved ? `終了日を「${fmtDay(end)}」に更新し、予定表にも反映します。` : "") + "続けて完了報告をしてください。";
+    const body = `完了日時を「${fmtFull(Date.now())}」として記録します。続けて完了報告をしてください。`;
     if(!await ask({title:"作業を完了しますか？", body, ok:"作業を完了する"})) return;
-    await api().setWorkProgress(id, "finished", {endDate:end, plannedStart:job.plannedStart || job.startDate, plannedEnd:job.plannedEnd || job.endDate});
+    await api().setWorkProgress(id, "finished", {});
     toast("作業完了を記録しました"); route();
   },
   async "report-ok"(el){
