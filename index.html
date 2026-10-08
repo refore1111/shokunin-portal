@@ -303,6 +303,21 @@ textarea{min-height:110px;resize:vertical}
 .chat-head .btn{flex:none;white-space:nowrap;min-height:40px;padding:8px 14px}
 @media (pointer:coarse){.chat-hint{display:none}}
 @media (max-width:719px){.tabbar a{font-size:10px;padding:8px 2px 10px}}
+.admin-nav{overflow-x:auto;scrollbar-width:none}
+.admin-nav a{white-space:nowrap}
+.ac-wrap{position:relative}
+.ac{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-height:320px;overflow-y:auto}
+.ac-item{display:grid;gap:2px;padding:9px 12px;cursor:pointer;border-top:1px solid var(--line)}
+.ac-item:first-child{border-top:0}
+.ac-item:hover,.ac-item.on{background:var(--kon-soft)}
+.ac-empty{padding:10px 12px}
+mark{background:var(--warn-soft);color:inherit;padding:0}
+#prop-hit{color:var(--ok);margin-top:6px!important}
+.tbl-wrap{overflow-x:auto}
+.ptbl{width:100%;border-collapse:collapse;font-size:13px}
+.ptbl th,.ptbl td{text-align:left;padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
+.ptbl th{font-weight:700;color:var(--sub);background:var(--paper);white-space:nowrap}
+.nowrap{white-space:nowrap}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -597,7 +612,7 @@ async function importPdf(input){
     S.editPdf = {name:file.name, pages:await renderPdfPages(pdf), addedAt:Date.now()};
     S.editPdfSrc = src.length <= PDF_CHUNK * PDF_MAX_CHUNKS ? {name:file.name, data:src} : null; S.editPdfChanged = true;
     form.querySelector("#pdf-attach").innerHTML = pdfAttachHtml();
-    if(!form.elements.title.value.trim()) form.elements.title.value = file.name.replace(/\.pdf$/i, "");
+    if(!form.elements.title.value.trim()){ form.elements.title.value = file.name.replace(/\.pdf$/i, ""); form.elements.title.dataset.auto = "1"; }
     box.innerHTML = "";
   } finally { input.value = ""; }
 }
@@ -708,6 +723,13 @@ function seedDemo(){
       r_seed1: {id:"r_seed1", jobId:"j6", jobTitle:"2K エアコン・換気扇クリーニング", craftsmanId:"c1", craftsmanName:"山田 太郎", method:"email", status:"approved", createdAt:at(-6, 15, 2), reviewComment:"", reviewedAt:at(-5, 10, 5)}
     },
     documents: {},
+    properties: [
+      {id:"p1", company:"FLEX TOKYO", name:"サンプルハイツ", address:"東京都墨田区両国2-5-5", al:"有", ev:"有", note:""},
+      {id:"p2", company:"FLEX TOKYO", name:"サンプルレジデンス錦糸町", address:"東京都墨田区江東橋3-1-1", al:"鍵対応", ev:"有", note:"管理人 平日9-17時"},
+      {id:"p3", company:"Nワークス", name:"パークサンプル目黒", address:"東京都目黒区緑が丘2-24-3", al:"呼出1131", ev:"無", note:""},
+      {id:"p4", company:"アイレントホーム", name:"グリーンハイツ", address:"千葉県市川市八幡2-3-4", al:"無", ev:"無", note:"駐車場なし"},
+      {id:"p5", company:"フィディラルコミュニティ", name:"サンプルコート大宮", address:"埼玉県さいたま市大宮区櫛引町1-148", al:"有", ev:"有", note:""}
+    ],
     threads: {
       j5_c1: {id:"j5_c1", jobId:"j5", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"1R 退去後クリーニング（浴室カビ取り含む）", createdAt:now - 3*hour,
         lastAt:now - 2*hour, lastText:"承知しました。鍵はポストに入っています。作業後は元に戻してください。", lastFrom:"admin", adminReadAt:now - 2*hour, craftsmanReadAt:now - 3*hour}
@@ -729,7 +751,7 @@ function seedDemo(){
 
 class DemoBackend {
   constructor(){
-    this.mode = "demo"; this.key = "refore_shokunin_demo_v5"; this.listeners = []; this.watchers = new Set();
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v6"; this.listeners = []; this.watchers = new Set();
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
@@ -791,6 +813,8 @@ class DemoBackend {
   async getJobPdf(id){ const v = (this.data.jobPdf || {})[id]; return v ? clone({...v, src:(this.data.jobPdfSrc || {})[id] || null}) : null; }
   async getJobPdfSource(id){ return clone((this.data.jobPdfSrc || {})[id] || null); }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
+  async getProperties(){ return clone(this.data.properties || []); }
+  async saveProperties(list){ this.data.properties = clone(list); this.save(); }
   // --- 連絡（チャット） ---
   _threads(f = {}){ let a = Object.values(this.data.threads || {}); if(f.craftsmanId) a = a.filter(t => t.craftsmanId === f.craftsmanId); if(f.jobId) a = a.filter(t => t.jobId === f.jobId); return a.map(clone); }
   async listThreads(f){ return this._threads(f); }
@@ -935,6 +959,18 @@ class FirebaseBackend {
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
   }
   async saveInvoice(d){ await this.col("invoices").doc(d.id).set(d); }
+  // 物件マスタ：master/props_000… に700件ずつまとめて保存（読み込み回数を抑えるため）
+  async getProperties(){
+    const s = await this.col("master").get();
+    return s.docs.filter(d => d.id.startsWith("props_")).sort((a, b) => a.id.localeCompare(b.id)).flatMap(d => d.data().items || []);
+  }
+  async saveProperties(list){
+    const size = 700, items = list.map(p => ({id:p.id, company:p.company || "", name:p.name || "", address:p.address || "", al:p.al || "", ev:p.ev || "", note:p.note || ""}));
+    const n = Math.ceil(items.length / size), old = await this.col("master").get(), b = this.db.batch();
+    for(let i = 0; i < n; i++) b.set(this.col("master").doc(`props_${String(i).padStart(3, "0")}`), {items:items.slice(i * size, (i + 1) * size), updatedAt:Date.now()});
+    old.docs.forEach(d => { if(d.id.startsWith("props_") && Number(d.id.slice(6)) >= n) b.delete(d.ref); });
+    await b.commit();
+  }
   // --- 連絡（チャット）: threads/{案件ID_業者UID} と その下の messages ---
   async listThreads(f = {}){
     let q = this.col("threads");
@@ -1050,13 +1086,14 @@ function demoBar(){
     <button data-act="demo-reset">データを初期化</button></div>`;
 }
 function adminNav(){
-  const onC = location.hash.startsWith("#/admin/craftsm"), onK = /^#\/admin\/(calendar|invoices|chat)/.test(location.hash);
+  const onC = location.hash.startsWith("#/admin/craftsm"), onK = /^#\/admin\/(calendar|invoices|chat|settings)/.test(location.hash);
   return `<nav class="admin-nav" aria-label="管理メニュー">
     <a href="#/admin" ${!onC && !onK ? 'aria-current="page"' : ""}>案件</a>
-    <a href="#/admin/calendar" ${onK ? 'aria-current="page"' : ""}>予定表</a>
+    <a href="#/admin/calendar" ${location.hash.startsWith("#/admin/calendar") ? 'aria-current="page"' : ""}>予定表</a>
     <a href="#/admin/invoices" ${location.hash.startsWith("#/admin/invoices") ? 'aria-current="page"' : ""}>請求書</a>
     <a href="#/admin/chat" ${location.hash.startsWith("#/admin/chat") ? 'aria-current="page"' : ""}>連絡${chatBadge()}</a>
-    <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a></nav>`;
+    <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a>
+    <a href="#/admin/settings" ${location.hash.startsWith("#/admin/settings") ? 'aria-current="page"' : ""}>設定</a></nav>`;
 }
 function craftTabs(){
   const a = location.hash.replace(/^#\/?/, "").split("/")[0] || "jobs";
@@ -1104,7 +1141,8 @@ function privateBlock(p, title = "現場情報"){
   const map = p.address ? `<p style="margin:12px 0 0"><a class="btn sub" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}">地図アプリで開く</a></p>` : "";
   return `<section class="panel"><h2>${title}</h2><dl class="kv">
     <dt>住所</dt><dd>${esc(p.address) || "未登録"}</dd>
-    <dt>物件名・部屋</dt><dd>${esc(p.building) || "未登録"}</dd>
+    <dt>物件名・部屋</dt><dd>${esc([p.building, p.room].filter(Boolean).join(" ")) || "未登録"}</dd>
+    ${p.autolock ? `<dt>オートロック</dt><dd>${esc(p.autolock)}</dd>` : ""}${p.elevator ? `<dt>エレベーター</dt><dd>${esc(p.elevator)}</dd>` : ""}
     <dt>鍵・入室方法</dt><dd>${esc(p.keyInfo) || "未登録"}</dd>
     <dt>管理会社</dt><dd>${esc(p.manager) || "未登録"}</dd>
     <dt>連絡事項</dt><dd>${esc(p.contact) || "なし"}</dd></dl>${map}</section>`;
@@ -1409,6 +1447,7 @@ async function viewJobEdit(id){
   const job = id ? await api().getJob(id) : {trades:[], pref:"東京都", status:"draft", photos:[]};
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
   const [priv, pdfA] = id ? await Promise.all([api().getJobPrivate(id), api().getJobPdf(id)]) : [{}, null];
+  S.props = await api().getProperties().catch(() => []);
   S.editPdf = pdfA; S.editPdfSrc = null; S.editPdfChanged = false;
   S.editPhotos = [...(job.photos || [])];
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
@@ -1425,6 +1464,24 @@ async function viewJobEdit(id){
         <input type="file" accept="application/pdf,.pdf" data-pdfimport aria-label="案件PDFを選ぶ">
         <div id="pdf-attach">${pdfAttachHtml()}</div>
         <div id="pdf-result"></div></section>
+      <section class="panel"><h2>物件・現場情報<small>発注した業者にだけ表示</small></h2>
+        <div class="field"><span>物件名 <small>入力すると物件マスタから候補が出ます。選ぶと住所・管理会社などが自動で入ります</small></span>
+          <div class="ac-wrap"><input type="text" name="building" value="${esc(priv.building)}" autocomplete="off" data-propsearch role="combobox" aria-label="物件名" aria-autocomplete="list" aria-controls="prop-ac" aria-expanded="false" placeholder="例：パークハウス">
+            <div class="ac" id="prop-ac" role="listbox" hidden></div></div>
+          <p class="small" id="prop-hit" style="margin:0" ${priv.masterId ? "" : "hidden"}>${priv.masterId ? "物件マスタから入力済み" : ""}</p></div>
+        <input type="hidden" name="masterId" value="${esc(priv.masterId)}">
+        <div class="two">
+          <label class="field"><span>部屋番号</span><input type="text" name="room" value="${esc(priv.room)}" placeholder="例：203号室"></label>
+          <label class="field"><span>管理会社</span><input type="text" name="manager" value="${esc(priv.manager)}"></label>
+        </div>
+        <label class="field"><span>住所</span><input type="text" name="address" value="${esc(priv.address)}" autocomplete="off"></label>
+        <div class="two">
+          <label class="field"><span>オートロック</span><input type="text" name="autolock" value="${esc(priv.autolock)}" placeholder="例：有／無／鍵対応／呼出1131"></label>
+          <label class="field"><span>エレベーター</span><input type="text" name="elevator" value="${esc(priv.elevator)}" placeholder="例：有／無"></label>
+        </div>
+        <label class="field"><span>鍵・入室方法</span><input type="text" name="keyInfo" value="${esc(priv.keyInfo)}"></label>
+        <label class="field"><span>連絡事項</span><textarea name="contact">${esc(priv.contact)}</textarea></label>
+      </section>
       <section class="panel"><h2>工種・作業日</h2>
         <label class="field"><span>案件名 <small>一覧・予定表に表示されます（PDFのファイル名が初期値）</small></span><input type="text" name="title" maxlength="80" value="${esc(job.title)}" placeholder="例：グリーンハイツ203 原状回復"></label>
         <input type="hidden" name="pref" value="${esc(job.pref || "")}"><input type="hidden" name="city" value="${esc(job.city || "")}">
@@ -1435,13 +1492,6 @@ async function viewJobEdit(id){
         </div>
         <label class="field" style="margin:0"><span>支払金額（税抜） <small>業者さまへの支払額。発注後に業者さまに表示され、月末の請求書はこの金額で作られます（業者さまは変更できません）</small></span>
           <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000"></label>
-      </section>
-      <section class="panel"><h2>現場情報<small>発注した業者にだけ表示</small></h2>
-        <label class="field"><span>住所</span><input type="text" name="address" value="${esc(priv.address)}" autocomplete="off"></label>
-        <label class="field"><span>物件名・部屋番号</span><input type="text" name="building" value="${esc(priv.building)}"></label>
-        <label class="field"><span>鍵・入室方法</span><input type="text" name="keyInfo" value="${esc(priv.keyInfo)}"></label>
-        <label class="field"><span>管理会社</span><input type="text" name="manager" value="${esc(priv.manager)}"></label>
-        <label class="field"><span>連絡事項</span><textarea name="contact">${esc(priv.contact)}</textarea></label>
       </section>
       <div class="row">${buttons}</div>
     </form>`;
@@ -1577,6 +1627,150 @@ async function viewAdminInvoices(ym){
     <div class="inv-sum" style="margin-bottom:14px"><span>請求合計 <b>${yenFull(sum)}</b></span><span>未払い <b>${yenFull(unpaid)}</b></span><span>${invs.length}件</span></div>
     ${rows ? `<div class="list">${rows}</div>` : `<div class="empty">${fmtMonth(ym)}分の請求書はまだありません。</div>`}
     ${wait ? `<h2 class="day-head"><b>未発行</b>${waiting.size}社</h2><div class="list">${wait}</div>` : ""}`;
+}
+
+/* ---------- 物件マスタ ---------- */
+const PROP_KEYS = new WeakMap();
+const normKey = v => String(v || "").normalize("NFKC").toLowerCase()
+  .replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60))
+  .replace(/[\s・\-‐－ー_.,、。()（）「」〜~]/g, "");
+function propKey(p){ let k = PROP_KEYS.get(p); if(!k){ k = {n:normKey(p.name), a:normKey(p.address), c:normKey(p.company)}; PROP_KEYS.set(p, k); } return k; }
+function searchProps(q, list, limit = 8, company = ""){
+  const k = normKey(q), res = [];
+  for(const p of list || []){
+    if(company && p.company !== company) continue;
+    if(!k){ res.push([3, p]); continue; }
+    const pk = propKey(p);
+    const sc = pk.n.startsWith(k) ? 0 : pk.n.includes(k) ? 1 : pk.a.includes(k) ? 2 : pk.c.includes(k) ? 2.5 : -1;
+    if(sc >= 0) res.push([sc, p]);
+  }
+  res.sort((a, b) => a[0] - b[0] || a[1].name.length - b[1].name.length || a[1].name.localeCompare(b[1].name, "ja"));
+  return (limit ? res.slice(0, limit) : res).map(x => x[1]);
+}
+function splitAddress(addr){
+  const m = String(addr || "").normalize("NFKC").replace(/\s/g, "").match(/^(東京都|北海道|(?:京都|大阪)府|.{2,3}?県)(.{1,6}?市.{1,4}?区|.{1,6}?[市区町村]|.{1,5}?郡.{1,5}?[町村])/);
+  return m ? {pref:m[1], city:m[2]} : {pref:"", city:""};
+}
+const highlight = (text, q) => {
+  const t = String(text || ""); const k = String(q || "").trim();
+  if(!k) return esc(t);
+  const i = t.normalize("NFKC").toLowerCase().indexOf(k.normalize("NFKC").toLowerCase());
+  return i < 0 ? esc(t) : esc(t.slice(0, i)) + "<mark>" + esc(t.slice(i, i + k.length)) + "</mark>" + esc(t.slice(i + k.length));
+};
+function renderPropAc(input){
+  const box = $("#prop-ac"); if(!box) return;
+  const q = input.value.trim();
+  const hits = q ? searchProps(q, S.props, 8) : [];
+  S.acHits = hits; S.acIdx = -1;
+  if(!q || !S.props?.length){ box.hidden = true; input.setAttribute("aria-expanded", "false"); return; }
+  box.innerHTML = hits.length ? hits.map((p, i) => `<div class="ac-item" role="option" id="ac-${i}" data-i="${i}">
+      <b>${highlight(p.name, q)}</b><span class="small">${esc(p.company)}　${esc(p.address) || "住所未登録"}</span></div>`).join("")
+    : `<div class="ac-empty small">物件マスタに一致する物件はありません。このまま入力して保存できます。</div>`;
+  box.hidden = false; input.setAttribute("aria-expanded", "true");
+}
+function moveAc(input, d){
+  const items = [...document.querySelectorAll("#prop-ac .ac-item")]; if(!items.length) return;
+  S.acIdx = (S.acIdx + d + items.length) % items.length;
+  items.forEach((el, i) => el.classList.toggle("on", i === S.acIdx));
+  input.setAttribute("aria-activedescendant", "ac-" + S.acIdx);
+  items[S.acIdx].scrollIntoView({block:"nearest"});
+}
+function hideAc(){ const b = $("#prop-ac"); if(b) b.hidden = true; const i = $("[data-propsearch]"); if(i){ i.setAttribute("aria-expanded", "false"); i.removeAttribute("aria-activedescendant"); } }
+function applyProp(form, p){
+  const set = (n, v) => { if(form.elements[n]) form.elements[n].value = v || ""; };
+  set("building", p.name); set("address", p.address); set("manager", p.company);
+  set("autolock", p.al); set("elevator", p.ev); set("masterId", p.id);
+  if(p.note && !form.elements.contact.value.trim()) set("contact", p.note);
+  const {pref, city} = splitAddress(p.address);
+  if(pref){ set("pref", pref); set("city", city); }
+  autoTitle(form);
+  hideAc();
+  const hit = $("#prop-hit"); if(hit){ hit.hidden = false; hit.textContent = `物件マスタから入力しました（${p.company}）。部屋番号を入力してください。`; }
+  form.elements.room?.focus();
+}
+function autoTitle(form){
+  const t = form.elements.title;
+  if(!t || (t.value.trim() && t.dataset.auto !== "1")) return;
+  const v = [form.elements.building?.value.trim(), form.elements.room?.value.trim()].filter(Boolean).join(" ");
+  if(v){ t.value = v; t.dataset.auto = "1"; }
+}
+// --- CSV ---
+function parseCsv(text){
+  const rows = []; let row = [], cell = "", q = false;
+  text = text.replace(/^﻿/, "");
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(q){ if(c === '"'){ if(text[i + 1] === '"'){ cell += '"'; i++; } else q = false; } else cell += c; }
+    else if(c === '"') q = true;
+    else if(c === ","){ row.push(cell); cell = ""; }
+    else if(c === "\n" || c === "\r"){ if(c === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if(cell || row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+async function readCsvFile(file){
+  const buf = await file.arrayBuffer();
+  let t = new TextDecoder("utf-8").decode(buf);
+  if((t.match(/�/g) || []).length > 3){ try { t = new TextDecoder("shift_jis").decode(buf); } catch(e) {} }
+  return parseCsv(t);
+}
+function csvToProps(rows){
+  const head = rows[0].map(h => normKey(h));
+  const col = names => head.findIndex(h => names.some(n => h === normKey(n) || h.includes(normKey(n))));
+  const ix = {company:col(["管理会社"]), name:col(["物件名称", "物件名"]), address:col(["所在地", "住所"]), al:col(["オートロック", "AL"]), ev:col(["エレベーター", "EV"]), note:col(["備考"])};
+  if(ix.name < 0) throw new Error("CSVに「物件名」の列が見つかりません（1行目に見出しが必要です）");
+  const clean = v => String(v || "").replace(/[　\s]+/g, " ").trim();
+  return rows.slice(1).map(r => ({id:newId(), company:clean(r[ix.company]), name:clean(r[ix.name]), address:clean(r[ix.address]),
+    al:clean(r[ix.al]), ev:clean(r[ix.ev]), note:clean(r[ix.note])})).filter(p => p.name);
+}
+const propIdKey = p => `${p.company}|${normKey(p.name)}|${normKey(p.address)}`;
+function csvCell(v){ v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
+
+// --- 設定：物件マスタ画面 ---
+async function viewSettings(){
+  S.props = await api().getProperties();
+  const companies = [...new Set(S.props.map(p => p.company).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+  S.propFilter ||= {q:"", company:""};
+  return `<h1>設定</h1><p class="lead">物件マスタに登録した物件は、案件作成時に物件名から検索して、住所・管理会社・オートロック・エレベーターを自動入力できます。物件マスタは管理者だけが見られます。</p>
+    <section class="panel"><div class="row between"><h2 style="margin:0">物件マスタ <small>${S.props.length.toLocaleString()}件</small></h2>
+        <div class="row"><button class="btn" data-act="prop-add">物件を追加</button><button class="btn sub" data-act="prop-export" ${S.props.length ? "" : "disabled"}>CSVで書き出す</button></div></div>
+      <div class="filters" style="margin:14px 0 10px">
+        <input type="search" data-propfilter="q" value="${esc(S.propFilter.q)}" placeholder="物件名・住所で検索" aria-label="物件名・住所で検索" style="flex:1;min-width:200px">
+        <select data-propfilter="company" aria-label="管理会社で絞り込む"><option value="">すべての管理会社</option>${companies.map(c => `<option ${S.propFilter.company === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
+      </div>
+      <div id="prop-list"></div></section>
+    <section class="panel"><h2>CSVから取り込む</h2>
+      <p class="small" style="margin:0 0 10px">1行目に見出し「管理会社・物件名・所在地・オートロック・エレベーター・備考」があるCSVを取り込めます。同じ管理会社・物件名・所在地の物件は上書きされます。</p>
+      <label class="toggle" style="margin-bottom:10px"><input type="checkbox" id="prop-replace">いまの物件マスタをすべて消して入れ替える</label>
+      <input type="file" accept=".csv,text/csv" data-propimport aria-label="CSVファイルを選ぶ"></section>`;
+}
+function renderPropList(){
+  const box = $("#prop-list"); if(!box) return;
+  const f = S.propFilter, all = searchProps(f.q, S.props, 0, f.company), list = all.slice(0, 100);
+  box.innerHTML = list.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>物件名</th><th>所在地</th><th>管理会社</th><th>AL</th><th>EV</th><th>備考</th><th></th></tr></thead><tbody>
+      ${list.map(p => `<tr><td><b>${highlight(p.name, f.q)}</b></td><td>${highlight(p.address, f.q)}</td><td>${esc(p.company)}</td><td>${esc(p.al)}</td><td>${esc(p.ev)}</td><td>${esc(p.note)}</td>
+        <td class="nowrap"><button class="textlink" data-act="prop-edit" data-id="${esc(p.id)}">編集</button>　<button class="textlink" data-act="prop-del" data-id="${esc(p.id)}">削除</button></td></tr>`).join("")}
+    </tbody></table></div>${all.length > list.length ? `<p class="small" style="margin:8px 0 0">${all.length.toLocaleString()}件中 100件を表示しています。検索で絞り込んでください。</p>` : ""}`
+    : `<div class="empty">${S.props.length ? "条件に合う物件はありません。" : "物件マスタはまだ空です。下の「CSVから取り込む」で一括登録できます。"}</div>`;
+}
+function propEditor(p = {}){
+  return new Promise(res => {
+    const bg = document.createElement("div"); bg.className = "modal-bg";
+    const f = (n, l, v, ph = "") => `<label class="field"><span>${l}</span><input type="text" name="${n}" value="${esc(v)}" placeholder="${esc(ph)}"></label>`;
+    bg.innerHTML = `<form class="modal" role="dialog" aria-modal="true" aria-labelledby="pe-t"><h2 id="pe-t">${p.id ? "物件を編集" : "物件を追加"}</h2>
+      ${f("name", "物件名", p.name)}${f("address", "所在地", p.address)}${f("company", "管理会社", p.company, "例：FLEX TOKYO")}
+      <div class="two">${f("al", "オートロック", p.al, "有／無／鍵対応／呼出1131")}${f("ev", "エレベーター", p.ev, "有／無")}</div>${f("note", "備考", p.note)}
+      <div class="row end"><button type="button" class="btn sub pe-no">キャンセル</button><button class="btn">保存</button></div></form>`;
+    const close = v => { bg.remove(); res(v); };
+    bg.querySelector(".pe-no").onclick = () => close(false);
+    bg.querySelector("form").onsubmit = e => {
+      e.preventDefault(); const fd = new FormData(e.target), g = k => String(fd.get(k) || "").trim();
+      if(!g("name")){ toast("物件名を入力してください"); return; }
+      close({id:p.id || newId(), name:g("name"), address:g("address"), company:g("company"), al:g("al"), ev:g("ev"), note:g("note")});
+    };
+    document.body.appendChild(bg); bg.querySelector("input").focus();
+  });
 }
 
 /* ---------- 連絡（チャット） ---------- */
@@ -1906,6 +2100,7 @@ async function route(){
       else if(a === "calendar") html = await viewCalendar(b);
       else if(a === "invoices") html = await viewAdminInvoices(b);
       else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
+      else if(a === "settings"){ html = await viewSettings(); after = () => { renderPropList(); return null; }; }
       else if(a === "craftsman") html = await viewCraftsman(b);
       else { location.replace("#/admin"); return; }
       return done(html);
@@ -2019,6 +2214,21 @@ const ACTIONS = {
     const d = buildOrderDoc(job, priv, c);
     if(old?.number) d.number = old.number;
     await api().saveDocument(d); toast("発注書を作り直しました"); route();
+  },
+  async "prop-add"(){ const p = await propEditor(); if(!p) return; S.props.push(p); await api().saveProperties(S.props); toast("物件を追加しました"); route(); },
+  async "prop-edit"(el){
+    const i = S.props.findIndex(p => p.id === el.dataset.id); if(i < 0) return;
+    const p = await propEditor(S.props[i]); if(!p) return;
+    S.props[i] = p; await api().saveProperties(S.props); toast("保存しました"); renderPropList();
+  },
+  async "prop-del"(el){
+    const p = S.props.find(x => x.id === el.dataset.id); if(!p) return;
+    if(!await ask({title:`「${p.name}」を削除しますか？`, body:"物件マスタから削除します。作成済みの案件には影響しません。", ok:"削除する", danger:true})) return;
+    S.props = S.props.filter(x => x.id !== p.id); await api().saveProperties(S.props); toast("削除しました"); route();
+  },
+  async "prop-export"(){
+    const lines = [["管理会社","物件名","所在地","オートロック","エレベーター","備考"], ...S.props.map(p => [p.company, p.name, p.address, p.al, p.ev, p.note])];
+    saveBlob(new Blob(["﻿" + lines.map(r => r.map(csvCell).join(",")).join("\r\n")], {type:"text/csv"}), `物件マスタ_${todayIso()}.csv`);
   },
   async "chat-open"(el){
     const jid = el.dataset.job, admin = myRole() === "admin", uid = admin ? el.dataset.uid : S.user.uid;
@@ -2160,7 +2370,8 @@ const FORMS = {
     if(mode === "open") data.publishedAt = Date.now();
     if(!id && !data.status) data.status = "draft";
     const jid = await api().saveJob(id, data);
-    await api().setJobPrivate(jid, {address:g("address"), building:g("building"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact")});
+    await api().setJobPrivate(jid, {address:g("address"), building:g("building"), room:g("room"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact"),
+      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId")});
     if(S.editPdfChanged){ toast("PDFを保存しています…"); await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
     toast(mode === "open" ? "公開しました" : "保存しました");
     go(`#/admin/job/${jid}`);
@@ -2223,15 +2434,57 @@ document.addEventListener("submit", async e => {
   finally { btns.forEach(b => b.disabled = false); }
 });
 document.addEventListener("keydown", e => {
+  if(e.target.matches?.("[data-propsearch]")){
+    const box = $("#prop-ac");
+    if(e.key === "ArrowDown" || e.key === "ArrowUp"){ if(box?.hidden) renderPropAc(e.target); e.preventDefault(); moveAc(e.target, e.key === "ArrowDown" ? 1 : -1); return; }
+    if(e.key === "Enter" && box && !box.hidden && S.acIdx >= 0){ e.preventDefault(); applyProp(e.target.form, S.acHits[S.acIdx]); return; }
+    if(e.key === "Escape"){ hideAc(); return; }
+  }
   if(e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.closest("form[data-form=chat]")){ e.preventDefault(); e.target.form.requestSubmit(); }
 });
-document.addEventListener("input", e => { if(e.target.closest(".item-row")) syncItems(e.target.form);  });
+document.addEventListener("mousedown", e => {
+  const it = e.target.closest?.("#prop-ac .ac-item");
+  if(it){ e.preventDefault(); applyProp(it.closest("form"), S.acHits[Number(it.dataset.i)]); return; }
+  if(!e.target.closest?.(".ac-wrap")) hideAc();
+});
+document.addEventListener("focusout", e => { if(e.target.matches?.("[data-propsearch]")) setTimeout(hideAc, 150); });
+document.addEventListener("input", e => {
+  if(e.target.matches?.("[data-propsearch]")){
+    renderPropAc(e.target);
+    const f = e.target.form; f.elements.masterId.value = ""; const hit = $("#prop-hit"); if(hit) hit.hidden = true;
+    autoTitle(f);
+  }
+  if(e.target.matches?.("form[data-form=job] [name=room]")) autoTitle(e.target.form);
+  if(e.target.matches?.("form[data-form=job] [name=title]")) e.target.dataset.auto = "";
+  if(e.target.matches?.("[data-propfilter=q]")){ S.propFilter.q = e.target.value; renderPropList(); } if(e.target.closest(".item-row")) syncItems(e.target.form);  });
 document.addEventListener("change", e => {
   if(e.target.matches("[data-pdfimport]")){
     importPdf(e.target).catch(err => { console.error(err); toast("PDFを読み込めませんでした（" + (err.message || err) + "）"); const b = $("#pdf-result"); if(b) b.innerHTML = ""; });
     return;
   }
   if(e.target.matches("[data-adminsort]")){ S.adminSort = e.target.value; route(); return; }
+  if(e.target.matches("[data-propfilter=company]")){ S.propFilter.company = e.target.value; renderPropList(); return; }
+  if(e.target.matches("[data-propimport]")){
+    const input = e.target, file = input.files[0]; if(!file) return;
+    (async () => {
+      const rows = await readCsvFile(file), incoming = csvToProps(rows);
+      if(!incoming.length) throw new Error("取り込める物件がありませんでした");
+      const replace = $("#prop-replace")?.checked;
+      let added = 0, updated = 0, list;
+      if(replace) list = incoming;
+      else {
+        const map = new Map(S.props.map(p => [propIdKey(p), p]));
+        incoming.forEach(p => { const k = propIdKey(p), old = map.get(k); if(old){ map.set(k, {...p, id:old.id}); updated++; } else { map.set(k, p); added++; } });
+        list = [...map.values()];
+      }
+      const msg = replace ? `いまの物件マスタ（${S.props.length}件）を消して、${incoming.length}件に入れ替えます。` : `新しく${added}件を追加し、${updated}件を上書きします。`;
+      if(!await ask({title:"物件マスタに取り込みますか？", body:msg, ok:"取り込む", danger:replace})) return;
+      toast("保存しています…");
+      await api().saveProperties(list); S.props = list;
+      toast(`取り込みました（${list.length.toLocaleString()}件）`); route();
+    })().catch(err => { console.error(err); toast(err.message || String(err)); }).finally(() => { input.value = ""; });
+    return;
+  }
   const el = e.target.closest("[data-filter]");
   if(!el) return;
   S.filter[el.dataset.filter] = el.type === "checkbox" ? el.checked : el.value;
