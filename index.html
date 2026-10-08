@@ -331,6 +331,11 @@ mark{background:var(--warn-soft);color:inherit;padding:0}
 .rp-progress{margin:0 0 12px}
 .rp-bar{height:10px;background:var(--paper);border-radius:999px;overflow:hidden}
 .rp-bar i{display:block;height:100%;width:0;background:var(--kon);transition:width .2s}
+.cmt{border:2px solid var(--kon-text);border-radius:8px;background:var(--kon-soft);padding:10px 14px;margin:0 0 10px}
+.cmt.empty{border-width:1px;border-style:dashed;background:transparent}
+.cmt-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;margin-bottom:4px}
+.cmt-head b{font-size:14px;color:var(--kon-text)}
+.cmt p.pre{margin:0;font-size:15px;line-height:1.75}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -890,6 +895,7 @@ class DemoBackend {
   }
   async submitReport(d){ const id = "r_" + newId(); this.data.reports[id] = {...d, id, status:"submitted", createdAt:Date.now()}; this.save(); }
   async setReportStatus(id, status, comment){ Object.assign(this.data.reports[id], {status, reviewComment:comment || "", reviewedAt:Date.now()}); this.save(); }
+  async addReportPhotos(id, a){ const r = this.data.reports[id]; if(!r) return; (r.additions ||= []).push(a); r.photoCount = (r.photoCount || 0) + a.count; this.save(); }
 
   async uploadPhotos(files){
     const out = [];
@@ -1089,6 +1095,10 @@ class FirebaseBackend {
   }
   async submitReport(d){ await this.col("reports").add({...d, status:"submitted", createdAt:Date.now()}); }
   async setReportStatus(id, status, comment){ await this.col("reports").doc(id).update({status, reviewComment:comment || "", reviewedAt:Date.now()}); }
+  async addReportPhotos(id, a){
+    const F = firebase.firestore.FieldValue;
+    await this.col("reports").doc(id).update({additions:F.arrayUnion(a), photoCount:F.increment(a.count)});
+  }
 
   // 写真は圧縮して案件ドキュメントに直接保存（Storage・従量課金プラン不要）
   async uploadPhotos(files){
@@ -1185,6 +1195,12 @@ function privateBlock(p, title = "現場情報"){
     <dt>連絡事項</dt><dd>${esc(p.contact) || "なし"}</dd></dl>
     ${p.photoUrls?.length ? `<div class="photo-links"><b>施工箇所の写真</b>${p.photoUrls.map((u, i) => `<a class="btn sub" href="${esc(u)}" target="_blank" rel="noopener noreferrer">写真を確認する${p.photoUrls.length > 1 ? `（${i + 1}）` : ""}</a>`).join("")}</div>` : ""}${map}</section>`;
 }
+function commentBox(name, at, note, sub, admin, main){
+  if(!note && !(admin && !main)) return admin && main ? `<p class="small" style="margin:0 0 8px">業者さまからのコメントはありません。</p>` : "";
+  return `<div class="cmt${note ? "" : " empty"}">
+    <div class="cmt-head"><b>${admin ? `${esc(name || "業者")}さんからのコメント` : "あなたのコメント"}</b><span class="small">${fmtTime(at)}${sub ? "　" + esc(sub) : ""}</span></div>
+    ${note ? `<p class="pre">${esc(note)}</p>` : `<p class="small" style="margin:0">（コメントなし）</p>`}</div>`;
+}
 function reportsBlock(rs, admin){
   if(!rs.length) return admin ? `<section class="panel"><h2>完了報告</h2><p class="small" style="margin:0">まだ届いていません。業者さまからは ${esc(REPORT_EMAIL)} にメールで届きます。</p></section>` : "";
   return rs.map(r => `<section class="panel">
@@ -1194,7 +1210,8 @@ function reportsBlock(rs, admin){
         <p class="small" style="margin:0 0 8px">${esc(REPORT_EMAIL)} のGoogleアカウントでログインしていると開けます。追加で送られた写真も同じフォルダに入ります。</p>` : ""}`
     : `<p class="small" style="margin:4px 0 8px">${fmtTime(r.createdAt)} にメール送信済み${admin ? `　${esc(r.craftsmanName)}` : ""}</p>
       ${admin ? `<p class="small" style="margin:0 0 8px">写真と報告内容は ${esc(REPORT_EMAIL)} の受信箱で確認してください。件名に「案件番号 ${esc(r.jobId)}」が入っています。</p>` : ""}`}
-    ${r.note ? `<p class="pre" style="margin:0 0 8px">${esc(r.note)}</p>` : ""}
+    ${commentBox(r.craftsmanName, r.createdAt, r.note, r.method === "photos" ? `写真 ${(r.photoCount || 0) - (r.additions || []).reduce((s, a) => s + (a.count || 0), 0)}枚` : "", admin, true)}
+    ${(r.additions || []).map(a => commentBox(r.craftsmanName, a.at, a.note, `追加の写真 ${a.count}枚`, admin, false)).join("")}
     ${photosGrid(r.photos)}
     ${r.reviewComment ? `<div class="note" style="margin-top:10px">Reforeからのコメント：${esc(r.reviewComment)}</div>` : ""}
     ${admin && r.status === "submitted" ? `<div class="row" style="margin-top:10px"><button class="btn" data-act="report-ok" data-id="${esc(r.id)}" data-job="${esc(r.jobId)}">確認済みにする</button><button class="btn danger" data-act="report-return" data-id="${esc(r.id)}">差し戻す</button></div>` : ""}
@@ -1404,7 +1421,7 @@ async function viewWorkDetail(id){
       <a class="btn block" href="${reportMailto(job, priv)}">報告メールを作成する</a>
       <p class="small" style="margin:8px 0 16px">メールアプリが開き、宛先・件名・案件情報が入った状態になります。写真を添付して送信してください。</p>
       <button class="btn sub block">メールを送ったので「報告済み」にする</button></form>`
-      : `<div class="note" style="margin:0 0 12px">完了報告を受け付けました。Reforeが内容を確認しています。</div>${photoUploadOn() && rs[0]?.status === "submitted" ? photoReportForm(id, false, true) : ""}`;
+      : `<div class="note" style="margin:0 0 12px">完了報告を受け付けました。Reforeが内容を確認しています。</div>${photoUploadOn() && rs[0]?.status === "submitted" ? photoReportForm(id, false, true, rs[0].id) : ""}`;
   } else if(job.status === "completed"){
     step = `<div class="note" style="margin:0">Reforeが完了を確認しました。月末に「請求書」タブから、その月の案件をまとめて請求してください。</div>`;
   } else if(job.status === "paid"){
@@ -1423,16 +1440,16 @@ async function viewWorkDetail(id){
 /* ---------- 完了報告の写真送信 ---------- */
 const photoUploadOn = () => api()?.mode === "demo" || !!PHOTO_UPLOAD_URL;
 S.reportFiles = []; S.uploading = false;
-function photoReportForm(id, returned, add){
+function photoReportForm(id, returned, add, reportId = ""){
   S.reportFiles = [];
-  return `<form class="panel" data-form="report" data-id="${esc(id)}" data-add="${add ? 1 : ""}">
+  return `<form class="panel" data-form="report" data-id="${esc(id)}" data-add="${add ? 1 : ""}" data-report="${esc(reportId)}">
     <h2>${add ? "写真を追加で送る" : "完了報告"}</h2>
     ${returned ? `<div class="note">差し戻しの内容を確認して、もう一度送ってください。</div>` : ""}
     <p style="margin:0 0 12px">${add ? "送り忘れた写真があれば、ここから追加できます。" : `施工前・施工後の写真をまとめて選んで送ってください（${PHOTO_MAX}枚まで）。写真はスマホの中で小さくしてから送るので、枚数が多くても大丈夫です。`}</p>
     <label class="btn sub block file-btn">写真を選ぶ<input type="file" accept="image/*" multiple data-reportphotos></label>
     <div class="rp-head"><span class="small" id="rp-count">まだ選ばれていません</span><button type="button" class="textlink" data-act="rp-clear" hidden>すべて外す</button></div>
     <div class="rp-grid" id="rp-grid"></div>
-    ${add ? "" : `<label class="field"><span>報告内容 <small>任意</small></span><textarea name="note" maxlength="2000" placeholder="例：浴室のカビは目地の一部に残りがあります。洗面台の扉に割れがありました。"></textarea></label>`}
+    <label class="field"><span>${add ? "コメント" : "報告内容"} <small>任意・Reforeに表示されます</small></span><textarea name="note" maxlength="2000" placeholder="${add ? "例：洗面所の施工後の写真を撮り忘れていたので追加します。" : "例：浴室のカビは目地の一部に残りがあります。洗面台の扉に割れがありました。"}"></textarea></label>
     <div class="rp-progress" id="rp-progress" hidden><div class="rp-bar"><i></i></div><p class="small" style="margin:6px 0 0"></p></div>
     <button class="btn block big-action">${add ? "写真を追加で送る" : "写真を送って完了報告する"}</button>
     ${add ? "" : `<p class="small" style="margin:10px 0 0">写真を送れないときは <button type="button" class="textlink" data-act="report-email" data-id="${esc(id)}">メールで報告する</button></p>`}
@@ -2661,10 +2678,12 @@ const FORMS = {
       const sent = S.reportSent;
       S.reportFiles = []; S.reportSent = 0; S.reportSentBase = 0;
       if(add){
+        const note = form.elements.note?.value.trim() || "";
+        if(form.dataset.report) await api().addReportPhotos(form.dataset.report, {at:Date.now(), count:sent, note});
         const tid = `${id}_${S.user.uid}`;
         try {
           await api().ensureThread({id:tid, jobId:id, craftsmanId:S.user.uid, craftsmanName:S.profile.name || "", jobTitle:job?.title || "", createdAt:Date.now(), lastAt:0, lastText:"", lastFrom:"", adminReadAt:0, craftsmanReadAt:0});
-          await api().sendMessage(tid, {from:"craftsman", uid:S.user.uid, name:S.profile.name || "", text:`完了報告の写真を${sent}枚、追加で送りました。`, createdAt:Date.now()});
+          await api().sendMessage(tid, {from:"craftsman", uid:S.user.uid, name:S.profile.name || "", text:`完了報告の写真を${sent}枚、追加で送りました。${note ? "\n" + note : ""}`, createdAt:Date.now()});
         } catch(e) { console.error(e); }
         toast(`写真を${sent}枚、追加で送りました`); route(); return;
       }
