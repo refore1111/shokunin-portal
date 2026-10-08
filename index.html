@@ -768,7 +768,7 @@ function seedDemo(){
 
 class DemoBackend {
   constructor(){
-    this.mode = "demo"; this.key = "refore_shokunin_demo_v7"; this.listeners = []; this.watchers = new Set();
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v8"; this.listeners = []; this.watchers = new Set();
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
@@ -824,7 +824,7 @@ class DemoBackend {
     this.data.jobs[id].updatedAt = Date.now(); this.save(); return id;
   }
   async setJobStatus(id, status){ Object.assign(this.data.jobs[id], {status, ...stampFor(status), updatedAt:Date.now()}); this.save(); }
-  async setWorkProgress(id, status){ return this.setJobStatus(id, status); }
+  async setWorkProgress(id, status, extra = {}){ Object.assign(this.data.jobs[id], {status, ...stampFor(status), ...extra, updatedAt:Date.now()}); this.save(); }
   async getDocument(id){ return clone((this.data.documents || {})[id] || null); }
   async saveDocument(doc){ (this.data.documents ||= {})[doc.id] = doc; this.save(); }
   async updateDocument(id, d){ Object.assign(this.data.documents[id], d); this.save(); }
@@ -846,6 +846,10 @@ class DemoBackend {
   }
   async markRead(tid, role){ const t = (this.data.threads || {})[tid]; if(t){ t[role + "ReadAt"] = Date.now(); this.save(); } }
   watchThreads(f, cb){ const run = () => cb(this._threads(f)); this.watchers.add(run); setTimeout(run); return () => this.watchers.delete(run); }
+  watch(name, where, cb){
+    const run = () => cb(Object.values(this.data[name] || {}).filter(d => where.every(([f, op, v]) => op === "in" ? v.includes(d[f]) : d[f] === v)).map(clone));
+    this.watchers.add(run); setTimeout(run); return () => this.watchers.delete(run);
+  }
   watchMessages(tid, cb){ const run = () => cb(clone((this.data.messages || {})[tid] || [])); this.watchers.add(run); setTimeout(run); return () => this.watchers.delete(run); }
   async saveInvoice(d){ (this.data.invoices ||= {})[d.id] = d; this.save(); }
   async updateInvoice(id, d){ Object.assign(this.data.invoices[id], d); this.save(); }
@@ -954,7 +958,7 @@ class FirebaseBackend {
   }
   async setJobStatus(id, status){ await this.col("jobs").doc(id).update({status, ...stampFor(status), updatedAt:Date.now()}); }
   // 業者が自分で押す「作業開始」「作業完了」（ルールで許可された項目だけを更新）
-  async setWorkProgress(id, status){ await this.col("jobs").doc(id).update({status, ...stampFor(status), updatedAt:Date.now()}); }
+  async setWorkProgress(id, status, extra = {}){ await this.col("jobs").doc(id).update({status, ...stampFor(status), ...extra, updatedAt:Date.now()}); }
   async getDocument(id){
     try { const s = await this.col("documents").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
@@ -1022,6 +1026,11 @@ class FirebaseBackend {
     await b.commit();
   }
   async markRead(tid, role){ await this.col("threads").doc(tid).update({[role + "ReadAt"]:Date.now()}); }
+  watch(name, where, cb){
+    let q = this.col(name);
+    where.forEach(([f, op, v]) => { q = q.where(f, op, v); });
+    return q.onSnapshot(s => cb(this.docs(s)), e => console.error("更新の受信に失敗：" + name, e));
+  }
   watchThreads(f, cb){
     let q = this.col("threads");
     if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
@@ -1115,9 +1124,9 @@ function demoBar(){
 function adminNav(){
   const onC = location.hash.startsWith("#/admin/craftsm"), onK = /^#\/admin\/(calendar|invoices|chat|settings)/.test(location.hash);
   return `<nav class="admin-nav" aria-label="管理メニュー">
-    <a href="#/admin" ${!onC && !onK ? 'aria-current="page"' : ""}>案件</a>
+    <a href="#/admin" ${!onC && !onK ? 'aria-current="page"' : ""}>案件${badge("jobs")}</a>
     <a href="#/admin/calendar" ${location.hash.startsWith("#/admin/calendar") ? 'aria-current="page"' : ""}>予定表</a>
-    <a href="#/admin/invoices" ${location.hash.startsWith("#/admin/invoices") ? 'aria-current="page"' : ""}>請求書</a>
+    <a href="#/admin/invoices" ${location.hash.startsWith("#/admin/invoices") ? 'aria-current="page"' : ""}>請求書${badge("invoices")}</a>
     <a href="#/admin/chat" ${location.hash.startsWith("#/admin/chat") ? 'aria-current="page"' : ""}>連絡${chatBadge()}</a>
     <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a>
     <a href="#/admin/settings" ${location.hash.startsWith("#/admin/settings") ? 'aria-current="page"' : ""}>設定</a></nav>`;
@@ -1126,7 +1135,7 @@ function craftTabs(){
   const a = location.hash.replace(/^#\/?/, "").split("/")[0] || "jobs";
   const cur = a === "job" ? "jobs" : a;
   const tabs = [["jobs","案件",ICONS.jobs],["applied","応募状況",ICONS.applied],["work","受注",ICONS.work],["chat","連絡",ICONS.chat],["invoice","請求書",ICONS.invoice],["profile","登録情報",ICONS.profile]];
-  return `<nav class="tabbar" aria-label="メニュー">${tabs.map(([k,l,i]) => `<a href="#/${k}" ${cur === k ? 'aria-current="page"' : ""}>${i}<span>${l}${k === "chat" ? chatBadge() : ""}</span></a>`).join("")}</nav>`;
+  return `<nav class="tabbar" aria-label="メニュー">${tabs.map(([k,l,i]) => `<a href="#/${k}" ${cur === k ? 'aria-current="page"' : ""}>${i}<span>${l}${k === "chat" ? chatBadge() : ["jobs", "applied", "work"].includes(k) ? badge(k) : ""}</span></a>`).join("")}</nav>`;
 }
 function paint(content, {bare = false} = {}){
   const app = $("#app");
@@ -1158,7 +1167,8 @@ function jobDetailBlock(j, showPrice = false){
     ${tagsHtml(j.trades)}
     <h1>${esc(j.title)}</h1>
     ${showPrice ? (Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : `<p class="small warn" style="margin:4px 0 10px">支払金額はReforeが設定します（未設定）</p>`) : ""}
-    <dl class="kv">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>開始日</dt><dd>${fmtDay(j.startDate)}</dd><dt>終了日</dt><dd>${fmtDay(j.endDate || j.startDate)}</dd></dl>
+    <dl class="kv">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>開始日${j.startedAt ? "（実績）" : ""}</dt><dd>${fmtDay(j.startDate)}</dd><dt>終了日${j.finishedAt ? "（実績）" : ""}</dt><dd>${fmtDay(j.endDate || j.startDate)}</dd>
+      ${j.plannedStart && (j.plannedStart !== j.startDate || (j.plannedEnd || j.plannedStart) !== (j.endDate || j.startDate)) ? `<dt>当初の予定</dt><dd>${fmtRange(j.plannedStart, j.plannedEnd)}</dd>` : ""}</dl>
     ${j.items?.length ? `<h2>作業内訳</h2>${itemsTable(j)}` : ""}
     ${j.description ? `<h2>作業内容</h2><p class="pre">${esc(j.description)}</p>` : ""}
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
@@ -1267,7 +1277,10 @@ function viewProfileForm(p, isNew){
     <label class="field"><span>エリアの補足 <small>任意</small></span><input type="text" name="areaNote" value="${esc(v.areaNote)}" placeholder="例：墨田区・江東区は即日対応できます"></label>
     <label class="field"><span>保有資格 <small>任意</small></span><input type="text" name="licenses" value="${esc(v.licenses)}"></label>
     <div class="two">
-      <label class="field"><span>インボイス登録番号 <small>お持ちの場合</small></span><input type="text" name="invoiceNumber" value="${esc(v.invoiceNumber)}" pattern="[Tt]?[0-9]{13}" title="Tと13桁の数字" placeholder="T1234567890123" inputmode="text"></label>
+      <div class="field"><span>インボイス登録番号 <small>お持ちの場合</small></span>
+        <div class="row" style="flex-wrap:nowrap"><input type="text" name="invoiceNumber" value="${esc(v.invoiceNumber)}" pattern="[Tt]?[0-9０-９]{13}" title="Tと13桁の数字" placeholder="T1234567890123" inputmode="text" aria-label="インボイス登録番号" style="flex:1">
+          <button type="button" class="btn sub" data-act="nta-open" style="flex:none;white-space:nowrap">国税庁で照会</button></div>
+        <small class="small">「国税庁で照会」を押すと公表サイトが開きます。表示される氏名・名称があなたのものか確認してください。Reforeでも承認時に照会します。</small></div>
       <label class="field"><span>賠償責任保険</span><select name="insurance">${ins.map(o => `<option ${v.insurance === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>
     </div>
     <label class="field"><span>住所 <small>請求書に載ります</small></span><input type="text" name="address" value="${esc(v.address)}" autocomplete="street-address"></label>
@@ -1864,6 +1877,16 @@ function propEditor(p = {}){
   });
 }
 
+/* ---------- インボイス登録番号の照会（国税庁 適格請求書発行事業者公表サイト） ---------- */
+const normInvoice = v => { let t = String(v || "").normalize("NFKC").replace(/[\s-]/g, "").toUpperCase(); if(/^\d{13}$/.test(t)) t = "T" + t; return t; };
+const invoiceOk = v => /^T\d{13}$/.test(normInvoice(v));
+const ntaUrl = v => `https://www.invoice-kohyo.nta.go.jp/regno-search/detail?selRegNo=${normInvoice(v).slice(1)}`;
+const invoiceVerified = c => !!(c?.invoiceNumber && c.invoiceVerified && c.invoiceVerified.number === normInvoice(c.invoiceNumber));
+function invoiceBadge(c){
+  if(!c?.invoiceNumber) return `<span class="pill withdrawn">インボイスなし</span>`;
+  return invoiceVerified(c) ? `<span class="pill approved">インボイス照会済み</span>` : `<span class="pill pending">インボイス未照会</span>`;
+}
+
 /* ---------- 連絡（チャット） ---------- */
 const BASE_TITLE = document.title;
 const myRole = () => S.profile?.role === "admin" ? "admin" : "craftsman";
@@ -1877,6 +1900,54 @@ function updateChatBadges(){
   document.querySelectorAll("[data-badge=chat]").forEach(el => { el.textContent = n; el.hidden = !n; });
   document.title = (n ? `(${n}) ` : "") + BASE_TITLE;
 }
+/* ---------- タブのバッジ（案件の進行） ---------- */
+S.badges = {}; S.bw = {}; S.badgeUnsubs = [];
+const seenKey = k => `refore_seen_${S.user?.uid}_${k}`;
+const getSeen = k => { try { return Number(localStorage.getItem(seenKey(k))) || 0; } catch(e) { return 0; } };
+const setSeen = k => { try { localStorage.setItem(seenKey(k), String(Date.now())); } catch(e) {} };
+const BADGE_LABEL = {jobs:"新着・対応が必要", applied:"結果が出た応募", work:"対応中の案件", invoices:"支払待ちの請求書"};
+function badge(k){ const n = S.badges[k] || 0; return `<span class="badge" data-badge="${k}" ${n ? "" : "hidden"} aria-label="${BADGE_LABEL[k] || ""}${n}件">${n}</span>`; }
+function updateBadges(){
+  document.querySelectorAll("[data-badge]").forEach(el => { const k = el.dataset.badge; if(k === "chat") return; const n = S.badges[k] || 0; el.textContent = n; el.hidden = !n; });
+}
+function computeBadges(){
+  const d = S.bw, b = {};
+  if(S.profile?.role === "admin"){
+    const jobs = new Map((d.jobs || []).map(j => [j.id, j])), need = new Set();
+    (d.apps || []).forEach(a => { const j = jobs.get(a.jobId); if(j && (j.status === "open" || j.status === "closed")) need.add(a.jobId); });   // 応募が来ている
+    (d.jobs || []).forEach(j => { if(j.status === "finished") need.add(j.id); });                                                         // 作業完了→完了確認待ち
+    (d.reports || []).forEach(r => need.add(r.jobId));                                                                                    // 完了報告の確認待ち
+    b.jobs = need.size;
+    b.invoices = (d.invoices || []).length;                                                                                                // 支払待ちの請求書
+  } else {
+    const seenJobs = getSeen("jobs"), seenApplied = getSeen("applied");
+    const appliedIds = new Set((d.myApps || []).map(a => a.jobId));
+    b.jobs = (d.open || []).filter(j => (j.publishedAt || j.createdAt || 0) > seenJobs && !appliedIds.has(j.id)).length;                 // 新着の募集
+    b.applied = (d.myApps || []).filter(a => (a.status === "selected" || a.status === "rejected") && (a.updatedAt || 0) > seenApplied).length; // 採用・見送りの結果
+    const reported = new Set((d.myReports || []).filter(r => r.status !== "returned").map(r => r.jobId));
+    b.work = (d.mine || []).filter(j => j.status === "assigned" || j.status === "working" || (j.status === "finished" && !reported.has(j.id))).length; // 開始・完了・報告が必要
+  }
+  S.badges = b; updateBadges();
+}
+function startBadges(){
+  if(S.badgeUnsubs.length || !S.profile) return;
+  if(S.profile.role !== "admin" && S.profile.status !== "approved") return;
+  const w = (key, name, where) => S.badgeUnsubs.push(api().watch(name, where, list => { S.bw[key] = list; computeBadges(); }));
+  if(S.profile.role === "admin"){
+    w("jobs", "jobs", [["status", "in", ["open", "closed", "finished"]]]);
+    w("apps", "applications", [["status", "==", "applied"]]);
+    w("reports", "reports", [["status", "==", "submitted"]]);
+    w("invoices", "invoices", [["status", "==", "issued"]]);
+  } else {
+    const u = S.user.uid;
+    w("open", "jobs", [["status", "==", "open"]]);
+    w("mine", "jobs", [["assignedTo", "==", u]]);
+    w("myApps", "applications", [["craftsmanId", "==", u]]);
+    w("myReports", "reports", [["craftsmanId", "==", u]]);
+  }
+}
+function stopBadges(){ S.badgeUnsubs.forEach(f => f()); S.badgeUnsubs = []; S.bw = {}; S.badges = {}; }
+
 function stopNotifier(){ if(S.notifUnsub){ S.notifUnsub(); S.notifUnsub = null; } S.threads = new Map(); updateChatBadges(); }
 function startNotifier(){
   if(S.notifUnsub || !S.profile) return;
@@ -2043,6 +2114,7 @@ function calPopup(j){
     <p class="small" style="margin:-6px 0 10px">管理会社：${esc(j.manager || "未設定")}</p>
     <dl class="kv"><dt>工事開始</dt><dd>${fmtDate(j.startDate)}${j.startedAt ? `<br><span class="small">作業開始 ${fmtFull(j.startedAt)}</span>` : ""}</dd>
       <dt>工事終了</dt><dd>${fmtDate(j.endDate)}${j.finishedAt ? `<br><span class="small">作業完了 ${fmtFull(j.finishedAt)}</span>` : ""}</dd>
+      ${j.plannedStart && j.plannedStart !== j.startDate ? `<dt>当初の予定</dt><dd>${fmtRange(j.plannedStart, j.plannedEnd)}</dd>` : ""}
       <dt>受注業者</dt><dd>${who ? `<b>${esc(who.name)}</b>${who.tradeName ? `（${esc(who.tradeName)}）` : ""}<br><a href="tel:${esc(who.phone)}">${esc(who.phone)}</a>` : `未発注（応募 ${n}件）`}</dd></dl>
     <div class="row end" style="margin-top:16px"><button type="button" class="btn sub c-close">閉じる</button><a class="btn" href="#/admin/job/${esc(j.id)}">案件を開く</a></div></div>`;
   const close = () => { bg.remove(); document.removeEventListener("keydown", key); };
@@ -2060,7 +2132,7 @@ async function viewCraftsmen(){
   return head + `<div class="list">${list.map(c => `<a class="row-item" href="#/admin/craftsman/${esc(c.uid)}">
     <span class="row-main"><b>${esc(c.name)} <span class="small">${esc(c.tradeName)}</span></b>
       <span class="small">${esc((c.trades || []).join("、"))}</span><span class="small">${esc((c.prefs || []).join("、"))}　登録 ${fmtTime(c.createdAt)}</span></span>
-    <span class="pill ${c.status}">${CRAFT_STATUS[c.status]}</span></a>`).join("")}</div>`;
+    <span class="chat-r"><span class="pill ${c.status}">${CRAFT_STATUS[c.status]}</span>${invoiceBadge(c)}</span></a>`).join("")}</div>`;
 }
 async function viewCraftsman(uid){
   const c = await api().getProfile(uid);
@@ -2079,7 +2151,10 @@ async function viewCraftsman(uid){
         <dt>エリア</dt><dd>${esc((c.prefs || []).join("、"))}${c.areaNote ? `\n${esc(c.areaNote)}` : ""}</dd>
         <dt>経験年数</dt><dd>${c.years ? esc(c.years) + "年" : "未記入"}</dd>
         <dt>保有資格</dt><dd>${esc(c.licenses) || "未記入"}</dd>
-        <dt>インボイス</dt><dd>${esc(c.invoiceNumber) || "登録なし"}</dd>
+        <dt>インボイス</dt><dd>${c.invoiceNumber ? `${esc(normInvoice(c.invoiceNumber))}　${invoiceBadge(c)}
+          ${invoiceVerified(c) ? `<br><span class="small">${fmtDate(c.invoiceVerified.at)} 照会　公表名称：${esc(c.invoiceVerified.name)}</span>` : ""}
+          <div class="row" style="margin-top:6px"><a class="btn sub" href="${ntaUrl(c.invoiceNumber)}" target="_blank" rel="noopener">国税庁で照会</a>
+            <button class="btn ${invoiceVerified(c) ? "sub" : ""}" data-act="inv-verify" data-uid="${esc(c.uid)}">${invoiceVerified(c) ? "照会し直す" : "照会して確認済みにする"}</button></div>` : "登録なし"}</dd>
         <dt>賠償責任保険</dt><dd>${esc(c.insurance)}</dd>
         <dt>住所</dt><dd>${esc(c.address) || "未記入"}</dd>
         <dt>振込先</dt><dd>${c.bank?.number ? esc(bankText(c.bank)) : "未登録"}</dd>
@@ -2194,7 +2269,12 @@ async function route(){
     if(!S.user) return done(parts[0] === "signup" ? viewSignup() : viewLogin(), {bare:true});
     if(!S.profile) return done(viewProfileForm(null, true), {bare:true});
     const p = S.profile;
-    startNotifier();
+    startNotifier(); startBadges();
+    if(p.role !== "admin"){
+      const t = parts[0] || "jobs";
+      if(t === "jobs" || t === "job"){ setSeen("jobs"); computeBadges(); }
+      if(t === "applied"){ setSeen("applied"); computeBadges(); }
+    }
     if(p.role === "admin"){
       if(parts[0] !== "admin"){ location.replace("#/admin"); return; }
       const crafts = await api().listCraftsmen();
@@ -2340,6 +2420,23 @@ const ACTIONS = {
     const lines = [["管理会社","物件名","所在地","オートロック","エレベーター","備考"], ...S.props.map(p => [p.company, p.name, p.address, p.al, p.ev, p.note])];
     saveBlob(new Blob(["﻿" + lines.map(r => r.map(csvCell).join(",")).join("\r\n")], {type:"text/csv"}), `物件マスタ_${todayIso()}.csv`);
   },
+  async "nta-open"(el){
+    const v = el.closest("form, .field").querySelector("[name=invoiceNumber]")?.value;
+    if(!invoiceOk(v)) throw new Error("登録番号は「T」と13桁の数字で入力してください（例：T1234567890123）");
+    window.open(ntaUrl(v), "_blank", "noopener");
+  },
+  async "inv-verify"(el){
+    const uid = el.dataset.uid, c = await api().getProfile(uid);
+    if(!invoiceOk(c?.invoiceNumber)) throw new Error("登録番号の形式が正しくありません。業者さまに確認してください");
+    window.open(ntaUrl(c.invoiceNumber), "_blank", "noopener");
+    const name = await ask({title:"国税庁の公表サイトで確認しましたか？",
+      body:`開いたページに表示された「氏名又は名称」を入力してください。登録されていない番号や、名前が違う場合は確認済みにしないでください。（登録内容：${c.name}${c.tradeName ? "／" + c.tradeName : ""}）`,
+      input:"text", placeholder:"例：山田 太郎", ok:"確認済みにする"});
+    if(name === false) return;
+    if(!name.trim()) throw new Error("公表サイトに表示された氏名又は名称を入力してください");
+    await api().updateProfile(uid, {invoiceVerified:{number:normInvoice(c.invoiceNumber), name:name.trim(), at:Date.now(), by:S.user.uid}});
+    toast("インボイス登録番号を照会済みにしました"); route();
+  },
   async "rp-clear"(){ S.reportFiles = []; renderReportPicks(); },
   async "report-email"(el){
     const id = el.dataset.id;
@@ -2403,12 +2500,23 @@ const ACTIONS = {
     await downloadPdf(html, `${d.type === "order" ? "発注書" : "支払明細書"}_${d.number}.pdf`);
   },
   async "work-start"(el){
-    if(!await ask({title:"作業を開始しますか？", body:`開始日時を「${fmtFull(Date.now())}」として記録します。`, ok:"作業を開始する"})) return;
-    await api().setWorkProgress(el.dataset.id, "working"); toast("作業開始を記録しました"); route();
+    const id = el.dataset.id, job = await api().getJob(id), today = todayIso();
+    const ps = job.plannedStart || job.startDate || today, pe = job.plannedEnd || job.endDate || ps;
+    const dur = Math.max(0, dayDiff(ps, pe)), newEnd = addDays(today, dur);
+    const moved = today !== job.startDate || newEnd !== job.endDate;
+    const body = `開始日時を「${fmtFull(Date.now())}」として記録します。` +
+      (moved ? `予定の開始日（${fmtDay(job.startDate)}）と違うため、工期を「${fmtRange(today, newEnd)}」（${dur + 1}日間）に合わせて、予定表も更新します。` : "");
+    if(!await ask({title:"作業を開始しますか？", body, ok:"作業を開始する"})) return;
+    await api().setWorkProgress(id, "working", {startDate:today, endDate:newEnd, plannedStart:ps, plannedEnd:pe});
+    toast(moved ? "作業開始を記録し、工期を更新しました" : "作業開始を記録しました"); route();
   },
   async "work-finish"(el){
-    if(!await ask({title:"作業を完了しますか？", body:`完了日時を「${fmtFull(Date.now())}」として記録します。続けて完了報告メールを送ってください。`, ok:"作業を完了する"})) return;
-    await api().setWorkProgress(el.dataset.id, "finished"); toast("作業完了を記録しました"); route();
+    const id = el.dataset.id, job = await api().getJob(id), today = todayIso();
+    const end = today < job.startDate ? job.startDate : today, moved = end !== job.endDate;
+    const body = `完了日時を「${fmtFull(Date.now())}」として記録します。` + (moved ? `終了日を「${fmtDay(end)}」に更新し、予定表にも反映します。` : "") + "続けて完了報告をしてください。";
+    if(!await ask({title:"作業を完了しますか？", body, ok:"作業を完了する"})) return;
+    await api().setWorkProgress(id, "finished", {endDate:end, plannedStart:job.plannedStart || job.startDate, plannedEnd:job.plannedEnd || job.endDate});
+    toast("作業完了を記録しました"); route();
   },
   async "report-ok"(el){
     await api().setReportStatus(el.dataset.id, "approved", "");
@@ -2423,6 +2531,10 @@ const ACTIONS = {
   async "craft-status"(el){
     const {uid, status} = el.dataset;
     if(status === "suspended" && !await ask({title:"この業者の利用を止めますか？", body:"案件の閲覧と応募ができなくなります。あとから再開できます。", ok:"止める", danger:true})) return;
+    if(status === "approved"){
+      const c = await api().getProfile(uid);
+      if(c?.invoiceNumber && !invoiceVerified(c) && !await ask({title:"インボイス登録番号がまだ照会されていません", body:"「国税庁で照会」で登録内容を確認してから承認することをおすすめします。照会せずに承認しますか？", ok:"照会せずに承認する"})) return;
+    }
     await api().setCraftsmanStatus(uid, status);
     toast(status === "approved" ? "承認しました" : "利用を止めました"); route();
   }
@@ -2446,6 +2558,8 @@ const FORMS = {
     if(!prefs.length) throw new Error("対応エリアを1つ以上選んでください");
     let inv = String(fd.get("invoiceNumber") || "").trim().toUpperCase();
     if(inv && !inv.startsWith("T")) inv = "T" + inv;
+    inv = inv ? normInvoice(inv) : "";
+    if(inv && !invoiceOk(inv)) throw new Error("インボイス登録番号は「T」と13桁の数字で入力してください");
     const g = k => String(fd.get(k) || "").trim();
     const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr"), address:g("address"),
       bank:{bankName:g("bankName"), branch:g("bankBranch"), type:g("bankType"), number:g("bankNumber"), holder:g("bankHolder")}};
@@ -2670,7 +2784,7 @@ async function boot(){
     return;
   }
   S.api.onAuth(async u => {
-    stopNotifier();
+    stopNotifier(); stopBadges();
     S.user = u;
     try { S.profile = u ? await S.api.getProfile(u.uid) : null; } catch(e) { console.error(e); S.profile = null; }
     route();
