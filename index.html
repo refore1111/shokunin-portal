@@ -349,6 +349,8 @@ mark{background:var(--warn-soft);color:inherit;padding:0}
 .flag.orange{background:var(--caution);color:#1d1600}
 .flag.green{background:var(--ok);color:#fff}
 .flag.gray{background:var(--line);color:var(--ink)}
+.danger-zone{border:2px solid var(--shu)}
+.danger-zone h2{color:var(--shu)}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -851,6 +853,13 @@ class DemoBackend {
   async getJobPdfSource(id){ return clone((this.data.jobPdfSrc || {})[id] || null); }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
   async getProperties(){ return clone(this.data.properties || []); }
+  async wipeJobData(progress){
+    const d = this.data, jobs = Object.keys(d.jobs || {}).length;
+    const total = ["jobs","jobPrivate","jobPdf","jobPdfSrc","applications","reports","documents","invoices","threads","messages"].reduce((a, k) => a + Object.keys(d[k] || {}).length, 0);
+    ["jobs","jobPrivate","jobPdf","jobPdfSrc","applications","reports","documents","invoices","threads","messages"].forEach(k => { d[k] = {}; });
+    progress?.("削除しました"); this.save();
+    return {jobs, total};
+  }
   async saveProperties(list){ this.data.properties = clone(list); this.save(); }
   // --- 連絡（チャット） ---
   _threads(f = {}){ let a = Object.values(this.data.threads || {}); if(f.craftsmanId) a = a.filter(t => t.craftsmanId === f.craftsmanId); if(f.jobId) a = a.filter(t => t.jobId === f.jobId); return a.map(clone); }
@@ -1009,6 +1018,32 @@ class FirebaseBackend {
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
   }
   async saveInvoice(d){ await this.col("invoices").doc(d.id).set(d); }
+  // 案件データの一括削除（協力業者・物件マスタは残す）
+  async wipeJobData(progress){
+    let total = 0, refs = [];
+    const flush = async () => { while(refs.length){ const b = this.db.batch(); refs.splice(0, 400).forEach(r => b.delete(r)); await b.commit(); } };
+    const jobs = await this.col("jobs").get();
+    let i = 0;
+    for(const j of jobs.docs){
+      progress?.(`案件を削除しています… ${++i} / ${jobs.size}`);
+      for(const sub of ["files", "private"]){ const s = await j.ref.collection(sub).get(); s.docs.forEach(d => refs.push(d.ref)); }
+      refs.push(j.ref);
+      if(refs.length > 300){ total += refs.length; await flush(); }
+    }
+    total += refs.length; await flush();
+    const threads = await this.col("threads").get();
+    for(const t of threads.docs){
+      const m = await t.ref.collection("messages").get(); m.docs.forEach(d => refs.push(d.ref)); refs.push(t.ref);
+      if(refs.length > 300){ total += refs.length; await flush(); }
+    }
+    progress?.("連絡を削除しています…"); total += refs.length; await flush();
+    for(const c of ["applications", "reports", "documents", "invoices"]){
+      progress?.(`${{applications:"応募", reports:"完了報告", documents:"発注書", invoices:"請求書"}[c]}を削除しています…`);
+      const s = await this.col(c).get(); s.docs.forEach(d => refs.push(d.ref)); total += refs.length; await flush();
+    }
+    progress?.("削除が完了しました");
+    return {jobs:jobs.size, total};
+  }
   // 物件マスタ：master/props_000… に700件ずつまとめて保存（読み込み回数を抑えるため）
   async getProperties(){
     const s = await this.col("master").get();
@@ -1901,7 +1936,12 @@ async function viewSettings(){
     <section class="panel"><h2>CSVから取り込む</h2>
       <p class="small" style="margin:0 0 10px">1行目に見出し「管理会社・物件名・所在地・オートロック・エレベーター・備考」があるCSVを取り込めます。同じ管理会社・物件名・所在地の物件は上書きされます。</p>
       <label class="toggle" style="margin-bottom:10px"><input type="checkbox" id="prop-replace">いまの物件マスタをすべて消して入れ替える</label>
-      <input type="file" accept=".csv,text/csv" data-propimport aria-label="CSVファイルを選ぶ"></section>`;
+      <input type="file" accept=".csv,text/csv" data-propimport aria-label="CSVファイルを選ぶ"></section>
+    <section class="panel danger-zone"><h2>案件データの削除</h2>
+      <p class="small" style="margin:0 0 10px">試運転で作った案件をまとめて消すときに使います。<b>すべての案件</b>（完了・支払済みを含む）と、それにつながる応募・完了報告・発注書・連絡（チャット）・請求書を削除します。<br>
+      協力業者のアカウント・登録情報と、物件マスタは残ります。Googleドライブの完了報告写真は消えないので、必要ならドライブで削除してください。<b>削除したデータは元に戻せません。</b></p>
+      <button class="btn danger" data-act="wipe-jobs">案件データをすべて削除する</button>
+      <p class="small" id="wipe-progress" style="margin:8px 0 0"></p></section>`;
 }
 function renderPropList(){
   const box = $("#prop-list"); if(!box) return;
@@ -2519,6 +2559,20 @@ const ACTIONS = {
     const d = buildOrderDoc(job, priv, c);
     if(old?.number) d.number = old.number;
     await api().saveDocument(d); toast("発注書を作り直しました"); route();
+  },
+  async "wipe-jobs"(){
+    const n = (await api().listJobs({})).length;
+    if(!await ask({title:`案件データをすべて削除しますか？`, body:`いま${n}件の案件があります。完了・支払済みを含むすべての案件と、応募・完了報告・発注書・連絡・請求書を削除します。元に戻せません。`, ok:"次へ", danger:true})) return;
+    const typed = await ask({title:"最終確認", body:"本当に削除する場合は「削除」と入力してください。", input:"text", placeholder:"削除", ok:"すべて削除する", danger:true});
+    if(typed === false) return;
+    if(typed.trim() !== "削除") throw new Error("「削除」と入力されなかったため、中止しました");
+    const prog = $("#wipe-progress");
+    S.uploading = true;
+    try {
+      const res = await api().wipeJobData(msg => { if(prog) prog.textContent = msg; });
+      toast(`削除しました（案件 ${res.jobs}件ほか ${res.total}件）`);
+    } finally { S.uploading = false; }
+    stopNotifier(); stopBadges(); route();
   },
   async "prop-add"(){ const p = await propEditor(); if(!p) return; S.props.push(p); await api().saveProperties(S.props); toast("物件を追加しました"); route(); },
   async "prop-edit"(el){
