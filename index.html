@@ -318,6 +318,19 @@ mark{background:var(--warn-soft);color:inherit;padding:0}
 .ptbl th,.ptbl td{text-align:left;padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
 .ptbl th{font-weight:700;color:var(--sub);background:var(--paper);white-space:nowrap}
 .nowrap{white-space:nowrap}
+.cal-tabs{margin:0 0 12px}
+.cal-co{font-size:14px;font-weight:700;color:var(--kon-text);margin-left:10px}
+.photo-links{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.photo-links b{width:100%;font-size:14px}
+.file-btn{position:relative;overflow:hidden;cursor:pointer}
+.file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+.rp-head{display:flex;justify-content:space-between;align-items:center;margin:10px 0 6px}
+.rp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:4px;margin-bottom:14px}
+.rp-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:3px;background:var(--paper)}
+.rp-more{display:grid;place-items:center;aspect-ratio:1;background:var(--paper);border-radius:3px;font-size:13px;color:var(--sub)}
+.rp-progress{margin:0 0 12px}
+.rp-bar{height:10px;background:var(--paper);border-radius:999px;overflow:hidden}
+.rp-bar i{display:block;height:100%;width:0;background:var(--kon);transition:width .2s}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -346,6 +359,10 @@ const FIREBASE_SDK_VERSION = "10.12.2";
 const COMPANY_ID = "refore";
 const CONTACT_TEL = "03-6824-7282";
 const REPORT_EMAIL = "info@refore.co.jp";   // 完了報告メールの送信先
+// 完了報告の写真を受け取る Apps Script の「ウェブアプリURL」（https://script.google.com/macros/s/…/exec）
+// 空のままなら、写真はこれまでどおりメールで送る方式になります
+const PHOTO_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbxLlhiTksaiuldRTZqJlSTVbDUpafJIaUBHzKW6LeOkoSgQBsD31kzFY28yRwMpp2Y/exec";
+const PHOTO_MAX = 100, PHOTO_PX = 1600, PHOTO_Q = 0.75, PHOTO_PARALLEL = 3;
 const JOB_PHOTO_MAX = 4;                      // 案件写真の上限（Firestoreに直接保存するため）
 
 // 発注書・請求書に載せる自社情報（テンプレート確定後に調整）
@@ -708,11 +725,11 @@ function seedDemo(){
         createdAt:now - 12*day, publishedAt:now - 12*day, assignedAt:now - 10*day, startedAt:at(-6, 9, 12), finishedAt:at(-6, 14, 40), completedAt:at(-5, 10, 5)}
     },
     jobPrivate: {
-      j1: {address:"東京都墨田区○○1-2-3", building:"サンプルハイツ 201号室", keyInfo:"現地キーボックス（番号は前日に連絡します）", manager:"○○管理", contact:"作業前後で同じ角度の写真を撮影してください。"},
-      j2: {address:"東京都江東区○○4-5-6", building:"サンプルマンション 503号室", keyInfo:"管理人室で受け取り（平日9〜17時）", manager:"○○不動産", contact:"エレベーター養生をお願いします。"},
-      j3: {address:"千葉県市川市○○7-8-9", building:"サンプルコーポ 102号室", keyInfo:"入居者在宅（立会いあり）", manager:"○○ホーム", contact:"入居者さまへの声かけを丁寧にお願いします。"},
-      j5: {address:"東京都台東区○○2-4-6", building:"サンプルレジデンス 305号室", keyInfo:"ポスト内（ダイヤル番号は別途連絡済み）", manager:"○○管理", contact:"作業後は鍵をポストに戻してください。"},
-      j6: {address:"千葉県市川市○○3-3-3", building:"サンプルテラス 202号室", keyInfo:"現地キーボックス", manager:"○○ホーム", contact:""}
+      j1: {address:"東京都墨田区○○1-2-3", building:"サンプルハイツ 201号室", keyInfo:"現地キーボックス（番号は前日に連絡します）", manager:"FLEX TOKYO", photoUrls:["https://example.com/photos/sample"], contact:"作業前後で同じ角度の写真を撮影してください。"},
+      j2: {address:"東京都江東区○○4-5-6", building:"サンプルマンション 503号室", keyInfo:"管理人室で受け取り（平日9〜17時）", manager:"Nワークス", contact:"エレベーター養生をお願いします。"},
+      j3: {address:"千葉県市川市○○7-8-9", building:"サンプルコーポ 102号室", keyInfo:"入居者在宅（立会いあり）", manager:"アイレントホーム", contact:"入居者さまへの声かけを丁寧にお願いします。"},
+      j5: {address:"東京都台東区○○2-4-6", building:"サンプルレジデンス 305号室", keyInfo:"ポスト内（ダイヤル番号は別途連絡済み）", manager:"FLEX TOKYO", contact:"作業後は鍵をポストに戻してください。"},
+      j6: {address:"千葉県市川市○○3-3-3", building:"サンプルテラス 202号室", keyInfo:"現地キーボックス", manager:"アイレントホーム", contact:""}
     },
     applications: {
       j3_c1: {id:"j3_c1", jobId:"j3", craftsmanId:"c1", craftsmanName:"山田 太郎", jobTitle:"エアコンクリーニング 壁掛け2台", jobArea:"千葉県市川市", jobStart:iso(7), jobEnd:iso(7), price:16000, message:"当日は9時から作業できます。", status:"applied", createdAt:now - day},
@@ -751,7 +768,7 @@ function seedDemo(){
 
 class DemoBackend {
   constructor(){
-    this.mode = "demo"; this.key = "refore_shokunin_demo_v6"; this.listeners = []; this.watchers = new Set();
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v7"; this.listeners = []; this.watchers = new Set();
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
@@ -785,6 +802,8 @@ class DemoBackend {
   }
   async signOut(){ this.setSession(null); this.emit(); }
   async resetPassword(){ throw new Error("デモモードではパスワード再設定メールは送れません"); }
+  async getIdToken(){ return "demo"; }
+  async uploadReportPhoto(){ await new Promise(r => setTimeout(r, 40)); return {ok:true, folderUrl:"https://drive.google.com/drive/folders/demo"}; }
 
   async getProfile(uid){ return clone(this.data.users[uid] || null); }
   async createProfile(uid, d){ this.data.users[uid] = {...d, uid}; this.save(); }
@@ -904,6 +923,14 @@ class FirebaseBackend {
   async signIn(email, pw){ try { await this.auth.signInWithEmailAndPassword(email.trim(), pw); } catch(e) { throw authError(e); } }
   async signOut(){ await this.auth.signOut(); }
   async resetPassword(email){ try { await this.auth.sendPasswordResetEmail(email.trim()); } catch(e) { throw authError(e); } }
+  async getIdToken(){ return this.auth.currentUser.getIdToken(); }
+  // 写真は Firebase ではなく、Apps Script 経由で Reforeの Googleドライブに保存する
+  async uploadReportPhoto(body){
+    const r = await fetch(PHOTO_UPLOAD_URL, {method:"POST", body:JSON.stringify(body)});   // ヘッダーを付けない（Apps Scriptの仕様に合わせる）
+    let j; try { j = await r.json(); } catch(e) { throw new Error("写真の受け口から正しい応答がありません"); }
+    if(!j.ok) throw new Error(j.error || "写真を送れませんでした");
+    return j;
+  }
 
   async getProfile(uid){ const s = await this.col("users").doc(uid).get(); return s.exists ? {uid, ...s.data()} : null; }
   async createProfile(uid, d){ await this.col("users").doc(uid).set(d); }
@@ -1145,14 +1172,18 @@ function privateBlock(p, title = "現場情報"){
     ${p.autolock ? `<dt>オートロック</dt><dd>${esc(p.autolock)}</dd>` : ""}${p.elevator ? `<dt>エレベーター</dt><dd>${esc(p.elevator)}</dd>` : ""}
     <dt>鍵・入室方法</dt><dd>${esc(p.keyInfo) || "未登録"}</dd>
     <dt>管理会社</dt><dd>${esc(p.manager) || "未登録"}</dd>
-    <dt>連絡事項</dt><dd>${esc(p.contact) || "なし"}</dd></dl>${map}</section>`;
+    <dt>連絡事項</dt><dd>${esc(p.contact) || "なし"}</dd></dl>
+    ${p.photoUrls?.length ? `<div class="photo-links"><b>施工箇所の写真</b>${p.photoUrls.map((u, i) => `<a class="btn sub" href="${esc(u)}" target="_blank" rel="noopener noreferrer">写真を確認する${p.photoUrls.length > 1 ? `（${i + 1}）` : ""}</a>`).join("")}</div>` : ""}${map}</section>`;
 }
 function reportsBlock(rs, admin){
   if(!rs.length) return admin ? `<section class="panel"><h2>完了報告</h2><p class="small" style="margin:0">まだ届いていません。業者さまからは ${esc(REPORT_EMAIL)} にメールで届きます。</p></section>` : "";
   return rs.map(r => `<section class="panel">
     <div class="row between"><h2 style="margin:0">完了報告</h2><span class="pill ${r.status}">${REPORT_STATUS[r.status]}</span></div>
-    <p class="small" style="margin:4px 0 8px">${fmtTime(r.createdAt)} にメール送信済み${admin ? `　${esc(r.craftsmanName)}` : ""}</p>
-    ${admin ? `<p class="small" style="margin:0 0 8px">写真と報告内容は ${esc(REPORT_EMAIL)} の受信箱で確認してください。件名に「案件番号 ${esc(r.jobId)}」が入っています。</p>` : ""}
+    ${r.method === "photos" ? `<p class="small" style="margin:4px 0 8px">${fmtTime(r.createdAt)} に写真 ${r.photoCount || 0}枚を送信${admin ? `　${esc(r.craftsmanName)}` : ""}</p>
+      ${admin && r.folderUrl ? `<p style="margin:0 0 8px"><a class="btn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">写真フォルダを開く（Googleドライブ）</a></p>
+        <p class="small" style="margin:0 0 8px">${esc(REPORT_EMAIL)} のGoogleアカウントでログインしていると開けます。追加で送られた写真も同じフォルダに入ります。</p>` : ""}`
+    : `<p class="small" style="margin:4px 0 8px">${fmtTime(r.createdAt)} にメール送信済み${admin ? `　${esc(r.craftsmanName)}` : ""}</p>
+      ${admin ? `<p class="small" style="margin:0 0 8px">写真と報告内容は ${esc(REPORT_EMAIL)} の受信箱で確認してください。件名に「案件番号 ${esc(r.jobId)}」が入っています。</p>` : ""}`}
     ${r.note ? `<p class="pre" style="margin:0 0 8px">${esc(r.note)}</p>` : ""}
     ${photosGrid(r.photos)}
     ${r.reviewComment ? `<div class="note" style="margin-top:10px">Reforeからのコメント：${esc(r.reviewComment)}</div>` : ""}
@@ -1353,14 +1384,14 @@ async function viewWorkDetail(id){
     step = `<section class="panel"><h2>作業の完了</h2><p class="small" style="margin:0 0 8px">開始：${fmtFull(job.startedAt)}</p><p style="margin:0 0 12px">作業が終わったら押してください。押した日時が記録され、続けて完了報告に進みます。</p>
       <button class="btn block big-action" data-act="work-finish" data-id="${esc(id)}">作業を完了する</button></section>`;
   } else if(job.status === "finished"){
-    step = canReport ? `<form class="panel" data-form="report" data-id="${esc(id)}">
+    step = canReport && photoUploadOn() ? photoReportForm(id, rs[0]?.status === "returned", false) : canReport ? `<form class="panel" data-form="report" data-id="${esc(id)}">
       <h2>完了報告</h2>
       ${rs[0]?.status === "returned" ? `<div class="note">差し戻しの内容を確認して、もう一度送ってください。</div>` : ""}
       <p style="margin:0 0 12px">施工前・施工後の写真を添付して <b>${esc(REPORT_EMAIL)}</b> にメールで送ってください。</p>
       <a class="btn block" href="${reportMailto(job, priv)}">報告メールを作成する</a>
       <p class="small" style="margin:8px 0 16px">メールアプリが開き、宛先・件名・案件情報が入った状態になります。写真を添付して送信してください。</p>
       <button class="btn sub block">メールを送ったので「報告済み」にする</button></form>`
-      : `<div class="note" style="margin:0">完了報告を受け付けました。Reforeが内容を確認しています。</div>`;
+      : `<div class="note" style="margin:0 0 12px">完了報告を受け付けました。Reforeが内容を確認しています。</div>${photoUploadOn() && rs[0]?.status === "submitted" ? photoReportForm(id, false, true) : ""}`;
   } else if(job.status === "completed"){
     step = `<div class="note" style="margin:0">Reforeが完了を確認しました。月末に「請求書」タブから、その月の案件をまとめて請求してください。</div>`;
   } else if(job.status === "paid"){
@@ -1376,6 +1407,64 @@ async function viewWorkDetail(id){
     <div class="stack">${step}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${privateBlock(priv)}${jobDetailBlock(job, true)}</div></div>`;
 }
+/* ---------- 完了報告の写真送信 ---------- */
+const photoUploadOn = () => api()?.mode === "demo" || !!PHOTO_UPLOAD_URL;
+S.reportFiles = []; S.uploading = false;
+function photoReportForm(id, returned, add){
+  S.reportFiles = [];
+  return `<form class="panel" data-form="report" data-id="${esc(id)}" data-add="${add ? 1 : ""}">
+    <h2>${add ? "写真を追加で送る" : "完了報告"}</h2>
+    ${returned ? `<div class="note">差し戻しの内容を確認して、もう一度送ってください。</div>` : ""}
+    <p style="margin:0 0 12px">${add ? "送り忘れた写真があれば、ここから追加できます。" : `施工前・施工後の写真をまとめて選んで送ってください（${PHOTO_MAX}枚まで）。写真はスマホの中で小さくしてから送るので、枚数が多くても大丈夫です。`}</p>
+    <label class="btn sub block file-btn">写真を選ぶ<input type="file" accept="image/*" multiple data-reportphotos></label>
+    <div class="rp-head"><span class="small" id="rp-count">まだ選ばれていません</span><button type="button" class="textlink" data-act="rp-clear" hidden>すべて外す</button></div>
+    <div class="rp-grid" id="rp-grid"></div>
+    ${add ? "" : `<label class="field"><span>報告内容 <small>任意</small></span><textarea name="note" maxlength="2000" placeholder="例：浴室のカビは目地の一部に残りがあります。洗面台の扉に割れがありました。"></textarea></label>`}
+    <div class="rp-progress" id="rp-progress" hidden><div class="rp-bar"><i></i></div><p class="small" style="margin:6px 0 0"></p></div>
+    <button class="btn block big-action">${add ? "写真を追加で送る" : "写真を送って完了報告する"}</button>
+    ${add ? "" : `<p class="small" style="margin:10px 0 0">写真を送れないときは <button type="button" class="textlink" data-act="report-email" data-id="${esc(id)}">メールで報告する</button></p>`}
+  </form>`;
+}
+function renderReportPicks(){
+  const grid = $("#rp-grid"); if(!grid) return;
+  grid.querySelectorAll("img").forEach(i => URL.revokeObjectURL(i.src));
+  const n = S.reportFiles.length;
+  grid.innerHTML = S.reportFiles.slice(0, 60).map(f => `<img src="${URL.createObjectURL(f)}" alt="">`).join("") + (n > 60 ? `<span class="rp-more">＋${n - 60}枚</span>` : "");
+  $("#rp-count").textContent = n ? `${n}枚を選択中${n > PHOTO_MAX ? `（${PHOTO_MAX}枚までです）` : ""}` : "まだ選ばれていません";
+  const clr = $("[data-act=rp-clear]"); if(clr) clr.hidden = !n;
+}
+function rpProgress(done, total, msg){
+  const box = $("#rp-progress"); if(!box) return;
+  box.hidden = false;
+  box.querySelector("i").style.width = (total ? Math.round(done / total * 100) : 0) + "%";
+  box.querySelector("p").textContent = msg || `写真を送っています… ${done} / ${total}枚（画面を閉じないでください）`;
+}
+async function uploadReportPhotos(jobId, files, label){
+  const pad = n => String(n).padStart(3, "0"), stamp = todayIso().replace(/-/g, "");
+  let done = 0, folderUrl = "", next = 0;
+  const failed = [], base = S.reportSentBase || 0;
+  rpProgress(0, files.length);
+  const work = async () => {
+    while(next < files.length){
+      const i = next++, file = files[i];
+      let ok = false, lastErr;
+      for(let t = 0; t < 3 && !ok; t++){
+        try {
+          const blob = await resizeImage(file, PHOTO_PX, PHOTO_Q);
+          const data = (await blobToDataURL(blob)).split(",")[1];
+          const r = await api().uploadReportPhoto({idToken:await api().getIdToken(), jobId, folderLabel:label, fileName:`${stamp}_${pad(base + i + 1)}.jpg`, mime:"image/jpeg", data});
+          folderUrl = r.folderUrl || folderUrl; ok = true;
+        } catch(e) { lastErr = e; await new Promise(r => setTimeout(r, 800 * (t + 1))); }
+      }
+      if(ok) done++; else failed.push({file, err:lastErr});
+      rpProgress(done, files.length);
+    }
+  };
+  await Promise.all(Array.from({length:Math.min(PHOTO_PARALLEL, files.length)}, work));
+  return {done, failed, folderUrl};
+}
+window.addEventListener("beforeunload", e => { if(S.uploading){ e.preventDefault(); e.returnValue = ""; } });
+
 function reportMailto(job, priv){
   const p = S.profile;
   const subject = `【完了報告】${job.title}（案件番号 ${job.id}）`;
@@ -1480,6 +1569,8 @@ async function viewJobEdit(id){
           <label class="field"><span>エレベーター</span><input type="text" name="elevator" value="${esc(priv.elevator)}" placeholder="例：有／無"></label>
         </div>
         <label class="field"><span>鍵・入室方法</span><input type="text" name="keyInfo" value="${esc(priv.keyInfo)}"></label>
+        <label class="field"><span>施工箇所写真確認URL <small>Googleフォト・Dropbox などの共有リンク。複数ある場合は1行に1つ</small></span>
+          <textarea name="photoUrls" rows="2" style="min-height:64px" placeholder="https://...">${esc((priv.photoUrls || []).join("\n"))}</textarea></label>
         <label class="field"><span>連絡事項</span><textarea name="contact">${esc(priv.contact)}</textarea></label>
       </section>
       <section class="panel"><h2>工種・作業日</h2>
@@ -1874,17 +1965,31 @@ function chatPanel(threads, jobId, assignedTo){
 const dayDiff = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
 const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return isoOf(d.getTime()); };
 const CAL_CLASS = {open:"c-open", closed:"c-closed", assigned:"c-work", working:"c-work", finished:"c-done", completed:"c-done", paid:"c-done"};
-async function viewCalendar(ym){
+async function viewCalendar(ym, company = ""){
   const now = new Date();
   let [y, m] = String(ym || "").split("-").map(Number);
   if(!y || !m){ y = now.getFullYear(); m = now.getMonth() + 1; }
   const [jobs, apps] = await Promise.all([api().listJobs({}), api().listApplications({})]);
   const cnt = {}; apps.forEach(a => { if(a.status === "applied") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
-  const list = jobs.filter(j => j.status !== "draft" && j.startDate).map(j => ({...j, endDate:j.endDate && j.endDate >= j.startDate ? j.endDate : j.startDate}));
-  S.cal = {jobs:new Map(list.map(j => [j.id, j])), cnt};
   const first = isoOf(new Date(y, m - 1, 1).getTime()), last = isoOf(new Date(y, m, 0).getTime());
   const gridStart = addDays(first, -new Date(y, m - 1, 1).getDay());
   const gridEnd = addDays(last, 6 - new Date(y, m, 0).getDay());
+  // 表示中の月にかかる案件だけ、管理会社（現場情報）を読み込む
+  const shown = jobs.filter(j => j.status !== "draft" && j.startDate).map(j => ({...j, endDate:j.endDate && j.endDate >= j.startDate ? j.endDate : j.startDate}))
+    .filter(j => j.startDate <= gridEnd && j.endDate >= gridStart);
+  const privs = await Promise.all(shown.map(j => api().getJobPrivate(j.id).catch(() => ({}))));
+  shown.forEach((j, i) => { j.manager = String(privs[i]?.manager || "").trim(); });
+  const NONE = "未設定";
+  const coOf = j => j.manager || NONE;
+  const masterCos = [...new Set((S.props?.length ? S.props : await api().getProperties().catch(() => [])).map(p => p.company).filter(Boolean))];
+  const monthJobs = shown.filter(j => j.startDate <= last && j.endDate >= first);
+  const counts = {}; monthJobs.forEach(j => { counts[coOf(j)] = (counts[coOf(j)] || 0) + 1; });
+  const cos = [...new Set([...masterCos, ...shown.map(coOf)])].filter(c => c !== NONE).sort((a, b) => (counts[b] || 0) - (counts[a] || 0) || a.localeCompare(b, "ja"));
+  if(counts[NONE]) cos.push(NONE);
+  if(company && !cos.includes(company)) cos.unshift(company);
+  const list = company ? shown.filter(j => coOf(j) === company) : shown;
+  S.cal = {jobs:new Map(list.map(j => [j.id, j])), cnt};
+  const calUrl = (ymv, co = company) => `#/admin/calendar/${ymv}${co ? "/" + encodeURIComponent(co) : ""}`;
   const today = todayIso(), mm = `${y}-${String(m).padStart(2, "0")}`;
   let weeks = "";
   for(let ws = gridStart; ws <= gridEnd; ws = addDays(ws, 7)){
@@ -1910,19 +2015,23 @@ async function viewCalendar(ym){
   }
   const prev = isoOf(new Date(y, m - 2, 1).getTime()).slice(0, 7), next = isoOf(new Date(y, m, 1).getTime()).slice(0, 7);
   const inMonth = list.filter(j => j.startDate <= last && j.endDate >= first).sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const tabs = `<nav class="seg cal-tabs" aria-label="管理会社で切り替え">
+    <a href="${calUrl(mm, "")}" ${!company ? 'aria-current="true"' : ""}>全体（${monthJobs.length}）</a>
+    ${cos.map(c => `<a href="${calUrl(mm, c)}" ${company === c ? 'aria-current="true"' : ""}>${esc(c)}（${counts[c] || 0}）</a>`).join("")}</nav>`;
   const rows = inMonth.map(j => {
     const who = S.crafts.get(j.assignedTo);
     return `<a class="row-item" href="#/admin/job/${esc(j.id)}"><span class="row-main"><b>${esc(j.title)}</b>
-      <span class="small">開始 ${fmtDay(j.startDate)}　終了 ${fmtDay(j.endDate)}　${esc(j.pref)}${esc(j.city)}</span>
+      <span class="small">開始 ${fmtDay(j.startDate)}　終了 ${fmtDay(j.endDate)}　${esc(j.pref)}${esc(j.city)}${!company ? `　${esc(coOf(j))}` : ""}</span>
       <span class="small">${who ? `受注業者：${esc(who.name)}${who.tradeName ? `（${esc(who.tradeName)}）` : ""}` : `未発注　応募 ${cnt[j.id] || 0}件`}</span></span>
       <span class="pill ${j.status}">${JOB_STATUS[j.status]}</span></a>`;
   }).join("");
-  return `<div class="page-head"><div><h1>予定表</h1><p class="lead">案件の工期をカレンダーで確認できます。案件名を押すと受注業者が表示されます。</p></div></div>
-    <div class="cal-tool"><a class="btn sub" href="#/admin/calendar/${prev}" aria-label="前の月">‹</a><h2>${y}年${m}月</h2><a class="btn sub" href="#/admin/calendar/${next}" aria-label="次の月">›</a>
-      ${mm !== today.slice(0, 7) ? `<a class="textlink" href="#/admin/calendar">今月へ</a>` : ""}</div>
+  return `<div class="page-head"><div><h1>予定表${company ? `<small class="cal-co">${esc(company)}</small>` : ""}</h1><p class="lead">案件の工期をカレンダーで確認できます。上のタブで全体と管理会社ごとを切り替えられます。案件名を押すと受注業者が表示されます。</p></div></div>
+    ${tabs}
+    <div class="cal-tool"><a class="btn sub" href="${calUrl(prev)}" aria-label="前の月">‹</a><h2>${y}年${m}月</h2><a class="btn sub" href="${calUrl(next)}" aria-label="次の月">›</a>
+      ${mm !== today.slice(0, 7) ? `<a class="textlink" href="${calUrl(today.slice(0, 7))}">今月へ</a>` : ""}</div>
     <div class="cal-legend"><span class="cal-bar c-open s e">募集中</span><span class="cal-bar c-closed s e">締切</span><span class="cal-bar c-work s e">発注済み・作業中</span><span class="cal-bar c-done s e">作業完了以降</span></div>
     <div class="cal" role="grid" aria-label="${y}年${m}月の予定"><div class="cal-head">${"日月火水木金土".split("").map((d, i) => `<div class="${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${d}</div>`).join("")}</div>${weeks}</div>
-    <h2 class="day-head"><b>${m}月の案件</b>${inMonth.length}件</h2>
+    <h2 class="day-head"><b>${m}月の案件${company ? `（${esc(company)}）` : ""}</b>${inMonth.length}件</h2>
     ${rows ? `<div class="list">${rows}</div>` : `<div class="empty">この月に工期がかかる案件はありません。</div>`}`;
 }
 function calPopup(j){
@@ -1931,6 +2040,7 @@ function calPopup(j){
   bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="cal-t">
     <div class="row between" style="margin-bottom:6px"><span class="pill ${j.status}">${JOB_STATUS[j.status]}</span><span class="small">${esc(j.pref)}${esc(j.city)}</span></div>
     <h2 id="cal-t">${esc(j.title)}</h2>
+    <p class="small" style="margin:-6px 0 10px">管理会社：${esc(j.manager || "未設定")}</p>
     <dl class="kv"><dt>工事開始</dt><dd>${fmtDate(j.startDate)}${j.startedAt ? `<br><span class="small">作業開始 ${fmtFull(j.startedAt)}</span>` : ""}</dd>
       <dt>工事終了</dt><dd>${fmtDate(j.endDate)}${j.finishedAt ? `<br><span class="small">作業完了 ${fmtFull(j.finishedAt)}</span>` : ""}</dd>
       <dt>受注業者</dt><dd>${who ? `<b>${esc(who.name)}</b>${who.tradeName ? `（${esc(who.tradeName)}）` : ""}<br><a href="tel:${esc(who.phone)}">${esc(who.phone)}</a>` : `未発注（応募 ${n}件）`}</dd></dl>
@@ -2097,7 +2207,7 @@ async function route(){
       else if(a === "job" && c === "edit") html = await viewJobEdit(b);
       else if(a === "job") html = await viewAdminJob(b);
       else if(a === "craftsmen") html = await viewCraftsmen();
-      else if(a === "calendar") html = await viewCalendar(b);
+      else if(a === "calendar") html = await viewCalendar(b, parts[3] || "");
       else if(a === "invoices") html = await viewAdminInvoices(b);
       else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
       else if(a === "settings"){ html = await viewSettings(); after = () => { renderPropList(); return null; }; }
@@ -2229,6 +2339,15 @@ const ACTIONS = {
   async "prop-export"(){
     const lines = [["管理会社","物件名","所在地","オートロック","エレベーター","備考"], ...S.props.map(p => [p.company, p.name, p.address, p.al, p.ev, p.note])];
     saveBlob(new Blob(["﻿" + lines.map(r => r.map(csvCell).join(",")).join("\r\n")], {type:"text/csv"}), `物件マスタ_${todayIso()}.csv`);
+  },
+  async "rp-clear"(){ S.reportFiles = []; renderReportPicks(); },
+  async "report-email"(el){
+    const id = el.dataset.id;
+    const [job, priv] = await Promise.all([api().getJob(id), api().getJobPrivate(id)]);
+    location.href = reportMailto(job, priv);
+    if(!await ask({title:"報告メールは送りましたか？", body:`写真を添付したメールを ${REPORT_EMAIL} に送ってから「報告済み」にしてください。`, ok:"送ったので報告済みにする"})) return;
+    await api().submitReport({jobId:id, jobTitle:job?.title || "", craftsmanId:S.user.uid, craftsmanName:S.profile.name, method:"email"});
+    toast("報告済みにしました"); route();
   },
   async "chat-open"(el){
     const jid = el.dataset.job, admin = myRole() === "admin", uid = admin ? el.dataset.uid : S.user.uid;
@@ -2362,6 +2481,9 @@ const FORMS = {
     const startDate = g("startDate"), endDate = g("endDate") || startDate;
     if(endDate < startDate) throw new Error("終了日が開始日より前になっています");
     if(!S.editPdf && mode === "open") throw new Error("案件PDFを添付してください");
+    const photoUrls = g("photoUrls").split(/\s+/).map(u => u.trim()).filter(Boolean);
+    const badUrl = photoUrls.find(u => !/^https?:\/\/\S+$/i.test(u));
+    if(badUrl) throw new Error(`写真確認URLは https:// から始まるリンクを入力してください（${badUrl.slice(0, 40)}）`);
     const title = g("title") || (S.editPdf ? S.editPdf.name.replace(/\.pdf$/i, "") : "");
     if(!title) throw new Error("案件PDFを添付してください");
     const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price:Math.max(0, Math.round(Number(g("price")) || 0)), taxMode:"税別"};
@@ -2371,7 +2493,7 @@ const FORMS = {
     if(!id && !data.status) data.status = "draft";
     const jid = await api().saveJob(id, data);
     await api().setJobPrivate(jid, {address:g("address"), building:g("building"), room:g("room"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact"),
-      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId")});
+      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), photoUrls});
     if(S.editPdfChanged){ toast("PDFを保存しています…"); await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
     toast(mode === "open" ? "公開しました" : "保存しました");
     go(`#/admin/job/${jid}`);
@@ -2406,6 +2528,37 @@ const FORMS = {
   },
   async report(form){
     const id = form.dataset.id;
+    if(photoUploadOn() && form.querySelector("[data-reportphotos]")){
+      const files = S.reportFiles, add = !!form.dataset.add;
+      if(!files.length) throw new Error("写真を選んでください");
+      if(files.length > PHOTO_MAX) throw new Error(`一度に送れるのは${PHOTO_MAX}枚までです`);
+      const job = await api().getJob(id);
+      const label = `${todayIso().slice(0, 7)}_${job?.title || id}_${S.profile.name || ""}`;
+      S.uploading = true;
+      let res;
+      try { res = await uploadReportPhotos(id, files, label); } finally { S.uploading = false; }
+      S.reportSent = (S.reportSent || 0) + res.done; S.reportSentBase = (S.reportSentBase || 0) + files.length;
+      if(res.folderUrl) S.reportFolder = res.folderUrl;
+      if(res.failed.length){
+        S.reportFiles = res.failed.map(f => f.file); renderReportPicks();
+        rpProgress(res.done, files.length, `${res.done}枚を送りました。${res.failed.length}枚は送れませんでした（${res.failed[0].err?.message || "通信エラー"}）。電波の良い場所で、もう一度ボタンを押してください。送れた写真はそのまま残ります。`);
+        return;
+      }
+      const sent = S.reportSent;
+      S.reportFiles = []; S.reportSent = 0; S.reportSentBase = 0;
+      if(add){
+        const tid = `${id}_${S.user.uid}`;
+        try {
+          await api().ensureThread({id:tid, jobId:id, craftsmanId:S.user.uid, craftsmanName:S.profile.name || "", jobTitle:job?.title || "", createdAt:Date.now(), lastAt:0, lastText:"", lastFrom:"", adminReadAt:0, craftsmanReadAt:0});
+          await api().sendMessage(tid, {from:"craftsman", uid:S.user.uid, name:S.profile.name || "", text:`完了報告の写真を${sent}枚、追加で送りました。`, createdAt:Date.now()});
+        } catch(e) { console.error(e); }
+        toast(`写真を${sent}枚、追加で送りました`); route(); return;
+      }
+      await api().submitReport({jobId:id, jobTitle:job?.title || "", craftsmanId:S.user.uid, craftsmanName:S.profile.name, method:"photos",
+        photoCount:sent, folderUrl:S.reportFolder || "", note:form.elements.note?.value.trim() || ""});
+      S.reportFolder = "";
+      toast(`写真${sent}枚を送り、完了報告しました`); route(); return;
+    }
     if(!await ask({title:"報告メールは送りましたか？", body:`写真を添付したメールを ${REPORT_EMAIL} に送ってから「報告済み」にしてください。`, ok:"送ったので報告済みにする"})) return;
     const job = await api().getJob(id);
     await api().submitReport({jobId:id, jobTitle:job?.title || "", craftsmanId:S.user.uid, craftsmanName:S.profile.name, method:"email"});
@@ -2461,6 +2614,11 @@ document.addEventListener("change", e => {
   if(e.target.matches("[data-pdfimport]")){
     importPdf(e.target).catch(err => { console.error(err); toast("PDFを読み込めませんでした（" + (err.message || err) + "）"); const b = $("#pdf-result"); if(b) b.innerHTML = ""; });
     return;
+  }
+  if(e.target.matches("[data-reportphotos]")){
+    const seen = new Set(S.reportFiles.map(f => f.name + f.size));
+    [...e.target.files].forEach(f => { if(f.type.startsWith("image/") && !seen.has(f.name + f.size)){ S.reportFiles.push(f); seen.add(f.name + f.size); } });
+    e.target.value = ""; renderReportPicks(); return;
   }
   if(e.target.matches("[data-adminsort]")){ S.adminSort = e.target.value; route(); return; }
   if(e.target.matches("[data-propfilter=company]")){ S.propFilter.company = e.target.value; renderPropList(); return; }
