@@ -1550,6 +1550,29 @@ async function notifyMail(jobId, event, text = "", {to = "", kind = "event"} = {
   } catch(e) { console.warn("メール通知に失敗", e); }
 }
 
+// 新着案件のお知らせ：工種・対応エリアが合う承認済みの協力業者へ（メール通知をオフにしている人は除く）
+function newJobTargets(job, crafts){
+  return crafts.filter(c => c.role === "craftsman" && c.status === "approved" && c.emailNotify !== false && c.email
+    && (!job.trades?.length || !c.trades?.length || c.trades.some(t => job.trades.includes(t)))
+    && (!job.pref || !c.prefs?.length || c.prefs.includes(job.pref)));
+}
+async function notifyNewJob(jobId, job){
+  if(api()?.mode === "demo"){
+    const n = newJobTargets(job, await api().listCraftsmen()).length;
+    (S.demoMails ||= []).push({jobId, event:"新着案件", kind:"newjob", count:n});
+    setTimeout(() => toast(n ? `${n}人の協力業者に新着案件のメールを送りました（デモ）` : "条件に合う協力業者がいないため、メールは送っていません"), 1200);
+    return;
+  }
+  if(!PHOTO_UPLOAD_URL) return;
+  try {
+    const idToken = await api().getIdToken();
+    const r = await fetch(PHOTO_UPLOAD_URL, {method:"POST", body:JSON.stringify({action:"newjob", idToken, jobId})}).then(r => r.json());
+    if(!r.ok) toast("新着案件のメールを送れませんでした：" + (r.error || "原因不明"));
+    else if(r.sent) toast(`${r.sent}人の協力業者に新着案件のメールを送りました${r.left ? `（1日の上限のため${r.left}人には送れていません）` : ""}`);
+    else if(r.skipped === "no-target") toast("条件に合う協力業者がいないため、メールは送っていません");
+  } catch(e) { console.warn("新着案件のメールに失敗", e); toast("新着案件のメールを送れませんでした（受け口に接続できません）"); }
+}
+
 /* ---------- 完了報告の写真送信 ---------- */
 const photoUploadOn = () => api()?.mode === "demo" || !!PHOTO_UPLOAD_URL;
 S.reportFiles = []; S.uploading = false;
@@ -1685,7 +1708,7 @@ async function viewJobEdit(id){
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
   const isDraft = !id || job.status === "draft";
   const buttons = isDraft
-    ? `<button class="btn" name="mode" value="open">公開して募集する</button><button class="btn sub" name="mode" value="draft">下書き保存</button>`
+    ? `<label class="toggle" style="flex-basis:100%;margin-bottom:4px"><input type="checkbox" name="mailNew" checked>公開したら、工種と対応エリアが合う協力業者にメールで知らせる</label><button class="btn" name="mode" value="open">公開して募集する</button><button class="btn sub" name="mode" value="draft">下書き保存</button>`
     : `<button class="btn" name="mode" value="keep">変更を保存</button>`;
   return `${back(id ? `#/admin/job/${id}` : "#/admin", id ? "案件の管理" : "案件")}
     <h1>${id ? "案件を編集" : "新しい案件"}</h1>
@@ -1727,7 +1750,7 @@ async function viewJobEdit(id){
         <label class="field" style="margin:0"><span>支払金額（税抜） <small>業者さまへの支払額。発注後に業者さまに表示され、月末の請求書はこの金額で作られます（業者さまは変更できません）</small></span>
           <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000"></label>
       </section>
-      <div class="row">${buttons}</div>
+      <div class="row" style="flex-wrap:wrap">${buttons}</div>
     </form>`;
 }
 async function viewAdminJob(id){
@@ -2858,6 +2881,7 @@ const FORMS = {
       autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), photoUrls});
     if(S.editPdfChanged){ toast("PDFを保存しています…"); await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
     toast(mode === "open" ? "公開しました" : "保存しました");
+    if(mode === "open" && form.elements.mailNew?.checked) notifyNewJob(jid, {...data, id:jid});
     go(`#/admin/job/${jid}`);
   },
   async chat(form){
