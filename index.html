@@ -351,6 +351,14 @@ mark{background:var(--warn-soft);color:inherit;padding:0}
 .flag.gray{background:var(--line);color:var(--ink)}
 .danger-zone{border:2px solid var(--shu)}
 .danger-zone h2{color:var(--shu)}
+.del-list{border:1px solid var(--line);border-radius:10px;max-height:420px;overflow:auto;background:var(--surface)}
+.del-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid var(--line);cursor:pointer}
+.del-row:first-child{border-top:0}
+.del-row:hover{background:var(--paper)}
+.del-row input{width:20px;height:20px;flex:none;accent-color:var(--shu)}
+.del-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.del-main b{overflow-wrap:anywhere}
+.danger-text{color:var(--shu)}
 .big-action{font-size:17px;min-height:56px}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -861,6 +869,19 @@ class DemoBackend {
     return {jobs, total};
   }
   async saveProperties(list){ this.data.properties = clone(list); this.save(); }
+  // 選んだ案件だけ削除（応募・完了報告・発注書・連絡も一緒に。請求書は残す）
+  async deleteJobs(ids, progress){
+    const d = this.data, set = new Set(ids); let total = 0;
+    const drop = (k, f) => { for(const [key, v] of Object.entries(d[k] || {})) if(f(key, v)){ delete d[k][key]; total++; } };
+    ids.forEach(id => { ["jobs","jobPrivate","jobPdf","jobPdfSrc"].forEach(k => { if(d[k]?.[id]){ delete d[k][id]; total++; } }); });
+    drop("applications", (k, v) => set.has(v.jobId));
+    drop("reports", (k, v) => set.has(v.jobId));
+    drop("documents", (k, v) => set.has(v.jobId) || ids.some(id => k === id + "_order" || k === id + "_payment"));
+    const tids = Object.entries(d.threads || {}).filter(([k, v]) => set.has(v.jobId)).map(([k]) => k);
+    tids.forEach(t => { delete d.threads[t]; if(d.messages) delete d.messages[t]; total++; });
+    progress?.("削除しました"); this.save();
+    return {jobs:ids.length, total};
+  }
   // --- 連絡（チャット） ---
   _threads(f = {}){ let a = Object.values(this.data.threads || {}); if(f.craftsmanId) a = a.filter(t => t.craftsmanId === f.craftsmanId); if(f.jobId) a = a.filter(t => t.jobId === f.jobId); return a.map(clone); }
   async listThreads(f){ return this._threads(f); }
@@ -1043,6 +1064,25 @@ class FirebaseBackend {
     }
     progress?.("削除が完了しました");
     return {jobs:jobs.size, total};
+  }
+  // 選んだ案件だけ削除（応募・完了報告・発注書・連絡も一緒に。請求書は記録として残す）
+  async deleteJobs(ids, progress){
+    let total = 0, refs = [], i = 0;
+    const flush = async () => { while(refs.length){ const b = this.db.batch(); const part = refs.splice(0, 400); part.forEach(r => b.delete(r)); await b.commit(); total += part.length; } };
+    for(const id of ids){
+      progress?.(`案件を削除しています… ${++i} / ${ids.length}`);
+      const ref = this.col("jobs").doc(id);
+      for(const sub of ["files", "private"]){ const s = await ref.collection(sub).get(); s.docs.forEach(d => refs.push(d.ref)); }
+      for(const c of ["applications", "reports"]){ const s = await this.col(c).where("jobId", "==", id).get(); s.docs.forEach(d => refs.push(d.ref)); }
+      for(const k of ["order", "payment"]){ const s = await this.col("documents").doc(`${id}_${k}`).get(); if(s.exists) refs.push(s.ref); }
+      const th = await this.col("threads").where("jobId", "==", id).get();
+      for(const t of th.docs){ const m = await t.ref.collection("messages").get(); m.docs.forEach(d => refs.push(d.ref)); refs.push(t.ref); }
+      refs.push(ref);
+      if(refs.length > 300) await flush();
+    }
+    await flush();
+    progress?.("削除が完了しました");
+    return {jobs:ids.length, total};
   }
   // 物件マスタ：master/props_000… に700件ずつまとめて保存（読み込み回数を抑えるため）
   async getProperties(){
@@ -1718,7 +1758,7 @@ async function viewAdminJob(id){
     </section>` : "";
   return `${back("#/admin", "案件")}
     <div class="page-head"><div class="row"><span class="pill ${job.status}">${JOB_STATUS[job.status]}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span></div>
-      <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a></div></div>
+      <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
     ${pdfViewHtml(pdfA, "発注先の業者にも表示されます")}
     <div class="cols">
       <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
@@ -1923,7 +1963,9 @@ function csvCell(v){ v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.repl
 
 // --- 設定：物件マスタ画面 ---
 async function viewSettings(){
-  S.props = await api().getProperties();
+  [S.props, S.delJobs] = await Promise.all([api().getProperties(), api().listJobs({})]);
+  S.delSel = new Set([...(S.delSel || [])].filter(id => S.delJobs.some(j => j.id === id)));
+  S.delFilter ||= {status:"", q:""};
   const companies = [...new Set(S.props.map(p => p.company).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
   S.propFilter ||= {q:"", company:""};
   return `<h1>設定</h1><p class="lead">物件マスタに登録した物件は、案件作成時に物件名から検索して、住所・管理会社・オートロック・エレベーターを自動入力できます。物件マスタは管理者だけが見られます。</p>
@@ -1938,11 +1980,30 @@ async function viewSettings(){
       <p class="small" style="margin:0 0 10px">1行目に見出し「管理会社・物件名・所在地・オートロック・エレベーター・備考」があるCSVを取り込めます。同じ管理会社・物件名・所在地の物件は上書きされます。</p>
       <label class="toggle" style="margin-bottom:10px"><input type="checkbox" id="prop-replace">いまの物件マスタをすべて消して入れ替える</label>
       <input type="file" accept=".csv,text/csv" data-propimport aria-label="CSVファイルを選ぶ"></section>
-    <section class="panel danger-zone"><h2>案件データの削除</h2>
-      <p class="small" style="margin:0 0 10px">試運転で作った案件をまとめて消すときに使います。<b>すべての案件</b>（完了・支払済みを含む）と、それにつながる応募・完了報告・発注書・連絡（チャット）・請求書を削除します。<br>
-      協力業者のアカウント・登録情報と、物件マスタは残ります。Googleドライブの完了報告写真は消えないので、必要ならドライブで削除してください。<b>削除したデータは元に戻せません。</b></p>
-      <button class="btn danger" data-act="wipe-jobs">案件データをすべて削除する</button>
+    <section class="panel danger-zone"><h2>案件の削除</h2>
+      <p class="small" style="margin:0 0 10px">削除したい案件にチェックを入れて「選んだ案件を削除する」を押します。その案件の応募・完了報告・発注書・連絡（チャット）も一緒に消えます。<br>
+      請求書は記録として残ります。協力業者の登録情報と物件マスタも残ります。Googleドライブの完了報告写真は消えないので、必要ならドライブで削除してください。<b>削除した案件は元に戻せません。</b></p>
+      <div class="filters" style="margin:0 0 10px">
+        <input type="search" data-delfilter="q" value="${esc(S.delFilter.q)}" placeholder="案件名・場所で検索" aria-label="削除する案件を検索" style="flex:1;min-width:200px">
+        <select data-delfilter="status" aria-label="状態で絞り込む"><option value="">すべての状態</option>${Object.entries(JOB_STATUS).map(([k, v]) => `<option value="${k}" ${S.delFilter.status === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
+      </div>
+      <div id="del-list"></div>
       <p class="small" id="wipe-progress" style="margin:8px 0 0"></p></section>`;
+}
+function renderDelList(){
+  const box = $("#del-list"); if(!box) return;
+  const f = S.delFilter, q = f.q.trim().toLowerCase();
+  const list = (S.delJobs || []).filter(j => (!f.status || j.status === f.status) && (!q || `${j.title} ${j.pref}${j.city}`.toLowerCase().includes(q)))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const allOn = list.length && list.every(j => S.delSel.has(j.id));
+  box.innerHTML = `<div class="row between" style="margin-bottom:6px">
+      <label class="toggle"><input type="checkbox" data-delall ${allOn ? "checked" : ""} ${list.length ? "" : "disabled"}>表示中の${list.length}件をすべて選ぶ</label>
+      <span class="small">${S.delSel.size}件 選択中</span></div>
+    <div class="del-list">${list.length ? list.map(j => { const c = S.crafts?.get(j.assignedTo), w = workDays(j); return `<label class="del-row">
+      <input type="checkbox" data-delpick="${esc(j.id)}" ${S.delSel.has(j.id) ? "checked" : ""}>
+      <span class="del-main"><b>${esc(j.title || "（無題）")}</b><span class="small">${esc(j.pref || "")}${esc(j.city || "")}　${fmtRange(w.start, w.end)}${c ? "　" + esc(c.name) : ""}</span></span>
+      <span class="pill ${j.status}">${esc(JOB_STATUS[j.status] || j.status)}</span></label>`; }).join("") : `<p class="small" style="padding:12px">該当する案件はありません</p>`}</div>
+    <div class="row" style="margin-top:12px"><button class="btn danger" data-act="delete-jobs" ${S.delSel.size ? "" : "disabled"}>選んだ案件を削除する（${S.delSel.size}件）</button></div>`;
 }
 function renderPropList(){
   const box = $("#prop-list"); if(!box) return;
@@ -2444,7 +2505,7 @@ async function route(){
       else if(a === "calendar") html = await viewCalendar(b, parts[3] || "");
       else if(a === "invoices") html = await viewAdminInvoices(b);
       else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
-      else if(a === "settings"){ html = await viewSettings(); after = () => { renderPropList(); return null; }; }
+      else if(a === "settings"){ html = await viewSettings(); after = () => { renderPropList(); renderDelList(); return null; }; }
       else if(a === "craftsman") html = await viewCraftsman(b);
       else { location.replace("#/admin"); return; }
       return done(html);
@@ -2481,7 +2542,7 @@ function ask({title, body = "", ok = "OK", danger = false, input = null, placeho
     const bg = document.createElement("div"); bg.className = "modal-bg";
     const field = input === "textarea" ? `<textarea class="m-in" placeholder="${esc(placeholder)}"></textarea>`
       : input ? `<input class="m-in" type="${input}" placeholder="${esc(placeholder)}">` : "";
-    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title"><h2 id="m-title">${esc(title)}</h2>${body ? `<p>${esc(body)}</p>` : ""}${field}
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title"><h2 id="m-title">${esc(title)}</h2>${body ? `<p style="white-space:pre-line">${esc(body)}</p>` : ""}${field}
       <div class="row end"><button type="button" class="btn sub m-no">キャンセル</button><button type="button" class="btn${danger ? " danger" : ""} m-ok">${esc(ok)}</button></div></div>`;
     const close = v => { bg.remove(); document.removeEventListener("keydown", key); res(v); };
     const key = e => { if(e.key === "Escape") close(false); };
@@ -2561,19 +2622,26 @@ const ACTIONS = {
     if(old?.number) d.number = old.number;
     await api().saveDocument(d); toast("発注書を作り直しました"); route();
   },
-  async "wipe-jobs"(){
-    const n = (await api().listJobs({})).length;
-    if(!await ask({title:`案件データをすべて削除しますか？`, body:`いま${n}件の案件があります。完了・支払済みを含むすべての案件と、応募・完了報告・発注書・連絡・請求書を削除します。元に戻せません。`, ok:"次へ", danger:true})) return;
-    const typed = await ask({title:"最終確認", body:"本当に削除する場合は「削除」と入力してください。", input:"text", placeholder:"削除", ok:"すべて削除する", danger:true});
-    if(typed === false) return;
-    if(typed.trim() !== "削除") throw new Error("「削除」と入力されなかったため、中止しました");
+  async "delete-jobs"(){
+    const ids = [...S.delSel]; if(!ids.length) return;
+    const titles = ids.map(id => S.delJobs.find(j => j.id === id)?.title || id);
+    const busy = ids.filter(id => ["assigned","working","finished"].includes(S.delJobs.find(j => j.id === id)?.status)).length;
+    const body = `${titles.slice(0, 5).map(t => "・" + t).join("\n")}${titles.length > 5 ? `\nほか${titles.length - 5}件` : ""}\n\n応募・完了報告・発注書・連絡も一緒に削除します。元に戻せません。${busy ? `\n※進行中（発注済み〜作業完了）の案件が${busy}件含まれています。` : ""}`;
+    if(!await ask({title:`${ids.length}件の案件を削除しますか？`, body, ok:"削除する", danger:true})) return;
     const prog = $("#wipe-progress");
     S.uploading = true;
     try {
-      const res = await api().wipeJobData(msg => { if(prog) prog.textContent = msg; });
-      toast(`削除しました（案件 ${res.jobs}件ほか ${res.total}件）`);
+      const res = await api().deleteJobs(ids, msg => { if(prog) prog.textContent = msg; });
+      toast(`案件を${res.jobs}件削除しました`);
     } finally { S.uploading = false; }
-    stopNotifier(); stopBadges(); route();
+    S.delSel = new Set(); stopNotifier(); stopBadges(); route();
+  },
+  async "job-delete"(el){
+    const id = el.dataset.job, j = await api().getJob(id); if(!j) return;
+    if(!await ask({title:`「${j.title}」を削除しますか？`, body:"この案件の応募・完了報告・発注書・連絡も一緒に削除します。請求書は残ります。元に戻せません。", ok:"削除する", danger:true})) return;
+    S.uploading = true;
+    try { await api().deleteJobs([id]); } finally { S.uploading = false; }
+    toast("案件を削除しました"); stopNotifier(); stopBadges(); location.hash = "#/admin";
   },
   async "prop-add"(){ const p = await propEditor(); if(!p) return; S.props.push(p); await api().saveProperties(S.props); toast("物件を追加しました"); route(); },
   async "prop-edit"(el){
@@ -2911,6 +2979,7 @@ document.addEventListener("input", e => {
   }
   if(e.target.matches?.("form[data-form=job] [name=room]")) autoTitle(e.target.form);
   if(e.target.matches?.("form[data-form=job] [name=title]")) e.target.dataset.auto = "";
+  if(e.target.matches?.("[data-delfilter=q]")){ S.delFilter.q = e.target.value; renderDelList(); }
   if(e.target.matches?.("[data-propfilter=q]")){ S.propFilter.q = e.target.value; renderPropList(); } if(e.target.closest(".item-row")) syncItems(e.target.form);  });
 document.addEventListener("change", e => {
   if(e.target.matches("[data-pdfimport]")){
@@ -2923,6 +2992,13 @@ document.addEventListener("change", e => {
     e.target.value = ""; renderReportPicks(); return;
   }
   if(e.target.matches("[data-adminsort]")){ S.adminSort = e.target.value; route(); return; }
+  if(e.target.matches("[data-delfilter=status]")){ S.delFilter.status = e.target.value; renderDelList(); return; }
+  if(e.target.matches("[data-delpick]")){ const id = e.target.dataset.delpick; e.target.checked ? S.delSel.add(id) : S.delSel.delete(id); renderDelList(); return; }
+  if(e.target.matches("[data-delall]")){
+    const f = S.delFilter, q = f.q.trim().toLowerCase();
+    (S.delJobs || []).filter(j => (!f.status || j.status === f.status) && (!q || `${j.title} ${j.pref}${j.city}`.toLowerCase().includes(q))).forEach(j => e.target.checked ? S.delSel.add(j.id) : S.delSel.delete(j.id));
+    renderDelList(); return;
+  }
   if(e.target.matches("[data-propfilter=company]")){ S.propFilter.company = e.target.value; renderPropList(); return; }
   if(e.target.matches("[data-propimport]")){
     const input = e.target, file = input.files[0]; if(!file) return;
