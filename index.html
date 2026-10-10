@@ -750,7 +750,7 @@ function buildOrderDoc(job, priv, c){
     id:`${job.id}_order`, type:"order", jobId:job.id, craftsmanId:c.uid, number:docNumber("PO", job.id), status:"issued", issuedAt:Date.now(),
     to:{name:c.name || "", tradeName:c.tradeName || "", phone:c.phone || "", invoiceNumber:c.invoiceNumber || ""},
     job:{title:job.title || "", pref:job.pref || "", city:job.city || "", address:priv.address || "", building:priv.building || "",
-      startDate:job.startDate || "", endDate:job.endDate || "", description:job.description || "", priceNote:job.priceNote || "", items:clone(job.items || [])},
+      startDate:job.startDate || "", endDate:job.endDate || "", description:job.description || "", priceNote:job.priceNote || "", items:clone(priv.items?.length ? priv.items : job.items || [])},
     amount:calcAmount(job.price, taxMode), taxMode, terms:PAYMENT_TERMS, company:{...COMPANY}
   };
 }
@@ -1358,7 +1358,7 @@ function jobDetailBlock(j, showPrice = false){
     <h1>${esc(j.title)}</h1>
     ${showPrice ? (Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : `<p class="small warn" style="margin:4px 0 10px">支払金額はReforeが設定します（未設定）</p>`) : ""}
     <dl class="kv">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}${(w => `<dt>開始日</dt><dd>${fmtDay(w.start)}</dd><dt>終了日</dt><dd>${fmtDay(w.end)}</dd>`)(workDays(j))}</dl>
-    ${j.items?.length ? `<h2>作業内訳</h2>${itemsTable(j)}` : ""}
+    ${showPrice && j.items?.length ? `<h2>作業内訳</h2>${itemsTable(j)}` : ""}
     ${j.description ? `<h2>作業内容</h2><p class="pre">${esc(j.description)}</p>` : ""}
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
   </article>`;
@@ -1419,6 +1419,12 @@ function progressMini(job){
   if(stage < 0) return "";
   return `<span class="mini" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i <= stage ? "on" : ""}"></i>`).join("")}</span>`;
 }
+// 発注内容（作業内訳）：発注先と管理者だけ（現場情報と同じ private に保存）
+function itemsPanel(job, priv, admin = false){
+  if(!priv.items?.length) return "";
+  return `<section class="panel"><h2>発注内容${admin ? "<small>発注先にだけ表示</small>" : ""}</h2>${itemsTable({items:priv.items, taxMode:job.taxMode})}</section>`;
+}
+const attachedPdfRow = id => `<div class="doc-row"><span class="row-main"><b>案件PDF</b><span class="small">管理会社からの書類（添付PDF）</span></span><button class="btn sub" data-act="dl-order" data-job="${esc(id)}">ダウンロード</button></div>`;
 function docRow(label, doc, note, canSee = true, attachedJob = null){
   const ok = doc && canSee;
   const btn = attachedJob ? `<button class="btn sub" data-act="dl-order" data-job="${esc(attachedJob)}">ダウンロード</button>`
@@ -1609,14 +1615,14 @@ async function viewWorkDetail(id){
     step = `<div class="note" style="margin:0">お支払いが完了しました。</div>`;
   }
   const docs = `<section class="panel"><h2>書類</h2>
-    ${docRow("発注書", order, "準備中です", true, pdfA ? id : null)}</section>`;
+    ${docRow("発注書", order, "準備中です")}${pdfA ? attachedPdfRow(id) : ""}</section>`;
   const t = S.threads.get(`${id}_${uid}`);
   const contact = `<section class="panel"><h2>Reforeへの連絡</h2>
     ${t?.lastAt ? `<p class="small" style="margin:0 0 10px">${isUnread(t) ? `<span class="badge">新着</span> ` : ""}${fmtTime(t.lastAt)}　${esc(t.lastText)}</p>` : `<p class="small" style="margin:0 0 10px">現場のことで確認したいことは、ここからReforeに連絡できます。</p>`}
     <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${t?.lastAt ? "やりとりを開く" : "Reforeに連絡する"}</button></section>`;
   return `${back("#/work", "受注した案件")}${pdfViewHtml(pdfA)}<div class="cols">
     <div class="stack">${step}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
-    <div class="stack">${privateBlock(priv)}${jobDetailBlock(job, true)}</div></div>`;
+    <div class="stack">${privateBlock(priv)}${jobDetailBlock(job, true)}${itemsPanel(job, priv)}</div></div>`;
 }
 /* ---------- メール通知（受注後の動き。Apps Script から info@refore.co.jp 名義で送信） ---------- */
 // to：管理者から業者に送るときの業者UID（業者からのときは空＝Reforeに届く）
@@ -1789,6 +1795,8 @@ async function viewJobEdit(id){
   S.editPhotos = [...(job.photos || [])];
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
   const isDraft = !id || job.status === "draft";
+  const usedItems = (priv.items?.length ? priv.items : job.items || []).filter(i => i.name || i.unitPrice);
+  const editItems = usedItems.length ? usedItems : [{qty:1, unit:"式"}];
   const buttons = isDraft
     ? `<label class="toggle" style="flex-basis:100%;margin-bottom:4px"><input type="checkbox" name="mailNew" checked>公開したら、工種と対応エリアが合う協力業者にメールで知らせる</label><button class="btn" name="mode" value="open">公開して募集する</button><button class="btn sub" name="mode" value="draft">下書き保存</button>`
     : `<button class="btn" name="mode" value="keep">変更を保存</button>`;
@@ -1829,8 +1837,15 @@ async function viewJobEdit(id){
           <label class="field"><span>開始日</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
           <label class="field"><span>終了日 <small>1日で終わる場合は空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
         </div>
-        <label class="field" style="margin:0"><span>支払金額（税抜） <small>業者さまへの支払額。発注後に業者さまに表示され、月末の請求書はこの金額で作られます（業者さまは変更できません）</small></span>
-          <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000"></label>
+      </section>
+      <section class="panel"><h2>発注内容（作業内訳）<small>発注した業者にだけ表示・発注書に載ります</small></h2>
+        <p class="small" style="margin:0 0 10px">作業ごとに「作業名・数量・単位・単価（税抜）」を入力します。合計が業者さまへの支払金額になり、発注書と月末の請求書はこの金額で作られます（業者さまは変更できません）。</p>
+        <div class="items-ed" id="items-ed">${editItems.map(itemRowHtml).join("")}</div>
+        <datalist id="unit-list">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist>
+        <div class="row between" style="margin-top:10px;flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-item">＋ 作業を追加</button>
+          <span>合計（税抜）<span class="i-total">${yenFull(itemsTotal(editItems))}</span></span></div>
+        <label class="field" style="margin:12px 0 0"><span>支払金額（税抜） <small>作業内訳を入力すると合計が自動で入ります</small></span>
+          <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${usedItems.length ? itemsTotal(usedItems) : Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000" ${usedItems.length ? "readonly" : ""}></label>
       </section>
       <div class="row" style="flex-wrap:wrap">${buttons}</div>
     </form>`;
@@ -1858,15 +1873,16 @@ async function viewAdminJob(id){
     </div>`;
   };
   const docs = job.assignedTo ? `<section class="panel"><h2>書類</h2>
-    ${docRow("発注書", order, pdfA ? "発注すると、添付PDFを発注書としてダウンロードできるようになります" : "発注すると自動で作成されます", true, pdfA ? id : null)}
-    ${order && !pdfA ? `<p style="margin:-4px 0 8px;text-align:right"><button class="textlink" data-act="order-regen" data-job="${esc(id)}">今の内容で発注書を作り直す</button></p>` : ""}
+    ${docRow("発注書", order, "発注すると、発注内容（作業内訳）から自動で作成されます")}
+    ${order ? `<p style="margin:-4px 0 8px;text-align:right"><button class="textlink" data-act="order-regen" data-job="${esc(id)}">今の内容で発注書を作り直す</button></p>` : ""}
+    ${pdfA ? attachedPdfRow(id) : ""}
     </section>` : "";
   return `${back("#/admin", "案件")}
     <div class="page-head"><div class="row"><span class="pill ${job.status}">${JOB_STATUS[job.status]}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span></div>
       <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
     ${pdfViewHtml(pdfA, "発注先の業者にも表示されます")}
     <div class="cols">
-      <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
+      <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true)}${itemsPanel(job, priv, true)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
         ${assigned ? `<section class="panel"><h2>発注先</h2><p style="margin:0"><b>${esc(assigned.name)}</b> ${esc(assigned.tradeName)}<br><a href="tel:${esc(assigned.phone)}">${esc(assigned.phone)}</a></p>
           <p style="margin:10px 0 0">支払金額（税抜）：${Number(job.price) > 0 ? `<b>${yenFull(job.price)}</b>` : `<span class="warn">未設定</span>　<a href="#/admin/job/${esc(id)}/edit">設定する</a>`}</p>
@@ -2522,7 +2538,7 @@ function docOrderHtml(d){
     <table class="t"><tr><th>件名</th><td>${esc(j.title)}</td></tr>
       <tr><th>現場</th><td>${esc(j.address || j.pref + j.city)}${j.building ? `　${esc(j.building)}` : ""}</td></tr>
       <tr><th>工期</th><td>${pdfPeriod(j.startDate, j.endDate) || "別途調整"}</td></tr>
-      <tr><th>作業内容</th><td class="pre">${esc(j.description)}</td></tr></table>
+      ${j.description ? `<tr><th>作業内容</th><td class="pre">${esc(j.description)}</td></tr>` : ""}</table>
     <table class="t items"><tr><th>品目</th><th>数量</th><th>単価（${d.taxMode === "税込" ? "税込" : "税抜"}）</th><th>金額（${d.taxMode === "税込" ? "税込" : "税抜"}）</th></tr>
       ${(j.items?.length ? j.items : [{name:j.title, qty:1, unit:"式", unitPrice:d.taxMode === "税込" ? a.total : a.base}]).map(i =>
         `<tr><td>${esc(i.name)}</td><td class="r">${fmtQty(i.qty)}${esc(i.unit)}</td><td class="r">${yenFull(i.unitPrice)}</td><td class="r">${yenFull(itemAmount(i))}</td></tr>`).join("")}</table>
@@ -2530,7 +2546,7 @@ function docOrderHtml(d){
       <tr><th>消費税（10%）</th><td class="r">${yenFull(a.tax)}</td></tr>
       <tr><th>合計（税込）</th><td class="r"><b>${yenFull(a.total)}</b></td></tr></table>
     <table class="t"><tr><th>支払条件</th><td>${esc(d.terms)}</td></tr>
-      <tr><th>完了報告</th><td>作業完了後、施工前・施工後の写真を添付して ${esc(d.company.email)} へメールでご報告ください。</td></tr>
+      <tr><th>完了報告</th><td>作業完了後、協力業者ポータルから施工前・施工後の写真を送って完了報告してください。</td></tr>
       ${j.priceNote ? `<tr><th>備考</th><td class="pre">${esc(j.priceNote)}</td></tr>` : ""}</table>
     <div class="foot">この発注書は GENPUKU Pro 協力業者ポータルから発行しています。</div></div>`;
 }
@@ -2711,8 +2727,9 @@ const ACTIONS = {
   },
   async assign(el){
     const {job, uid, name} = el.dataset;
-    if(!await ask({title:`${name} さんに発注しますか？`, body:"発注書を自動で作成し、業者さまがダウンロードできるようになります。現場情報もこの業者に表示されます。ほかの応募者は「見送り」になります。", ok:"発注する"})) return;
     const [jobD, priv] = await Promise.all([api().getJob(job), api().getJobPrivate(job)]);
+    const noItems = !priv.items?.length;
+    if(!await ask({title:`${name} さんに発注しますか？`, body:`発注内容（作業内訳）から発注書を自動で作成し、業者さまがダウンロードできるようになります。現場情報もこの業者に表示されます。ほかの応募者は「見送り」になります。${noItems ? "\n\n※作業内訳がまだ入力されていません。先に「編集」で作業ごとの金額を入力してください（あとから入力して発注書を作り直すこともできます）。" : `\n\n発注金額（税抜）：${yenFull(jobD.price)}`}`, ok:"発注する"})) return;
     const c = S.crafts.get(uid) || await api().getProfile(uid);
     await api().assign(job, uid, buildOrderDoc(jobD, priv, c));
     notifyMail(job, "発注されました", `「${jobD.title}」をあなたに発注しました。ポータルで現場情報と発注書を確認してください。\n作業日：${fmtRange(jobD.startDate, jobD.endDate)}`, {to:uid});
@@ -2822,7 +2839,7 @@ const ACTIONS = {
     const id = el.dataset.job;
     const [old, view, order] = await Promise.all([api().getJobPdfSource(id), api().getJobPdf(id), api().getDocument(`${id}_order`)]);
     const src = view?.src || old;
-    const base = `発注書_${order?.number || id}`;
+    const base = `案件PDF_${order?.number || id}`;
     if(src?.data){ saveBlob(dataUrlToBlob(src.data), `${base}_${src.name}`); return; }
     if(!view?.pages?.length) throw new Error("添付PDFが見つかりません");
     // 元のPDFが大きくて保存できなかった場合は、表示用の画像からPDFを作り直す
@@ -2953,14 +2970,18 @@ const FORMS = {
     if(badUrl) throw new Error(`写真確認URLは https:// から始まるリンクを入力してください（${badUrl.slice(0, 40)}）`);
     const title = g("title") || (S.editPdf ? S.editPdf.name.replace(/\.pdf$/i, "") : "");
     if(!title) throw new Error("案件PDFを添付してください");
-    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price:Math.max(0, Math.round(Number(g("price")) || 0)), taxMode:"税別"};
-    if(!id) Object.assign(data, {priceNote:"", description:"", items:[], photos:[]});
+    const items = readItems(form).filter(i => i.name || i.unitPrice);
+    if(items.some(i => !i.name)) throw new Error("作業内訳に作業名が空の行があります");
+    if(items.some(i => !(i.qty > 0))) throw new Error("作業内訳の数量を入力してください");
+    const price = items.length ? itemsTotal(items) : Math.max(0, Math.round(Number(g("price")) || 0));
+    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price, taxMode:"税別", items:[]};
+    if(!id) Object.assign(data, {priceNote:"", description:"", photos:[]});
     if(mode === "open" || mode === "draft") data.status = mode;
     if(mode === "open") data.publishedAt = Date.now();
     if(!id && !data.status) data.status = "draft";
     const jid = await api().saveJob(id, data);
     await api().setJobPrivate(jid, {address:g("address"), building:g("building"), room:g("room"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact"),
-      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), photoUrls});
+      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), photoUrls, items});
     if(S.editPdfChanged){ toast("PDFを保存しています…"); await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
     toast(mode === "open" ? "公開しました" : "保存しました");
     if(mode === "open" && form.elements.mailNew?.checked) notifyNewJob(jid, {...data, id:jid});
