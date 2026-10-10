@@ -1809,6 +1809,24 @@ async function viewJobEdit(id){
         <input type="file" accept="application/pdf,.pdf" data-pdfimport aria-label="案件PDFを選ぶ">
         <div id="pdf-attach">${pdfAttachHtml()}</div>
         <div id="pdf-result"></div></section>
+      <section class="panel"><h2>発注内容（作業内訳）<small>発注した業者にだけ表示・発注書に載ります</small></h2>
+        <p class="small" style="margin:0 0 10px">作業ごとに「作業名・数量・単位・単価（税抜）」を入力します。合計が業者さまへの支払金額になり、発注書と月末の請求書はこの金額で作られます（業者さまは変更できません）。</p>
+        <div class="items-ed" id="items-ed">${editItems.map(itemRowHtml).join("")}</div>
+        <datalist id="unit-list">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist>
+        <div class="row between" style="margin-top:10px;flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-item">＋ 作業を追加</button>
+          <span>合計（税抜）<span class="i-total">${yenFull(itemsTotal(editItems))}</span></span></div>
+        <label class="field" style="margin:12px 0 0"><span>支払金額（税抜） <small>作業内訳を入力すると合計が自動で入ります</small></span>
+          <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${usedItems.length ? itemsTotal(usedItems) : Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000" ${usedItems.length ? "readonly" : ""}></label>
+      </section>
+      <section class="panel"><h2>工種・作業日</h2>
+        <label class="field"><span>案件名 <small>一覧・予定表に表示されます（PDFのファイル名が初期値）</small></span><input type="text" name="title" maxlength="80" value="${esc(job.title)}" placeholder="例：グリーンハイツ203 原状回復"></label>
+        <input type="hidden" name="pref" value="${esc(job.pref || "")}"><input type="hidden" name="city" value="${esc(job.city || "")}">
+        <fieldset class="field"><legend>工種</legend><div class="checks">${TRADES.map(t => `<label><input type="checkbox" name="trades" value="${esc(t)}" ${chk(t)}>${esc(t)}</label>`).join("")}</div></fieldset>
+        <div class="two">
+          <label class="field"><span>開始日</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
+          <label class="field"><span>終了日 <small>1日で終わる場合は空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
+        </div>
+      </section>
       <section class="panel"><h2>物件・現場情報<small>発注した業者にだけ表示</small></h2>
         <div class="field"><span>物件名 <small>入力すると物件マスタから候補が出ます。選ぶと住所・管理会社などが自動で入ります</small></span>
           <div class="ac-wrap"><input type="text" name="building" value="${esc(priv.building)}" autocomplete="off" data-propsearch role="combobox" aria-label="物件名" aria-autocomplete="list" aria-controls="prop-ac" aria-expanded="false" placeholder="例：パークハウス">
@@ -1828,24 +1846,6 @@ async function viewJobEdit(id){
         <label class="field"><span>施工箇所写真確認URL <small>Googleフォト・Dropbox などの共有リンク。複数ある場合は1行に1つ</small></span>
           <textarea name="photoUrls" rows="2" style="min-height:64px" placeholder="https://...">${esc((priv.photoUrls || []).join("\n"))}</textarea></label>
         <label class="field"><span>連絡事項</span><textarea name="contact">${esc(priv.contact)}</textarea></label>
-      </section>
-      <section class="panel"><h2>工種・作業日</h2>
-        <label class="field"><span>案件名 <small>一覧・予定表に表示されます（PDFのファイル名が初期値）</small></span><input type="text" name="title" maxlength="80" value="${esc(job.title)}" placeholder="例：グリーンハイツ203 原状回復"></label>
-        <input type="hidden" name="pref" value="${esc(job.pref || "")}"><input type="hidden" name="city" value="${esc(job.city || "")}">
-        <fieldset class="field"><legend>工種</legend><div class="checks">${TRADES.map(t => `<label><input type="checkbox" name="trades" value="${esc(t)}" ${chk(t)}>${esc(t)}</label>`).join("")}</div></fieldset>
-        <div class="two">
-          <label class="field"><span>開始日</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
-          <label class="field"><span>終了日 <small>1日で終わる場合は空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
-        </div>
-      </section>
-      <section class="panel"><h2>発注内容（作業内訳）<small>発注した業者にだけ表示・発注書に載ります</small></h2>
-        <p class="small" style="margin:0 0 10px">作業ごとに「作業名・数量・単位・単価（税抜）」を入力します。合計が業者さまへの支払金額になり、発注書と月末の請求書はこの金額で作られます（業者さまは変更できません）。</p>
-        <div class="items-ed" id="items-ed">${editItems.map(itemRowHtml).join("")}</div>
-        <datalist id="unit-list">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist>
-        <div class="row between" style="margin-top:10px;flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-item">＋ 作業を追加</button>
-          <span>合計（税抜）<span class="i-total">${yenFull(itemsTotal(editItems))}</span></span></div>
-        <label class="field" style="margin:12px 0 0"><span>支払金額（税抜） <small>作業内訳を入力すると合計が自動で入ります</small></span>
-          <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${usedItems.length ? itemsTotal(usedItems) : Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000" ${usedItems.length ? "readonly" : ""}></label>
       </section>
       <div class="row" style="flex-wrap:wrap">${buttons}</div>
     </form>`;
