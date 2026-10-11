@@ -147,6 +147,8 @@ h2{font-size:16px;line-height:1.5;margin:0 0 12px}
 
 .pill{display:inline-block;flex:none;font-size:12px;padding:1px 10px;border-radius:999px;border:1px solid currentColor;font-weight:700;white-space:nowrap}
 .pill.applied,.pill.open{color:var(--kon-text)}
+.pill.declined{color:var(--shu)}
+.pill.waiting{color:var(--warn)}
 .pill.selected,.pill.approved,.pill.assigned{color:var(--ok)}
 .pill.rejected,.pill.withdrawn,.pill.suspended,.pill.closed,.pill.paid{color:var(--sub)}
 .pill.working,.pill.finished{color:var(--kon-text)}
@@ -571,7 +573,10 @@ const UNITS = ["式","㎡","m","枚","台","箇所","個","本","室","セット
 const TRADES = ["ハウスクリーニング","エアコンクリーニング","クロス張替え","床（CF・フロアタイル）","塗装","設備交換","簡易修繕","退去立会","その他"];
 const PREFS = ["東京都","神奈川県","埼玉県","千葉県"];
 const JOB_STATUS = {draft:"下書き",open:"募集中",closed:"締切",assigned:"発注済み",working:"作業中",finished:"作業完了",completed:"完了確認済み",paid:"支払済み"};
-const APP_STATUS = {applied:"応募中",selected:"採用",rejected:"見送り",withdrawn:"取り下げ"};
+// 発注済み（assigned）は、業者が金額を確認して承諾したかどうかで表示を分ける
+const statusLabel = j => j.status === "assigned" ? (j.acceptedAt ? (j.craftStart ? "承諾済み" : "入る日待ち") : j.declinedAt ? "辞退" : "承諾待ち") : (JOB_STATUS[j.status] || j.status);
+const pillClass = j => j.status === "assigned" ? (j.declinedAt ? "declined" : !j.acceptedAt || !j.craftStart ? "waiting" : "assigned") : j.status;
+const APP_STATUS = {applied:"応募中",selected:"採用",rejected:"見送り",withdrawn:"取り下げ",declined:"辞退"};
 const REPORT_STATUS = {submitted:"確認待ち",approved:"確認済み",returned:"差し戻し"};
 const CRAFT_STATUS = {pending:"審査中",approved:"承認済み",suspended:"停止中"};
 
@@ -1159,6 +1164,20 @@ class DemoBackend {
   }
   async setJobStatus(id, status){ Object.assign(this.data.jobs[id], {status, ...stampFor(status), updatedAt:Date.now()}); this.save(); }
   async setWorkProgress(id, status, extra = {}){ Object.assign(this.data.jobs[id], {status, ...stampFor(status), ...extra, updatedAt:Date.now()}); this.save(); }
+  async acceptOrder(id){ Object.assign(this.data.jobs[id], {acceptedAt:Date.now(), updatedAt:Date.now()}); this.save(); }
+  async declineOrder(id, reason){ Object.assign(this.data.jobs[id], {declinedAt:Date.now(), declineReason:reason, updatedAt:Date.now()}); this.save(); }
+  async unassign(jobId){
+    const j = this.data.jobs[jobId], uid = j.assignedTo;
+    ["assignedTo","assignedAt","acceptedAt","declinedAt","declineReason","craftStart","craftEnd"].forEach(k => delete j[k]);
+    Object.assign(j, {status:"open", assignedTo:null, updatedAt:Date.now()});
+    delete (this.data.documents || {})[`${jobId}_order`];
+    Object.values(this.data.applications).filter(a => a.jobId === jobId).forEach(a => {
+      if(a.craftsmanId === uid && a.status === "selected") a.status = "declined";
+      else if(a.status === "rejected") a.status = "applied";
+      a.updatedAt = Date.now();
+    });
+    this.save();
+  }
   async setCraftDates(id, d){ Object.assign(this.data.jobs[id], {craftStart:d.craftStart, craftEnd:d.craftEnd, updatedAt:Date.now()}); this.save(); }
   async getDocument(id){ return clone((this.data.documents || {})[id] || null); }
   async saveDocument(doc){ (this.data.documents ||= {})[doc.id] = doc; this.save(); }
@@ -1326,6 +1345,21 @@ class FirebaseBackend {
   async setJobStatus(id, status){ await this.col("jobs").doc(id).update({status, ...stampFor(status), updatedAt:Date.now()}); }
   // 業者が自分で押す「作業開始」「作業完了」（ルールで許可された項目だけを更新）
   async setWorkProgress(id, status, extra = {}){ await this.col("jobs").doc(id).update({status, ...stampFor(status), ...extra, updatedAt:Date.now()}); }
+  async acceptOrder(id){ await this.col("jobs").doc(id).update({acceptedAt:Date.now(), updatedAt:Date.now()}); }
+  async declineOrder(id, reason){ await this.col("jobs").doc(id).update({declinedAt:Date.now(), declineReason:reason, updatedAt:Date.now()}); }
+  // 発注を取り消して募集に戻す（辞退されたときなど）。発注書を消し、ほかの応募者は「応募中」に戻す
+  async unassign(jobId){
+    const F = firebase.firestore.FieldValue, ref = this.col("jobs").doc(jobId);
+    const job = (await ref.get()).data() || {}, uid = job.assignedTo;
+    const apps = await this.col("applications").where("jobId", "==", jobId).get();
+    const b = this.db.batch();
+    b.update(ref, {status:"open", assignedTo:null, assignedAt:F.delete(), acceptedAt:F.delete(), declinedAt:F.delete(), declineReason:F.delete(), craftStart:F.delete(), craftEnd:F.delete(), updatedAt:Date.now()});
+    b.delete(this.col("documents").doc(`${jobId}_order`));
+    apps.forEach(s => { const a = s.data();
+      if(a.craftsmanId === uid && a.status === "selected") b.update(s.ref, {status:"declined", updatedAt:Date.now()});
+      else if(a.status === "rejected") b.update(s.ref, {status:"applied", updatedAt:Date.now()}); });
+    await b.commit();
+  }
   async setCraftDates(id, d){ await this.col("jobs").doc(id).update({craftStart:d.craftStart, craftEnd:d.craftEnd, updatedAt:Date.now()}); }
   async getDocument(id){
     try { const s = await this.col("documents").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
@@ -1674,12 +1708,13 @@ function reportsBlock(rs, admin){
 const priceSmall = j => esc([Number(j.price) > 0 ? taxModeOf(j) : "", j.priceNote].filter(Boolean).join("・"));
 const STATUS_STAMP = {draft:["下書", true], closed:["締切", true], assigned:["発注済", false], working:["作業中", false], finished:["完了", false], completed:["確認済", false], paid:["支払済", true]};
 const statusStamp = j => STATUS_STAMP[j.status] ? stamp(STATUS_STAMP[j.status][0], STATUS_STAMP[j.status][1]) : "";
-const STEPS = [["募集開始","publishedAt"],["発注","assignedAt"],["作業開始","startedAt"],["作業完了","finishedAt"],["完了報告",null],["完了確認","completedAt"],["支払","paidAt"]];
-const STAGE = {draft:-1, open:0, closed:0, assigned:1, working:2, finished:3, completed:5, paid:6};
+const STEPS = [["募集開始","publishedAt"],["発注","assignedAt"],["承諾","acceptedAt"],["作業開始","startedAt"],["作業完了","finishedAt"],["完了報告",null],["完了確認","completedAt"],["支払","paidAt"]];
+const STAGE = {draft:-1, open:0, closed:0, assigned:1, working:3, finished:4, completed:6, paid:7};
+const stageOf = job => { const st = STAGE[job.status] ?? -1; return job.status === "assigned" && job.acceptedAt ? 2 : st; };
 function progressTrack(job, reports = []){
   const rep = reports.filter(r => r.jobId === job.id && r.status !== "returned").sort((a, b) => b.createdAt - a.createdAt)[0];
-  let stage = STAGE[job.status] ?? -1;
-  if(stage === 3 && rep) stage = 4;
+  let stage = stageOf(job);
+  if(stage === 4 && rep) stage = 5;
   const times = STEPS.map(([, k], i) => k ? job[k] : rep?.createdAt);
   if(!times[0]) times[0] = job.createdAt;
   return `<section class="panel"><h2>進捗</h2><ol class="track">${STEPS.map(([l], i) => {
@@ -1689,7 +1724,7 @@ function progressTrack(job, reports = []){
   }).join("")}</ol></section>`;
 }
 function progressMini(job){
-  const stage = STAGE[job.status] ?? -1;
+  const stage = stageOf(job);
   if(stage < 0) return "";
   return `<span class="mini" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i <= stage ? "on" : ""}"></i>`).join("")}</span>`;
 }
@@ -1829,8 +1864,7 @@ async function viewJobDetail(id){
     const press = S.pressStamp === id ? " press" : ""; S.pressStamp = null;
     action = `<div class="panel"><div class="row" style="gap:16px;flex-wrap:nowrap">${stamp("応募済", false, " inline" + press)}<div>
         <p style="margin:0">応募状況：<span class="pill ${app.status}">${APP_STATUS[app.status]}</span></p>
-        <p class="small" style="margin:4px 0 0">${fmtTime(app.createdAt)} に応募しました。発注が決まると、ここに現場情報が表示されます。</p>
-        ${app.planStart ? `<p style="margin:6px 0 0">入る日：<b>${fmtRange(app.planStart, app.planEnd)}</b></p>` : ""}</div></div>
+        <p class="small" style="margin:4px 0 0">${fmtTime(app.createdAt)} に応募しました。発注が決まると、ここに現場情報が表示されます。</p></div></div>
       ${app.message ? `<div class="msg pre">${esc(app.message)}</div>` : ""}
       ${app.status === "applied" ? `<button class="btn danger" data-act="withdraw" data-id="${esc(app.id)}" style="margin-top:8px">応募を取り下げる</button>` : ""}</div>`;
   } else if(app){
@@ -1840,11 +1874,7 @@ async function viewJobDetail(id){
   } else {
     action = `<form class="panel" data-form="apply" data-id="${esc(id)}">
       <h2>この案件に応募する</h2>
-      <p class="small" style="margin:0 0 10px">工期：${fmtRange(job.startDate, job.endDate)}。現場に入れる日を選んでください（発注後も変更できます）。</p>
-      <div class="two">
-        <label class="field"><span>入る日</span><input type="date" name="planStart" required value="${esc(job.startDate)}"></label>
-        <label class="field"><span>終わる予定日 <small>1日で終わる場合は空欄</small></span><input type="date" name="planEnd" value="${job.endDate && job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
-      </div>
+      <p class="small" style="margin:0 0 10px">工期：${fmtRange(job.startDate, job.endDate)}。現場に入る日は、発注を承諾したあとに決めます。</p>
       <label class="field"><span>Reforeへのメッセージ <small>任意</small></span><textarea name="message" maxlength="1000" placeholder="例：当日は9時から作業できます。前日の下見も可能です。"></textarea></label>
       <button class="btn block">応募する</button>
       <p class="small" style="margin:10px 0 0">鍵・入室方法と連絡事項は、発注が決まった業者さまにだけ表示されます。</p></form>`;
@@ -1877,7 +1907,7 @@ async function viewWork(){
     if(sts[0] === "paid") js.reverse();
     if(!js.length) return "";
     return `<h2 class="day-head"><b>${label}</b>${js.length}件</h2><div class="list grid">${js.map(j => jobCard(j, {href:`#/work/${j.id}`, showPrice:true, stampHtml:statusStamp(j),
-      foot:`<p class="foot">${progressMini(j)}${esc(JOB_STATUS[j.status])}</p>`})).join("")}</div>`;
+      foot:`<p class="foot">${progressMini(j)}${esc(statusLabel(j))}</p>`})).join("")}</div>`;
   }).join("");
 }
 async function viewWorkDetail(id){
@@ -1888,8 +1918,20 @@ async function viewWorkDetail(id){
   const rs = reports.filter(r => r.jobId === id).sort((a, b) => b.createdAt - a.createdAt);
   const canReport = job.status === "finished" && !rs.some(r => r.status === "submitted" || r.status === "approved");
   let step = "";
-  if(job.status === "assigned"){
-    step = `<section class="panel"><h2>作業の開始</h2><p style="margin:0 0 12px">現場で作業を始めるときに押してください。押した日時が記録され、Reforeにも表示されます。</p>
+  if(job.status === "assigned" && job.declinedAt){
+    step = `<section class="panel"><h2>発注を辞退しました</h2><p style="margin:0">${fmtFull(job.declinedAt)} に辞退しました。${job.declineReason ? `<br>理由：${esc(job.declineReason)}` : ""}<br>Reforeが確認して対応します。</p></section>`;
+  } else if(job.status === "assigned" && !job.acceptedAt){
+    const amt = calcAmount(job.price, taxModeOf(job));
+    step = `<section class="panel" style="border:2px solid var(--kon-text)"><h2>発注内容の確認</h2>
+      <p style="margin:0 0 10px">Reforeから発注がありました。下の「発注内容」と金額を確認して、問題なければ「承諾する」を押してください。</p>
+      <div class="price big" style="margin:0 0 4px"><span class="num">${yenFull(amt.base)}</span><small>発注金額（税抜）／税込 ${yenFull(amt.total)}</small></div>
+      <button class="btn block big-action" data-act="accept-order" data-id="${esc(id)}">内容と金額を確認して承諾する</button>
+      <button class="btn sub block" style="margin-top:10px" data-act="chat-open" data-job="${esc(id)}">金額や内容について相談する</button>
+      <button class="btn danger block" style="margin-top:10px" data-act="decline-order" data-id="${esc(id)}">この発注を断る</button></section>`;
+  } else if(job.status === "assigned" && !job.craftStart){
+    step = "";   // 承諾したら、まず入る日を決めてもらう（下の「入る日」欄）
+  } else if(job.status === "assigned"){
+    step = `<section class="panel"><h2>作業の開始</h2><p class="small" style="margin:0 0 6px">${fmtFull(job.acceptedAt)} に発注を承諾しました。</p><p style="margin:0 0 12px">現場で作業を始めるときに押してください。押した日時が記録され、Reforeにも表示されます。</p>
       <button class="btn block big-action" data-act="work-start" data-id="${esc(id)}">作業を開始する</button></section>`;
   } else if(job.status === "working"){
     step = `<section class="panel"><h2>作業の完了</h2><p class="small" style="margin:0 0 8px">開始：${fmtFull(job.startedAt)}</p><p style="margin:0 0 12px">作業が終わったら押してください。押した日時が記録され、続けて完了報告に進みます。</p>
@@ -1911,11 +1953,12 @@ async function viewWorkDetail(id){
   const docs = `<section class="panel"><h2>書類</h2>
     ${docRow("発注書", order, "準備中です")}${pdfA ? attachedPdfRow(id) : ""}</section>`;
   const cs = job.craftStart || job.startDate, ce = job.craftEnd || job.endDate || cs;
-  const dates = ["assigned","working"].includes(job.status) ? `<form class="panel" data-form="craftdates" data-id="${esc(id)}"><h2>入る日</h2>
-    <p class="small" style="margin:0 0 10px">${job.craftStart ? `いまの予定：<b>${fmtRange(job.craftStart, job.craftEnd)}</b>。` : "まだ入る日が登録されていません。"}変更するとReforeにも表示され、メールで知らせます。</p>
+  const firstDates = job.status === "assigned" && job.acceptedAt && !job.craftStart;
+  const dates = (job.status === "assigned" && job.acceptedAt) || job.status === "working" ? `<form class="panel" data-form="craftdates" data-id="${esc(id)}" ${firstDates ? 'style="border:2px solid var(--kon-text)"' : ""}><h2>${firstDates ? "入る日を決めてください" : "入る日"}</h2>
+    <p class="small" style="margin:0 0 10px">${job.craftStart ? `いまの予定：<b>${fmtRange(job.craftStart, job.craftEnd)}</b>。変更するとReforeにも表示され、メールで知らせます。` : `発注を承諾しました。工期（${fmtRange(job.startDate, job.endDate)}）の中で、現場に入る日を決めてください。決めると「作業を開始する」が押せるようになります。`}</p>
     <div class="two"><label class="field"><span>入る日</span><input type="date" name="craftStart" required value="${esc(cs)}"></label>
       <label class="field"><span>終わる予定日 <small>1日で終わる場合は空欄</small></span><input type="date" name="craftEnd" value="${ce && ce !== cs ? esc(ce) : ""}"></label></div>
-    <button class="btn sub block">入る日を保存する</button></form>` : "";
+    <button class="btn ${firstDates ? "" : "sub "}block">入る日を${firstDates ? "決める" : "保存する"}</button></form>` : "";
   const t = S.threads.get(`${id}_${uid}`);
   const contact = `<section class="panel"><h2>Reforeへのメッセージ</h2>
     ${t?.lastAt ? `<p class="small" style="margin:0 0 10px">${isUnread(t) ? `<span class="badge">新着</span> ` : ""}${fmtTime(t.lastAt)}　${esc(t.lastText)}</p>` : `<p class="small" style="margin:0 0 10px">現場のことで確認したいことは、ここからReforeにメッセージを送れます。</p>`}
@@ -2054,7 +2097,7 @@ async function viewAdminJobs(sf){
     const before = ["draft","open","closed"].includes(j.status);
     const foot = before
       ? `<p class="foot">${j.jobNo ? `${esc(j.jobNo)}　` : ""}応募 <span class="count">${cnt[j.id] || 0}</span> 件　${j.status === "draft" ? "作成" : "掲載"} ${fmtTime(posted(j))}</p>`
-      : `<p class="foot">${j.jobNo ? `${esc(j.jobNo)}　` : ""}${progressMini(j)}${esc(JOB_STATUS[j.status])}${c ? `　${esc(c.name)}` : ""}</p>`;
+      : `<p class="foot">${j.jobNo ? `${esc(j.jobNo)}　` : ""}${progressMini(j)}${esc(statusLabel(j))}${c ? `　${esc(c.name)}` : ""}</p>`;
     return jobCard(j, {href:`#/admin/job/${j.id}`, foot, showPrice:true, stampHtml:statusStamp(j)});
   };
   let body;
@@ -2182,17 +2225,16 @@ async function viewAdminJob(id){
   const canAssign = job.status === "open" || job.status === "closed";
   const act = (st, l, cls = "sub") => `<button class="btn ${cls}" data-act="job-status" data-id="${esc(id)}" data-status="${st}">${l}</button>`;
   const acts = {draft:act("open", "公開して募集する", ""), open:act("closed", "募集を締め切る"), closed:act("open", "募集を再開する"),
-    assigned:act("completed", "完了を確認する"), working:act("completed", "完了を確認する"), finished:act("completed", "完了を確認する")}[job.status] || "";
+    assigned:job.acceptedAt ? act("completed", "完了を確認する") : "", working:act("completed", "完了を確認する"), finished:act("completed", "完了を確認する")}[job.status] || "";
   const assigned = S.crafts.get(job.assignedTo);
   const applicantHtml = a => {
     const c = S.crafts.get(a.craftsmanId) || {};
     return `<div class="applicant${a.status === "withdrawn" || a.status === "rejected" ? " dim" : ""}">
       <div class="row between"><span><b>${esc(c.name || a.craftsmanName)}</b> <span class="small">${esc(c.tradeName)}</span></span><span class="pill ${a.status}">${APP_STATUS[a.status]}</span></div>
       <p class="small" style="margin:4px 0 0">${esc((c.trades || []).join("、"))}<br>${esc((c.prefs || []).join("、"))}${c.years ? `　経験${esc(c.years)}年` : ""}　保険：${esc(c.insurance || "不明")}</p>
-      ${a.planStart ? `<p style="margin:6px 0 0">入る日：<b>${fmtRange(a.planStart, a.planEnd)}</b></p>` : ""}
       ${a.message ? `<div class="msg pre">${esc(a.message)}</div>` : ""}
       <p class="small" style="margin:6px 0 0">${fmtTime(a.createdAt)} 応募　<a href="#/admin/craftsman/${esc(a.craftsmanId)}">登録情報を見る</a>　<button class="textlink" data-act="chat-open" data-job="${esc(id)}" data-uid="${esc(a.craftsmanId)}">メッセージ</button></p>
-      ${canAssign && a.status === "applied" ? `<button class="btn" style="margin-top:10px" data-act="assign" data-job="${esc(id)}" data-uid="${esc(a.craftsmanId)}" data-name="${esc(c.name || a.craftsmanName)}" data-start="${esc(a.planStart || "")}" data-end="${esc(a.planEnd || "")}">この業者に発注する</button>` : ""}
+      ${canAssign && a.status === "applied" ? `<button class="btn" style="margin-top:10px" data-act="assign" data-job="${esc(id)}" data-uid="${esc(a.craftsmanId)}" data-name="${esc(c.name || a.craftsmanName)}">この業者に発注する</button>` : ""}
     </div>`;
   };
   const docs = job.assignedTo ? `<section class="panel"><h2>書類</h2>
@@ -2201,14 +2243,16 @@ async function viewAdminJob(id){
     ${pdfA ? attachedPdfRow(id) : ""}
     </section>` : "";
   return `${back("#/admin", "案件")}
-    <div class="page-head"><div class="row"><span class="pill ${job.status}">${JOB_STATUS[job.status]}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span><span class="small">工事番号：<b style="color:var(--ink)">${esc(job.jobNo) || "未入力"}</b></span><span class="small">管理会社：<b style="color:var(--ink)">${esc(priv.manager) || "未登録"}</b>（Reforeだけに表示）</span></div>
+    <div class="page-head"><div class="row"><span class="pill ${pillClass(job)}">${esc(statusLabel(job))}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span><span class="small">工事番号：<b style="color:var(--ink)">${esc(job.jobNo) || "未入力"}</b></span><span class="small">管理会社：<b style="color:var(--ink)">${esc(priv.manager) || "未登録"}</b>（Reforeだけに表示）</span></div>
       <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
     ${pdfViewHtml(pdfA, "発注先の業者にも表示されます")}
     <div class="cols">
       <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true)}${itemsPanel(job, priv, true)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
         ${assigned ? `<section class="panel"><h2>発注先</h2><p style="margin:0"><b>${esc(assigned.name)}</b> ${esc(assigned.tradeName)}<br><a href="tel:${esc(assigned.phone)}">${esc(assigned.phone)}</a></p>
-          <p style="margin:10px 0 0">入る日：${job.craftStart ? `<b>${fmtRange(job.craftStart, job.craftEnd)}</b> <span class="small">業者が設定</span>` : `<span class="warn">未設定</span>`}</p>
+          <p style="margin:10px 0 0">承諾：${job.acceptedAt ? `<b>承諾済み</b> <span class="small">${fmtFull(job.acceptedAt)}</span>` : job.declinedAt ? `<b class="danger-text">辞退されました</b> <span class="small">${fmtFull(job.declinedAt)}</span>${job.declineReason ? `<br><span class="small">理由：${esc(job.declineReason)}</span>` : ""}` : job.status === "assigned" ? `<span class="warn">承諾待ち</span>` : `<span class="small">—</span>`}</p>
+          ${job.status === "assigned" ? `<p style="margin:10px 0 0"><button class="btn danger" data-act="unassign" data-job="${esc(id)}">発注を取り消して募集に戻す</button></p>` : ""}
+          <p style="margin:6px 0 0">入る日：${job.craftStart ? `<b>${fmtRange(job.craftStart, job.craftEnd)}</b> <span class="small">業者が設定</span>` : `<span class="warn">未設定</span>`}</p>
           <p style="margin:6px 0 0">支払金額（税抜）：${Number(job.price) > 0 ? `<b>${yenFull(job.price)}</b>` : `<span class="warn">未設定</span>　<a href="#/admin/job/${esc(id)}/edit">設定する</a>`}</p>
           ${!(Number(job.price) > 0) && ["finished","completed"].includes(job.status) ? `<p class="small warn" style="margin:4px 0 0">金額が未設定のため、業者さまはこの案件を請求できません。</p>` : ""}</section>` : ""}
         ${chatPanel(threads, id, job.assignedTo)}
@@ -2902,6 +2946,44 @@ const PDF_CSS = `
 .pdfdoc .r{text-align:right !important;white-space:nowrap}
 .pdfdoc .pre{white-space:pre-wrap}
 .pdfdoc .foot{margin-top:24px;font-size:10.5px;color:#555;border-top:1px solid #bbb;padding-top:8px}
+.pdfdoc.po{padding:34px 40px 28px;font-size:11px;line-height:1.5;color:#1b2230}
+.po .po-top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #142A5E;padding-bottom:8px;margin-bottom:14px}
+.po .po-title{font-size:26px;font-weight:700;letter-spacing:.35em;color:#142A5E;line-height:1.1}
+.po .po-en{font-size:9px;letter-spacing:.3em;color:#7a8396;margin-top:2px}
+.po table{border-collapse:collapse}
+.po .po-meta th{font-weight:400;color:#5b6475;text-align:left;padding:0 12px 0 0;font-size:10px}
+.po .po-meta td{font-weight:700;text-align:right;font-size:11.5px;padding:0}
+.po .po-parties{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:14px}
+.po .po-to{flex:1}
+.po .po-trade{font-size:11px;color:#5b6475}
+.po .po-name{font-size:18px;font-weight:700;border-bottom:1.5px solid #1b2230;padding-bottom:2px;margin-bottom:6px;display:inline-block;min-width:260px}
+.po .po-lead{margin:0 0 6px;font-size:10.5px;color:#3a4252}
+.po table.po-total{background:#142A5E;border-radius:3px}
+.po table.po-total td{color:#ffffff;padding:6px 16px;vertical-align:middle;white-space:nowrap}
+.po table.po-total td.l{font-size:11px;padding-right:4px}
+.po table.po-total td.v{font-size:22px;font-weight:700;letter-spacing:.02em}
+.po .po-from{font-size:10px;line-height:1.55;text-align:right;color:#3a4252;min-width:230px}
+.po .po-from b{font-size:13px;color:#1b2230}
+.po .po-info{width:100%;margin-bottom:12px;font-size:11px}
+.po .po-info th{width:72px;background:#EEF1F6;color:#142A5E;font-weight:700;text-align:left;padding:5px 8px;border:1px solid #C9CED8;white-space:nowrap}
+.po .po-info td{padding:5px 8px;border:1px solid #C9CED8;vertical-align:top}
+.po .po-items{width:100%;font-size:10.5px;margin-bottom:12px}
+.po .po-items th{background:#142A5E;color:#fff;font-weight:700;padding:5px 6px;text-align:center;border:1px solid #142A5E;white-space:nowrap}
+.po .po-items td{padding:4px 6px;border:1px solid #D3D8E1;vertical-align:middle}
+.po .po-items tbody tr:nth-child(even) td{background:#F6F8FB}
+.po .po-items .n{text-align:center;color:#7a8396;width:22px}
+.po .po-items .c{white-space:nowrap;width:64px}
+.po .po-items .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.po .po-items .nt{color:#4a5262;font-size:9.5px;width:118px}
+.po .po-zai{display:inline-block;margin-left:5px;font-size:8.5px;font-weight:700;color:#2C7A4B;border:1px solid #2C7A4B;border-radius:2px;padding:0 3px;line-height:1.45;vertical-align:1px}
+.po .po-bottom{display:flex;gap:16px;align-items:flex-start}
+.po .po-terms{flex:1;font-size:10px;color:#3a4252;border:1px solid #D3D8E1;border-radius:3px;padding:7px 10px;line-height:1.6}
+.po .po-terms b{color:#142A5E}
+.po .po-sum{width:250px;font-size:11px}
+.po .po-sum th{text-align:left;font-weight:400;padding:4px 8px;border-bottom:1px solid #D3D8E1;color:#3a4252}
+.po .po-sum td{text-align:right;padding:4px 8px;border-bottom:1px solid #D3D8E1;font-variant-numeric:tabular-nums}
+.po .po-sum tr.g th,.po .po-sum tr.g td{font-weight:700;font-size:13px;color:#142A5E;border-bottom:2px solid #142A5E}
+.po .po-foot{margin-top:14px;font-size:9px;color:#8a92a3;text-align:right}
 `;
 const pdfTo = t => t.tradeName ? `<small>${esc(t.tradeName)}</small>${esc(t.name)} 様` : `${esc(t.name)} 様`;
 const pdfFrom = c => `<div class="from"><b>${esc(c.name)}</b><br>${esc(c.address)}${c.address2 ? `<br>${esc(c.address2)}` : ""}<br>TEL ${esc(c.tel)}${c.fax ? `　FAX ${esc(c.fax)}` : ""}<br>${esc(c.email)}${c.invoiceNumber ? `<br>登録番号 ${esc(c.invoiceNumber)}` : ""}${c.staff?.name ? `<br>担当：${esc(c.staff.name)}${c.staff.phone ? `（${esc(c.staff.phone)}）` : ""}` : ""}</div>`;
@@ -2909,27 +2991,34 @@ const pdfHasLoc = items => (items || []).some(i => i.loc);
 const pdfItemName = i => `${esc(i.name)}${i.zai ? ` <span style="display:inline-block;font-size:10px;font-weight:700;border:1px solid #2C7A4B;color:#2C7A4B;padding:0 4px;border-radius:2px;line-height:1.5">材工</span>` : ""}${i.note ? `<br><span style="font-size:10.5px;color:#555">備考・品番：${esc(i.note)}</span>` : ""}`;
 const pdfPeriod = (a, b) => `${fmtDate(a)}${b && b !== a ? ` 〜 ${fmtDate(b)}` : ""}`;
 function docOrderHtml(d){
-  const j = d.job, a = d.amount;
-  return `<div class="pdfdoc">
-    <div class="hd"><table class="meta">${d.job.jobNo ? `<tr><td>工事番号</td><td>${esc(d.job.jobNo)}</td></tr>` : ""}<tr><td>発注番号</td><td>${esc(d.number)}</td></tr><tr><td>発行日</td><td>${fmtDate(d.issuedAt)}</td></tr></table></div>
-    <h1>発注書</h1>
-    <div class="parties"><div class="to">${pdfTo(d.to)}</div>${pdfFrom(d.company)}</div>
-    <p style="margin:0 0 6px">下記のとおり発注いたします。</p>
-    <div class="total"><span>発注金額（税込）</span><strong>${yenFull(a.total)}</strong></div>
-    <table class="t"><tr><th>件名</th><td>${esc(j.title)}</td></tr>
-      <tr><th>現場</th><td>${esc(j.address || j.pref + j.city)}${j.building ? `　${esc(j.building)}` : ""}</td></tr>
-      <tr><th>工期</th><td>${pdfPeriod(j.startDate, j.endDate) || "別途調整"}</td></tr>
-      ${j.description ? `<tr><th>作業内容</th><td class="pre">${esc(j.description)}</td></tr>` : ""}</table>
-    <table class="t items"><tr>${pdfHasLoc(j.items) ? "<th>箇所</th>" : ""}<th>品目</th><th>数量</th><th>単価（${d.taxMode === "税込" ? "税込" : "税抜"}）</th><th>金額（${d.taxMode === "税込" ? "税込" : "税抜"}）</th></tr>
-      ${(j.items?.length ? j.items : [{name:j.title, qty:1, unit:"式", unitPrice:d.taxMode === "税込" ? a.total : a.base}]).map(i =>
-        `<tr>${pdfHasLoc(j.items) ? `<td class="loc">${esc(i.loc)}</td>` : ""}<td>${pdfItemName(i)}</td><td class="r">${fmtQty(i.qty)}${esc(i.unit)}</td><td class="r">${yenFull(i.unitPrice)}</td><td class="r">${yenFull(itemAmount(i))}</td></tr>`).join("")}</table>
-    <table class="t sum"><tr><th>小計（税抜）</th><td class="r">${yenFull(a.base)}</td></tr>
-      <tr><th>消費税（10%）</th><td class="r">${yenFull(a.tax)}</td></tr>
-      <tr><th>合計（税込）</th><td class="r"><b>${yenFull(a.total)}</b></td></tr></table>
-    <table class="t"><tr><th>支払条件</th><td>${esc(d.terms)}</td></tr>
-      <tr><th>完了報告</th><td>作業完了後、協力業者ポータルから施工前・施工後の写真を送って完了報告してください。</td></tr>
-      ${j.priceNote ? `<tr><th>備考</th><td class="pre">${esc(j.priceNote)}</td></tr>` : ""}</table>
-    <div class="foot">この発注書は GENPUKU Pro 協力業者ポータルから発行しています。</div></div>`;
+  const j = d.job, a = d.amount, tl = d.taxMode === "税込" ? "税込" : "税抜";
+  const items = j.items?.length ? j.items : [{name:j.title, qty:1, unit:"式", unitPrice:d.taxMode === "税込" ? a.total : a.base}];
+  const hasLoc = items.some(i => i.loc), hasNote = items.some(i => i.note);
+  const c = d.company || {};
+  // 番号：工事番号があれば工事番号、なければ発注番号
+  const no = j.jobNo ? ["工事番号", j.jobNo] : ["発注番号", d.number];
+  return `<div class="pdfdoc po">
+    <div class="po-top"><div><div class="po-title">発注書</div><div class="po-en">PURCHASE ORDER</div></div>
+      <table class="po-meta"><tr><th>${no[0]}</th><td>${esc(no[1])}</td></tr><tr><th>発行日</th><td>${fmtDate(d.issuedAt)}</td></tr></table></div>
+    <div class="po-parties">
+      <div class="po-to">${d.to.tradeName ? `<div class="po-trade">${esc(d.to.tradeName)}</div>` : ""}<div class="po-name">${esc(d.to.name)} 様</div>
+        <p class="po-lead">下記のとおり発注いたします。</p>
+        <table class="po-total"><tr><td class="l">発注金額（税込）</td><td class="v">${yenFull(a.total)}</td></tr></table></div>
+      <div class="po-from"><b>${esc(c.name)}</b><br>${esc(c.address)}${c.address2 ? `<br>${esc(c.address2)}` : ""}<br>TEL ${esc(c.tel)}${c.fax ? `　FAX ${esc(c.fax)}` : ""}<br>${esc(c.email)}${c.invoiceNumber ? `<br>登録番号 ${esc(c.invoiceNumber)}` : ""}${c.staff?.name ? `<br>担当：${esc(c.staff.name)}${c.staff.phone ? `（${esc(c.staff.phone)}）` : ""}` : ""}</div>
+    </div>
+    <table class="po-info">
+      <tr><th>件名</th><td colspan="3">${esc(j.title)}</td></tr>
+      <tr><th>現場</th><td colspan="3">${esc(j.address || (j.pref || "") + (j.city || ""))}${j.building ? `　${esc(j.building)}` : ""}</td></tr>
+      <tr><th>工期</th><td style="white-space:nowrap">${pdfPeriod(j.startDate, j.endDate) || "別途調整"}</td><th>作業内容</th><td>${esc(j.description || "下記のとおり")}</td></tr>
+    </table>
+    <table class="po-items"><thead><tr><th>No</th>${hasLoc ? "<th>箇所</th>" : ""}<th>品目</th><th>数量</th><th>単価（${tl}）</th><th>金額（${tl}）</th>${hasNote ? "<th>備考・品番</th>" : ""}</tr></thead><tbody>
+      ${items.map((i, k) => `<tr><td class="n">${k + 1}</td>${hasLoc ? `<td class="c">${esc(i.loc)}</td>` : ""}<td>${esc(i.name)}${i.zai ? `<span class="po-zai">材工</span>` : ""}</td><td class="r">${fmtQty(i.qty)}${esc(i.unit)}</td><td class="r">${yenFull(i.unitPrice)}</td><td class="r">${yenFull(itemAmount(i))}</td>${hasNote ? `<td class="nt">${esc(i.note)}</td>` : ""}</tr>`).join("")}
+    </tbody></table>
+    <div class="po-bottom">
+      <div class="po-terms"><b>支払条件</b>　${esc(d.terms)}<br><b>完了報告</b>　作業完了後、協力業者ポータルから施工前・施工後の写真を送って完了報告してください。${j.priceNote ? `<br><b>備考</b>　${esc(j.priceNote)}` : ""}</div>
+      <table class="po-sum"><tr><th>小計（税抜）</th><td>${yenFull(a.base)}</td></tr><tr><th>消費税（10%）</th><td>${yenFull(a.tax)}</td></tr><tr class="g"><th>合計（税込）</th><td>${yenFull(a.total)}</td></tr></table>
+    </div>
+    <div class="po-foot">この発注書は GENPUKU Pro 協力業者ポータルから発行しています。</div></div>`;
 }
 function docPaymentHtml(d){
   const j = d.job, a = d.amount;
@@ -2967,7 +3056,8 @@ async function downloadPdf(html, filename){
     await window.html2pdf().set({
       margin:0, filename, image:{type:"jpeg", quality:0.95},
       html2canvas:{scale:2, backgroundColor:"#ffffff", useCORS:true, scrollX:0, scrollY:0},
-      jsPDF:{unit:"mm", format:"a4", orientation:"portrait"}
+      jsPDF:{unit:"mm", format:"a4", orientation:"portrait"},
+      pagebreak:{mode:["css", "legacy"], avoid:["tr", ".po-bottom", ".po-top", ".po-parties"]}
     }).from(holder.querySelector(".pdfdoc")).save();
   } finally { holder.remove(); }
 }
@@ -3139,14 +3229,21 @@ const ACTIONS = {
     toast({open:"公開しました", closed:"締め切りました", completed:"完了確認にしました"}[status]); route();
   },
   async assign(el){
-    const {job, uid, name, start, end} = el.dataset;
+    const {job, uid, name} = el.dataset;
     const [jobD, priv] = await Promise.all([api().getJob(job), api().getJobPrivate(job)]);
     const noItems = !priv.items?.length;
     if(!await ask({title:`${name} さんに発注しますか？`, body:`発注内容（作業内訳）から発注書を自動で作成し、業者さまがダウンロードできるようになります。現場情報もこの業者に表示されます。ほかの応募者は「見送り」になります。${noItems ? "\n\n※作業内訳がまだ入力されていません。先に「編集」で作業ごとの金額を入力してください（あとから入力して発注書を作り直すこともできます）。" : `\n\n発注金額（税抜）：${yenFull(jobD.price)}`}`, ok:"発注する"})) return;
     const c = S.crafts.get(uid) || await api().getProfile(uid);
-    await api().assign(job, uid, buildOrderDoc(jobD, priv, c), start ? {craftStart:start, craftEnd:end || start} : {});
-    notifyMail(job, "発注されました", `「${jobD.title}」をあなたに発注しました。ポータルで現場情報と発注書を確認してください。\n${start ? `入る日：${fmtRange(start, end || start)}` : `作業日：${fmtRange(jobD.startDate, jobD.endDate)}`}`, {to:uid});
+    await api().assign(job, uid, buildOrderDoc(jobD, priv, c));
+    notifyMail(job, "発注されました", `「${jobD.title}」をあなたに発注しました。ポータルで発注内容と金額を確認して、「承諾する」を押してください。\n工期：${fmtRange(jobD.startDate, jobD.endDate)}`, {to:uid});
     toast(`${name} さんに発注し、発注書を作成しました`); route();
+  },
+  async unassign(el){
+    const id = el.dataset.job, job = await api().getJob(id);
+    const c = S.crafts.get(job.assignedTo);
+    if(!await ask({title:"発注を取り消して募集に戻しますか？", body:`${c ? `${c.name} さんへの` : ""}発注を取り消し、発注書を削除して「募集中」に戻します。ほかの応募者は「応募中」に戻るので、別の業者に発注し直せます。`, ok:"取り消す", danger:true})) return;
+    if(!job.declinedAt && job.assignedTo) await notifyMail(id, "発注が取り消されました", `「${job.title}」の発注を取り消しました。`, {to:job.assignedTo});
+    await api().unassign(id); toast("発注を取り消して募集に戻しました"); route();
   },
   async "order-regen"(el){
     const jid = el.dataset.job;
@@ -3281,8 +3378,28 @@ const ACTIONS = {
     const html = d.type === "order" ? docOrderHtml(d) : docPaymentHtml(d);
     await downloadPdf(html, pdfFileName(d.to));
   },
+  async "accept-order"(el){
+    const id = el.dataset.id, job = await api().getJob(id);
+    if(!job || job.status !== "assigned" || job.acceptedAt) return route();
+    const amt = calcAmount(job.price, taxModeOf(job));
+    if(!await ask({title:"発注を承諾しますか？", body:`「${job.title}」\n発注金額：${yenFull(amt.base)}（税抜）／${yenFull(amt.total)}（税込）\n\n承諾すると、Reforeに知らせます。`, ok:"承諾する"})) return;
+    await api().acceptOrder(id);
+    notifyMail(id, "発注が承諾されました", `発注金額：${yenFull(amt.base)}（税抜）`);
+    toast("発注を承諾しました"); route();
+  },
+  async "decline-order"(el){
+    const id = el.dataset.id, job = await api().getJob(id);
+    if(!job || job.status !== "assigned" || job.acceptedAt || job.declinedAt) return route();
+    const reason = await ask({title:"この発注を断りますか？", body:"断る理由があれば書いてください（任意）。Reforeに知らせます。", input:"text", ok:"断る", danger:true});
+    if(reason === false) return;
+    await api().declineOrder(id, String(reason || "").trim());
+    notifyMail(id, "発注を辞退しました", reason ? `理由：${String(reason).trim()}` : "");
+    toast("発注を辞退しました"); route();
+  },
   async "work-start"(el){
     const id = el.dataset.id, job = await api().getJob(id), today = todayIso();
+    if(job.status === "assigned" && !job.acceptedAt) throw new Error("先に発注内容を確認して「承諾する」を押してください");
+    if(job.status === "assigned" && !job.craftStart) throw new Error("先に入る日を決めてください");
     const ps = job.plannedStart || job.startDate || today, pe = job.plannedEnd && job.plannedEnd >= ps ? job.plannedEnd : (job.endDate && job.endDate >= ps ? job.endDate : ps);
     const dur = Math.max(0, dayDiff(ps, pe)), newEnd = addDays(today, dur);
     const moved = today !== job.startDate || newEnd !== job.endDate;
@@ -3368,14 +3485,11 @@ const FORMS = {
     const id = form.dataset.id;
     const job = await api().getJob(id);
     if(!job || job.status !== "open") throw new Error("この案件の募集は終了しています");
-    const planStart = form.elements.planStart.value, planEnd = form.elements.planEnd.value || planStart;
-    if(!planStart) throw new Error("入る日を選んでください");
-    if(planEnd < planStart) throw new Error("終わる予定日が入る日より前になっています");
     const p = S.profile;
     await api().apply({
       id:`${id}_${S.user.uid}`, jobId:id, craftsmanId:S.user.uid, craftsmanName:p.name,
       jobTitle:job.title, jobArea:(job.pref || "") + (job.city || ""), jobStart:job.startDate || "", jobEnd:job.endDate || "", price:job.price || 0,
-      planStart, planEnd, message:form.elements.message.value.trim(), status:"applied", createdAt:Date.now()
+      message:form.elements.message.value.trim(), status:"applied", createdAt:Date.now()
     });
     S.pressStamp = id; toast("応募しました"); route();
   },
