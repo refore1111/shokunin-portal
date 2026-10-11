@@ -224,12 +224,19 @@ textarea{min-height:110px;resize:vertical}
 .itbl tr.sum td{font-weight:700;border-top:2px solid var(--ink)}
 .items-ed{display:grid;gap:8px}
 .item-row{display:grid;grid-template-columns:1fr 76px 72px 110px 96px 34px;gap:6px;align-items:center}
-.item-row input{padding:8px 10px;font-size:15px}
+.item-row input,.item-row select{padding:8px 10px;font-size:15px}
+.item-row .i-name{display:grid;gap:4px;min-width:0}
+.item-row [hidden]{display:none}
+.item-row input[readonly]{background:var(--paper);color:var(--sub)}
+.price-row{display:grid;grid-template-columns:1fr 80px 120px 34px;gap:6px;align-items:center}
+.price-row input{padding:8px 10px;font-size:15px}
 .item-row .i-amt{text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
 .i-x{width:34px;height:34px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--sub);cursor:pointer;font-size:16px;padding:0}
 @media (max-width:680px){
   .item-row{grid-template-columns:1fr 1fr 1fr 34px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--paper)}
-  .item-row [name=i_name]{grid-column:1/-1}
+  .item-row .i-name{grid-column:1/-1}
+  .price-row{grid-template-columns:1fr 1fr 34px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--paper)}
+  .price-row [name=p_name]{grid-column:1/-1}
   .item-row .i-amt{grid-column:1/-1;grid-row:3}
 }
 .i-total{font-family:var(--num);font-size:24px;font-weight:600}
@@ -497,6 +504,14 @@ const CRAFT_STATUS = {pending:"審査中",approved:"承認済み",suspended:"停
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const yen = n => Number(n) > 0 ? "¥" + Number(n).toLocaleString("ja-JP") : "応相談";
+// 単価表（よく使う作業と発注単価）の初期値。設定画面で編集すると Firestore の master/prices に保存されます
+const DEFAULT_PRICES = [
+  {id:"p_cross_wall", name:"クロス張替え 壁（量産品）", unit:"㎡", unitPrice:800},
+  {id:"p_cross_ceil", name:"クロス張替え 天井（量産品）", unit:"㎡", unitPrice:800},
+  {id:"p_putty", name:"下地補修（パテ処理）", unit:"式", unitPrice:14000},
+  {id:"p_clean_1r", name:"退去後クリーニング 1R", unit:"式", unitPrice:16000},
+  {id:"p_bath_mold", name:"浴室カビ取り", unit:"式", unitPrice:4000}
+];
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const clone = o => o == null ? o : JSON.parse(JSON.stringify(o));
 function fmtDay(s){
@@ -544,20 +559,45 @@ function itemsTable(j){
   return `<table class="itbl"><tbody>${j.items.map(i => `<tr><td><b>${esc(i.name)}</b><span class="small">${fmtQty(i.qty)}${esc(i.unit)} × ${yenFull(i.unitPrice)}</span></td><td class="r">${yenFull(itemAmount(i))}</td></tr>`).join("")}
     <tr class="sum"><td>合計（${esc(taxModeOf(j))}）</td><td class="r">${yenFull(itemsTotal(j.items))}</td></tr></tbody></table>`;
 }
+// 単価表から選んだ作業は、作業名・単位・単価を単価表の値に固定する（発注単価をそろえるため）
 function itemRowHtml(i = {qty:1, unit:"式"}){
+  const prices = S.prices || [];
+  const pick = i.priceId && prices.some(p => p.id === i.priceId) ? i.priceId : (i.name ? "" : (prices.length ? "pick" : ""));
+  const fixed = pick && pick !== "pick" ? "readonly" : "";
   return `<div class="item-row">
-    <input type="text" name="i_name" value="${esc(i.name)}" placeholder="作業名（例：クロス張替え 壁）" aria-label="作業名">
+    <div class="i-name"><select name="i_pick" aria-label="よく使う作業から選ぶ">
+        ${prices.length ? `<option value="pick" ${pick === "pick" ? "selected" : ""} disabled>よく使う作業から選ぶ</option>` : ""}
+        ${prices.map(p => `<option value="${esc(p.id)}" ${pick === p.id ? "selected" : ""}>${esc(p.name)}（${yenFull(p.unitPrice)}／${esc(p.unit)}）</option>`).join("")}
+        <option value="" ${pick === "" ? "selected" : ""}>その他（手入力）</option></select>
+      <input type="text" name="i_name" value="${esc(i.name)}" placeholder="作業名（例：クロス張替え 壁）" aria-label="作業名" ${pick === "" ? "" : "hidden"}></div>
     <input type="number" name="i_qty" value="${esc(i.qty ?? "")}" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
-    <input type="text" name="i_unit" value="${esc(i.unit)}" list="unit-list" placeholder="単位" aria-label="単位">
-    <input type="number" name="i_price" value="${esc(i.unitPrice ?? "")}" min="0" inputmode="numeric" placeholder="単価" aria-label="単価">
+    <input type="text" name="i_unit" value="${esc(i.unit)}" list="unit-list" placeholder="単位" aria-label="単位" ${fixed}>
+    <input type="number" name="i_price" value="${esc(i.unitPrice ?? "")}" min="0" inputmode="numeric" placeholder="単価" aria-label="単価" ${fixed}>
     <span class="i-amt">${yenFull(itemAmount(i))}</span>
     <button type="button" class="i-x" data-act="rm-item" aria-label="この作業を削除">×</button></div>`;
 }
 function readItems(form){
-  return [...form.querySelectorAll(".item-row")].map(r => ({
-    name:r.querySelector("[name=i_name]").value.trim(), qty:Number(r.querySelector("[name=i_qty]").value) || 0,
-    unit:r.querySelector("[name=i_unit]").value.trim(), unitPrice:Number(r.querySelector("[name=i_price]").value) || 0
-  }));
+  return [...form.querySelectorAll(".item-row")].map(r => {
+    const pick = r.querySelector("[name=i_pick]")?.value || "";
+    const i = {name:r.querySelector("[name=i_name]").value.trim(), qty:Number(r.querySelector("[name=i_qty]").value) || 0,
+      unit:r.querySelector("[name=i_unit]").value.trim(), unitPrice:Number(r.querySelector("[name=i_price]").value) || 0};
+    if(pick && pick !== "pick") i.priceId = pick;
+    return i;
+  });
+}
+// プルダウンで選んだ作業を行に反映する
+function applyPick(row){
+  const pick = row.querySelector("[name=i_pick]").value, p = (S.prices || []).find(x => x.id === pick);
+  const name = row.querySelector("[name=i_name]"), unit = row.querySelector("[name=i_unit]"), price = row.querySelector("[name=i_price]");
+  if(p){
+    name.value = p.name; unit.value = p.unit; price.value = p.unitPrice;
+    name.hidden = true; unit.readOnly = price.readOnly = true;
+    row.querySelector("[name=i_qty]").focus();
+  } else {
+    if(!name.hidden) return;
+    name.value = ""; price.value = ""; name.hidden = false; unit.readOnly = price.readOnly = false;
+    name.focus();
+  }
 }
 function syncItems(form){
   const rows = [...form.querySelectorAll(".item-row")];
@@ -943,6 +983,8 @@ class DemoBackend {
   async getJobPdfSource(id){ return clone((this.data.jobPdfSrc || {})[id] || null); }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
   async getProperties(){ return clone(this.data.properties || []); }
+  async getPrices(){ return clone(this.data.prices || DEFAULT_PRICES); }
+  async savePrices(list){ this.data.prices = clone(list); this.save(); }
   async wipeJobData(progress){
     const d = this.data, jobs = Object.keys(d.jobs || {}).length;
     const total = ["jobs","jobPrivate","jobPdf","jobPdfSrc","applications","reports","documents","invoices","threads","messages"].reduce((a, k) => a + Object.keys(d[k] || {}).length, 0);
@@ -1177,6 +1219,15 @@ class FirebaseBackend {
     for(let i = 0; i < n; i++) b.set(this.col("master").doc(`props_${String(i).padStart(3, "0")}`), {items:items.slice(i * size, (i + 1) * size), updatedAt:Date.now()});
     old.docs.forEach(d => { if(d.id.startsWith("props_") && Number(d.id.slice(6)) >= n) b.delete(d.ref); });
     await b.commit();
+  }
+  // 単価表：master/prices にまとめて保存（未登録なら初期値）
+  async getPrices(){
+    const s = await this.col("master").doc("prices").get();
+    return s.exists ? (s.data().items || []) : clone(DEFAULT_PRICES);
+  }
+  async savePrices(list){
+    const items = list.map(p => ({id:p.id, name:p.name || "", unit:p.unit || "", unitPrice:Number(p.unitPrice) || 0}));
+    await this.col("master").doc("prices").set({items, updatedAt:Date.now()});
   }
   // --- 連絡（チャット）: threads/{案件ID_業者UID} と その下の messages ---
   async listThreads(f = {}){
@@ -1424,6 +1475,7 @@ function itemsPanel(job, priv, admin = false){
   if(!priv.items?.length) return "";
   return `<section class="panel"><h2>発注内容${admin ? "<small>発注先にだけ表示</small>" : ""}</h2>${itemsTable({items:priv.items, taxMode:job.taxMode})}</section>`;
 }
+const sheetRow = id => `<div class="doc-row"><span class="row-main"><b>工事内容書</b><span class="small">案件の作業内容・現場情報</span></span><span class="row"><button class="btn sub" data-act="sheet" data-job="${esc(id)}" data-mode="pdf">ダウンロード</button><button class="btn sub" data-act="sheet" data-job="${esc(id)}" data-mode="print">印刷</button></span></div>`;
 const attachedPdfRow = id => `<div class="doc-row"><span class="row-main"><b>案件PDF</b><span class="small">管理会社からの書類（添付PDF）</span></span><button class="btn sub" data-act="dl-order" data-job="${esc(id)}">ダウンロード</button></div>`;
 function docRow(label, doc, note, canSee = true, attachedJob = null){
   const ok = doc && canSee;
@@ -1559,9 +1611,11 @@ async function viewJobDetail(id){
       <button class="btn block">応募する</button>
       <p class="small" style="margin:10px 0 0">住所や入室方法は、発注が決まった業者さまにだけ表示されます。</p></form>`;
   }
+  const sheetBox = job.status === "open" && job.assignedTo !== uid ? `<div class="panel"><p class="small" style="margin:0 0 10px">案件の内容をPDFで保存・印刷できます（住所などの現場情報は発注後に表示されます）。</p>
+    <div class="row"><button class="btn sub" data-act="sheet" data-job="${esc(id)}" data-mode="pdf">工事内容書をダウンロード</button><button class="btn sub" data-act="sheet" data-job="${esc(id)}" data-mode="print">印刷</button></div></div>` : "";
   const askBox = job.status === "open" || job.assignedTo === uid ? `<div class="panel"><p class="small" style="margin:0 0 10px">案件についてわからないことがあれば、Reforeに質問できます。</p>
     <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">Reforeに質問する</button></div>` : "";
-  return `${back("#/jobs", "案件一覧")}${pdfViewHtml(pdfA)}<div class="cols"><div class="stack">${jobDetailBlock(job, job.assignedTo === uid)}</div><div class="stack">${action}${askBox}</div></div>`;
+  return `${back("#/jobs", "案件一覧")}${pdfViewHtml(pdfA)}<div class="cols"><div class="stack">${jobDetailBlock(job, job.assignedTo === uid)}</div><div class="stack">${action}${sheetBox}${askBox}</div></div>`;
 }
 async function viewApplied(){
   const apps = (await api().listApplications({craftsmanId:S.user.uid})).sort((a, b) => b.createdAt - a.createdAt);
@@ -1615,7 +1669,7 @@ async function viewWorkDetail(id){
     step = `<div class="note" style="margin:0">お支払いが完了しました。</div>`;
   }
   const docs = `<section class="panel"><h2>書類</h2>
-    ${docRow("発注書", order, "準備中です")}${pdfA ? attachedPdfRow(id) : ""}</section>`;
+    ${docRow("発注書", order, "準備中です")}${pdfA ? attachedPdfRow(id) : ""}${sheetRow(id)}</section>`;
   const t = S.threads.get(`${id}_${uid}`);
   const contact = `<section class="panel"><h2>Reforeへの連絡</h2>
     ${t?.lastAt ? `<p class="small" style="margin:0 0 10px">${isUnread(t) ? `<span class="badge">新着</span> ` : ""}${fmtTime(t.lastAt)}　${esc(t.lastText)}</p>` : `<p class="small" style="margin:0 0 10px">現場のことで確認したいことは、ここからReforeに連絡できます。</p>`}
@@ -1790,7 +1844,7 @@ async function viewJobEdit(id){
   const job = id ? await api().getJob(id) : {trades:[], pref:"東京都", status:"draft", photos:[]};
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
   const [priv, pdfA] = id ? await Promise.all([api().getJobPrivate(id), api().getJobPdf(id)]) : [{}, null];
-  S.props = await api().getProperties().catch(() => []);
+  [S.props, S.prices] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => clone(DEFAULT_PRICES))]);
   S.editPdf = pdfA; S.editPdfSrc = null; S.editPdfChanged = false;
   S.editPhotos = [...(job.photos || [])];
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
@@ -1802,15 +1856,15 @@ async function viewJobEdit(id){
     : `<button class="btn" name="mode" value="keep">変更を保存</button>`;
   return `${back(id ? `#/admin/job/${id}` : "#/admin", id ? "案件の管理" : "案件")}
     <h1>${id ? "案件を編集" : "新しい案件"}</h1>
-    <p class="lead">添付したPDF・工種・作業日は承認済みの協力業者全員に公開されます。「現場情報」は発注した業者にだけ表示されます。</p>
+    <p class="lead">添付したPDF・案件名・作業内容・工種・作業日は承認済みの協力業者全員に公開されます。「現場情報」は発注した業者にだけ表示されます。PDFがなくても案件を公開できます。</p>
     <form data-form="job" data-id="${esc(id || "")}" class="stack">
-      <section class="panel import"><h2>案件PDFの添付</h2>
+      <section class="panel import"><h2>案件PDFの添付 <small>任意</small></h2>
         <p class="small" style="margin:0 0 10px">管理会社からの発注書・依頼書のPDFを選ぶと、案件に添付して大きく表示します（中身の読み取りや自動入力はしません）。PDFは募集中の案件として承認済みの業者全員に表示され、発注後は発注先の業者が「発注書」としてダウンロードできます。</p>
         <input type="file" accept="application/pdf,.pdf" data-pdfimport aria-label="案件PDFを選ぶ">
         <div id="pdf-attach">${pdfAttachHtml()}</div>
         <div id="pdf-result"></div></section>
       <section class="panel"><h2>発注内容（作業内訳）<small>発注した業者にだけ表示・発注書に載ります</small></h2>
-        <p class="small" style="margin:0 0 10px">作業ごとに「作業名・数量・単位・単価（税抜）」を入力します。合計が業者さまへの支払金額になり、発注書と月末の請求書はこの金額で作られます（業者さまは変更できません）。</p>
+        <p class="small" style="margin:0 0 10px">よく使う作業はプルダウンから選ぶと、単価表の発注単価が入ります（単価は変更できません。単価表は「設定」で編集）。表にない作業は「その他（手入力）」で入力します。合計が業者さまへの支払金額になり、発注書と月末の請求書はこの金額で作られます（業者さまは変更できません）。</p>
         <div class="items-ed" id="items-ed">${editItems.map(itemRowHtml).join("")}</div>
         <datalist id="unit-list">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist>
         <div class="row between" style="margin-top:10px;flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-item">＋ 作業を追加</button>
@@ -1819,7 +1873,9 @@ async function viewJobEdit(id){
           <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${usedItems.length ? itemsTotal(usedItems) : Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000" ${usedItems.length ? "readonly" : ""}></label>
       </section>
       <section class="panel"><h2>工種・作業日</h2>
-        <label class="field"><span>案件名 <small>一覧・予定表に表示されます（PDFのファイル名が初期値）</small></span><input type="text" name="title" maxlength="80" value="${esc(job.title)}" placeholder="例：グリーンハイツ203 原状回復"></label>
+        <label class="field"><span>案件名 <small>一覧・予定表に表示されます（PDFを添付した場合はファイル名が初期値）</small></span><input type="text" name="title" maxlength="80" value="${esc(job.title)}" placeholder="例：グリーンハイツ203 原状回復"></label>
+        <label class="field"><span>作業内容 <small>募集中の案件として業者さまに表示されます。PDFを添付しない場合はここに内容を書いてください</small></span>
+          <textarea name="description" rows="3" placeholder="例：1K 退去後のクロス張替え（壁・天井）と下地補修">${esc(job.description)}</textarea></label>
         <input type="hidden" name="pref" value="${esc(job.pref || "")}"><input type="hidden" name="city" value="${esc(job.city || "")}">
         <fieldset class="field"><legend>工種</legend><div class="checks">${TRADES.map(t => `<label><input type="checkbox" name="trades" value="${esc(t)}" ${chk(t)}>${esc(t)}</label>`).join("")}</div></fieldset>
         <div class="two">
@@ -1888,6 +1944,10 @@ async function viewAdminJob(id){
           <p style="margin:10px 0 0">支払金額（税抜）：${Number(job.price) > 0 ? `<b>${yenFull(job.price)}</b>` : `<span class="warn">未設定</span>　<a href="#/admin/job/${esc(id)}/edit">設定する</a>`}</p>
           ${!(Number(job.price) > 0) && ["finished","completed"].includes(job.status) ? `<p class="small warn" style="margin:4px 0 0">金額が未設定のため、業者さまはこの案件を請求できません。</p>` : ""}</section>` : ""}
         ${chatPanel(threads, id, job.assignedTo)}
+        <section class="panel"><h2>工事内容書 <small>入力した内容からPDFを作ります</small></h2>
+          <div class="row" style="margin:0 0 10px"><label class="toggle"><input type="checkbox" data-sheet="price" checked>金額を載せる</label>
+            <label class="toggle"><input type="checkbox" data-sheet="site" checked>現場情報を載せる</label></div>
+          <div class="row"><button class="btn sub" data-act="sheet" data-job="${esc(id)}" data-mode="pdf">PDFをダウンロード</button><button class="btn sub" data-act="sheet" data-job="${esc(id)}" data-mode="print">印刷する</button></div></section>
         ${docs}
         ${job.assignedTo ? reportsBlock(rs, true) : ""}
         <section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
@@ -2082,9 +2142,16 @@ function csvToProps(rows){
 const propIdKey = p => `${p.company}|${normKey(p.name)}|${normKey(p.address)}`;
 function csvCell(v){ v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
 
+function priceRowHtml(p = {unit:"式"}){
+  return `<div class="price-row" data-id="${esc(p.id || "")}">
+    <input type="text" name="p_name" value="${esc(p.name)}" placeholder="作業名（例：クロス張替え 壁）" aria-label="作業名">
+    <input type="text" name="p_unit" value="${esc(p.unit)}" list="unit-list-p" placeholder="単位" aria-label="単位">
+    <input type="number" name="p_price" value="${esc(p.unitPrice ?? "")}" min="0" inputmode="numeric" placeholder="単価（税抜）" aria-label="単価（税抜）">
+    <button type="button" class="i-x" data-act="rm-price" aria-label="この作業を削除">×</button></div>`;
+}
 // --- 設定：物件マスタ画面 ---
 async function viewSettings(){
-  [S.props, S.delJobs] = await Promise.all([api().getProperties(), api().listJobs({})]);
+  [S.props, S.delJobs, S.prices] = await Promise.all([api().getProperties(), api().listJobs({}), api().getPrices().catch(() => clone(DEFAULT_PRICES))]);
   S.delSel = new Set([...(S.delSel || [])].filter(id => S.delJobs.some(j => j.id === id)));
   S.delFilter ||= {status:"", q:""};
   const companies = [...new Set(S.props.map(p => p.company).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
@@ -2097,6 +2164,13 @@ async function viewSettings(){
         <select data-propfilter="company" aria-label="管理会社で絞り込む"><option value="">すべての管理会社</option>${companies.map(c => `<option ${S.propFilter.company === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
       </div>
       <div id="prop-list"></div></section>
+    <section class="panel"><h2>単価表 <small>よく使う作業と発注単価（税抜）</small></h2>
+      <p class="small" style="margin:0 0 10px">ここに登録した作業は、案件作成の作業内訳でプルダウンから選べます。選んだ作業の単価は変更できないので、どの業者さまにも同じ単価で発注されます。単価を変えても、作成済みの案件・発注書の金額は変わりません。</p>
+      <form data-form="prices" class="stack">
+        <div class="items-ed" id="price-ed">${S.prices.map(priceRowHtml).join("")}</div>
+        <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button><button class="btn">単価表を保存</button></div>
+      </form>
+      <datalist id="unit-list-p">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist></section>
     <section class="panel"><h2>CSVから取り込む</h2>
       <p class="small" style="margin:0 0 10px">1行目に見出し「管理会社・物件名・所在地・オートロック・エレベーター・備考」があるCSVを取り込めます。同じ管理会社・物件名・所在地の物件は上書きされます。</p>
       <label class="toggle" style="margin-bottom:10px"><input type="checkbox" id="prop-replace">いまの物件マスタをすべて消して入れ替える</label>
@@ -2572,6 +2646,40 @@ function docPaymentHtml(d){
     ${d.note ? `<table class="t"><tr><th>備考</th><td class="pre">${esc(d.note)}</td></tr></table>` : ""}
     <div class="foot">この支払明細書は GENPUKU Pro 協力業者ポータルから発行しています。</div></div>`;
 }
+// 工事内容書：案件で入力した内容から作る（opt.price＝金額を載せる、opt.site＝現場情報を載せる）
+function docSheetHtml(job, priv, opt = {}){
+  const items = (priv.items?.length ? priv.items : job.items || []).filter(i => i.name);
+  const taxMode = taxModeOf(job), a = calcAmount(job.price, taxMode), tl = taxMode === "税込" ? "税込" : "税抜";
+  const place = opt.site && priv.address ? `${esc(priv.address)}${priv.building || priv.room ? `　${esc([priv.building, priv.room].filter(Boolean).join(" "))}` : ""}` : esc((job.pref || "") + (job.city || ""));
+  const siteRows = opt.site ? [["オートロック", priv.autolock], ["エレベーター", priv.elevator], ["鍵・入室方法", priv.keyInfo], ["管理会社", priv.manager], ["連絡事項", priv.contact]]
+    .filter(([, v]) => v).map(([k, v]) => `<tr><th>${k}</th><td class="pre">${esc(v)}</td></tr>`).join("") : "";
+  return `<div class="pdfdoc">
+    <div class="hd"><table class="meta"><tr><td>案件番号</td><td>${esc(docNumber("WS", job.id))}</td></tr><tr><td>作成日</td><td>${fmtDate(Date.now())}</td></tr></table></div>
+    <h1>工事内容書</h1>
+    <div class="parties"><div></div>${pdfFrom(COMPANY)}</div>
+    <table class="t"><tr><th>件名</th><td>${esc(job.title)}</td></tr>
+      ${job.trades?.length ? `<tr><th>工種</th><td>${esc(job.trades.join("、"))}</td></tr>` : ""}
+      <tr><th>工期</th><td>${pdfPeriod(job.startDate, job.endDate) || "別途調整"}</td></tr>
+      ${place ? `<tr><th>現場</th><td>${place}</td></tr>` : ""}
+      ${job.description ? `<tr><th>作業内容</th><td class="pre">${esc(job.description)}</td></tr>` : ""}</table>
+    ${items.length ? `<table class="t items"><tr><th>品目</th><th>数量</th>${opt.price ? `<th>単価（${tl}）</th><th>金額（${tl}）</th>` : ""}</tr>
+      ${items.map(i => `<tr><td>${esc(i.name)}</td><td class="r">${fmtQty(i.qty)}${esc(i.unit)}</td>${opt.price ? `<td class="r">${yenFull(i.unitPrice)}</td><td class="r">${yenFull(itemAmount(i))}</td>` : ""}</tr>`).join("")}</table>` : ""}
+    ${opt.price && Number(job.price) > 0 ? `<table class="t sum"><tr><th>小計（税抜）</th><td class="r">${yenFull(a.base)}</td></tr>
+      <tr><th>消費税（10%）</th><td class="r">${yenFull(a.tax)}</td></tr>
+      <tr><th>合計（税込）</th><td class="r"><b>${yenFull(a.total)}</b></td></tr></table>` : ""}
+    ${siteRows ? `<table class="t">${siteRows}</table>` : ""}
+    <div class="foot">この工事内容書は GENPUKU Pro 協力業者ポータルから作成しています。</div></div>`;
+}
+// 印刷用の画面を開いて印刷する（ポップアップを止められないよう、ウィンドウはクリック直後に開いておく）
+function printHtml(w, html, title){
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title>
+    <style>${PDF_CSS}@page{size:A4;margin:0}body{margin:0;background:#fff}.pdfdoc{margin:0 auto}</style></head><body>${html}</body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 400);
+}
+const fileSafe = t => String(t || "").replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 60);
 async function downloadPdf(html, filename){
   if(!window.html2pdf) await loadScript(HTML2PDF_URL);
   try { await document.fonts?.ready; } catch(e) {}
@@ -2706,6 +2814,12 @@ const ACTIONS = {
     syncItems(form);
     form.querySelector(".item-row:last-child [name=i_name]").focus();
   },
+  async "add-price"(el){
+    const ed = el.closest("form").querySelector("#price-ed");
+    ed.insertAdjacentHTML("beforeend", priceRowHtml());
+    ed.querySelector(".price-row:last-child [name=p_name]").focus();
+  },
+  async "rm-price"(el){ el.closest(".price-row").remove(); },
   async "rm-item"(el){ const form = el.closest("form"); el.closest(".item-row").remove(); syncItems(form); },
   async "cal-job"(el){ const j = S.cal?.jobs.get(el.dataset.id); if(j) calPopup(j); },
   async "rm-pdf"(el){ S.editPdf = null; S.editPdfSrc = null; S.editPdfChanged = true; el.closest("form").querySelector("#pdf-attach").innerHTML = pdfAttachHtml(); },
@@ -2854,6 +2968,22 @@ const ACTIONS = {
     }
     doc.save(`${base}.pdf`);
   },
+  async sheet(el){
+    const w = el.dataset.mode === "print" ? window.open("", "_blank") : null;
+    if(el.dataset.mode === "print" && !w) throw new Error("印刷画面を開けませんでした。ポップアップを許可してください");
+    try {
+      const id = el.dataset.job, job = await api().getJob(id);
+      if(!job) throw new Error("案件が見つかりません");
+      const admin = myRole() === "admin", mine = job.assignedTo === S.user?.uid;
+      const box = el.closest(".panel");
+      const opt = admin ? {price:!!box?.querySelector("[data-sheet=price]")?.checked, site:!!box?.querySelector("[data-sheet=site]")?.checked} : {price:mine, site:mine};
+      const priv = admin || mine ? await api().getJobPrivate(id) : {};
+      const html = docSheetHtml(job, priv, opt), title = `工事内容書_${fileSafe(job.title) || id}`;
+      if(w){ printHtml(w, html, title); return; }
+      toast("PDFを作成しています…");
+      await downloadPdf(html, `${title}.pdf`);
+    } catch(err) { w?.close(); throw err; }
+  },
   async pdf(el){
     const d = await api().getDocument(el.dataset.id);
     if(!d) throw new Error("書類が見つかりません");
@@ -2955,6 +3085,18 @@ const FORMS = {
     });
     S.pressStamp = id; toast("応募しました"); route();
   },
+  async prices(form){
+    const list = [...form.querySelectorAll(".price-row")].map(r => ({id:r.dataset.id || "p_" + newId(),
+      name:r.querySelector("[name=p_name]").value.trim(), unit:r.querySelector("[name=p_unit]").value.trim(), unitPrice:Number(r.querySelector("[name=p_price]").value) || 0}))
+      .filter(p => p.name || p.unitPrice);
+    if(list.some(p => !p.name)) throw new Error("単価表に作業名が空の行があります");
+    if(list.some(p => !p.unit)) throw new Error("単価表に単位が空の行があります");
+    if(list.some(p => !(p.unitPrice > 0))) throw new Error("単価表の単価を入力してください");
+    const names = list.map(p => p.name);
+    const dup = names.find((n, i) => names.indexOf(n) !== i);
+    if(dup) throw new Error(`単価表に同じ作業名があります（${dup}）`);
+    await api().savePrices(list); S.prices = list; toast("単価表を保存しました"); route();
+  },
   async job(form, e){
     const fd = new FormData(form);
     const id = form.dataset.id || null;
@@ -2964,18 +3106,17 @@ const FORMS = {
     if(!trades.length) throw new Error("工種を1つ以上選んでください");
     const startDate = g("startDate"), endDate = g("endDate") || startDate;
     if(endDate < startDate) throw new Error("終了日が開始日より前になっています");
-    if(!S.editPdf && mode === "open") throw new Error("案件PDFを添付してください");
     const photoUrls = g("photoUrls").split(/\s+/).map(u => u.trim()).filter(Boolean);
     const badUrl = photoUrls.find(u => !/^https?:\/\/\S+$/i.test(u));
     if(badUrl) throw new Error(`写真確認URLは https:// から始まるリンクを入力してください（${badUrl.slice(0, 40)}）`);
     const title = g("title") || (S.editPdf ? S.editPdf.name.replace(/\.pdf$/i, "") : "");
-    if(!title) throw new Error("案件PDFを添付してください");
+    if(!title) throw new Error("案件名を入力してください");
     const items = readItems(form).filter(i => i.name || i.unitPrice);
     if(items.some(i => !i.name)) throw new Error("作業内訳に作業名が空の行があります");
     if(items.some(i => !(i.qty > 0))) throw new Error("作業内訳の数量を入力してください");
     const price = items.length ? itemsTotal(items) : Math.max(0, Math.round(Number(g("price")) || 0));
-    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price, taxMode:"税別", items:[]};
-    if(!id) Object.assign(data, {priceNote:"", description:"", photos:[]});
+    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price, taxMode:"税別", items:[], description:g("description")};
+    if(!id) Object.assign(data, {priceNote:"", photos:[]});
     if(mode === "open" || mode === "draft") data.status = mode;
     if(mode === "open") data.publishedAt = Date.now();
     if(!id && !data.status) data.status = "draft";
@@ -3109,6 +3250,7 @@ document.addEventListener("input", e => {
   if(e.target.matches?.("[data-delfilter=q]")){ S.delFilter.q = e.target.value; renderDelList(); }
   if(e.target.matches?.("[data-propfilter=q]")){ S.propFilter.q = e.target.value; renderPropList(); } if(e.target.closest(".item-row")) syncItems(e.target.form);  });
 document.addEventListener("change", e => {
+  if(e.target.matches("[name=i_pick]")){ applyPick(e.target.closest(".item-row")); syncItems(e.target.form); return; }
   if(e.target.matches("[data-pdfimport]")){
     importPdf(e.target).catch(err => { console.error(err); toast("PDFを読み込めませんでした（" + (err.message || err) + "）"); const b = $("#pdf-result"); if(b) b.innerHTML = ""; });
     return;
