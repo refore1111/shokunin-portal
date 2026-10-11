@@ -1279,12 +1279,19 @@ class FirebaseBackend {
     this.mode = "firebase";
     firebase.initializeApp(FIREBASE_CONFIG);
     this.auth = firebase.auth(); this.db = firebase.firestore();
+    this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.error(e));
   }
   col(n){ return this.db.collection(n); }
   docs(s){ return s.docs.map(d => ({id:d.id, ...d.data()})); }
   onAuth(cb){ this.auth.onAuthStateChanged(u => cb(u ? {uid:u.uid, email:u.email} : null)); }
   async signUp(email, pw){ try { await this.auth.createUserWithEmailAndPassword(email.trim(), pw); } catch(e) { throw authError(e); } }
-  async signIn(email, pw){ try { await this.auth.signInWithEmailAndPassword(email.trim(), pw); } catch(e) { throw authError(e); } }
+  async signIn(email, pw, remember = true){
+    try {
+      const P = firebase.auth.Auth.Persistence;
+      await this.auth.setPersistence(remember ? P.LOCAL : P.SESSION).catch(() => {});
+      await this.auth.signInWithEmailAndPassword(email.trim(), pw);
+    } catch(e) { throw authError(e); }
+  }
   async signOut(){ await this.auth.signOut(); }
   async resetPassword(email){ try { await this.auth.sendPasswordResetEmail(email.trim()); } catch(e) { throw authError(e); } }
   async getIdToken(){ return this.auth.currentUser.getIdToken(); }
@@ -1717,11 +1724,13 @@ function authHead(){
     ${api()?.mode === "firebase" ? `<p class="small" style="margin:-12px 0 16px">接続先：${esc(FIREBASE_CONFIG.projectId)}（本番）</p>` : ""}`;
 }
 function viewLogin(){
+  let last = ""; try { last = localStorage.getItem("refore_last_email") || ""; } catch(e) {}
   return `<div class="auth-wrap">${authHead()}
-    <form class="panel" data-form="login">
+    <form class="panel" data-form="login" method="post" action="#">
       <h2>ログイン</h2>
-      <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="email"></label>
-      <label class="field"><span>パスワード</span><input type="password" name="password" required autocomplete="current-password"></label>
+      <label class="field"><span>メールアドレス</span><input type="email" name="email" id="login-email" required autocomplete="username" inputmode="email" autocapitalize="off" value="${esc(last)}"></label>
+      <label class="field"><span>パスワード</span><input type="password" name="password" id="login-password" required autocomplete="current-password"></label>
+      <label class="toggle" style="margin:0 0 14px;font-size:16px"><input type="checkbox" name="remember" checked>ログインしたままにする</label>
       <button class="btn block">ログイン</button>
       <p class="center" style="margin:12px 0 0"><button type="button" class="textlink" data-act="forgot">パスワードを忘れた場合</button></p>
     </form>
@@ -1732,7 +1741,7 @@ function viewSignup(){
   return `<div class="auth-wrap">${authHead()}
     <form class="panel" data-form="signup">
       <h2>アカウントを作る</h2>
-      <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="email"></label>
+      <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off"></label>
       <label class="field"><span>パスワード <small>6文字以上</small></span><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
       <label class="field"><span>パスワード（確認）</span><input type="password" name="password2" required minlength="6" autocomplete="new-password"></label>
       <button class="btn block">次へ（業者情報の入力）</button>
@@ -3061,7 +3070,10 @@ function lightbox(src, doc){
 
 /* ---------- 操作 ---------- */
 const ACTIONS = {
-  async logout(){ await api().signOut(); location.hash = "#/"; },
+  async logout(){
+    if(!await ask({title:"ログアウトしますか？", body:"次に開くときは、もう一度メールアドレスとパスワードでのログインが必要になります。", ok:"ログアウトする"})) return;
+    await api().signOut(); location.hash = "#/";
+  },
   async "demo-login"(el){ location.hash = "#/"; await api().signIn(el.dataset.email, "demo1234"); },
   async "demo-reset"(){
     if(!await ask({title:"デモのデータを初期化しますか？", body:"作成した案件や応募はすべて消え、最初の状態に戻ります。", ok:"初期化する", danger:true})) return;
@@ -3319,8 +3331,9 @@ const ACTIONS = {
 };
 const FORMS = {
   async login(form){
-    const fd = new FormData(form);
-    await api().signIn(fd.get("email"), fd.get("password"));
+    const fd = new FormData(form), remember = !!fd.get("remember");
+    await api().signIn(fd.get("email"), fd.get("password"), remember);
+    try { if(remember) localStorage.setItem("refore_last_email", String(fd.get("email") || "").trim()); else localStorage.removeItem("refore_last_email"); } catch(e) {}
     location.hash = "#/";
   },
   async signup(form){
