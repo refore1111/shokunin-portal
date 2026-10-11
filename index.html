@@ -2856,6 +2856,8 @@ function showDocHtml(w, html, title, print = false){
   if(print) setTimeout(() => w.print(), 400);
 }
 const fileSafe = t => String(t || "").replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 60);
+// 書類PDFのファイル名：「出力した日付・施工業者名」（例：20261011・山田内装.pdf）。屋号があれば屋号
+const pdfFileName = who => `${todayIso().replace(/-/g, "")}・${fileSafe((who?.tradeName || who?.name || "").trim()) || "業者未定"}.pdf`;
 async function downloadPdf(html, filename){
   if(!window.html2pdf) await loadScript(HTML2PDF_URL);
   try { await document.fonts?.ready; } catch(e) {}
@@ -3135,7 +3137,7 @@ const ACTIONS = {
     const d = await api().getInvoice(el.dataset.id);
     if(!d) throw new Error("請求書が見つかりません");
     toast("PDFを作成しています…");
-    await downloadPdf(docInvoiceHtml(d), `請求書_${d.number}_${d.from.name}.pdf`);
+    await downloadPdf(docInvoiceHtml(d), pdfFileName(d.from));
   },
   async "inv-paid"(el){
     const d = await api().getInvoice(el.dataset.id);
@@ -3174,10 +3176,14 @@ const ACTIONS = {
       const box = el.closest(".panel");
       const opt = admin ? {price:!!box?.querySelector("[data-sheet=price]")?.checked, site:!!box?.querySelector("[data-sheet=site]")?.checked} : {price:true, site:true};
       const priv = admin || mine ? await api().getJobPrivate(id) : {...(job.site || {})};
-      const html = docSheetHtml(job, priv, opt), title = `工事内容書_${fileSafe(job.title) || id}`;
-      if(w){ showDocHtml(w, html, title, mode === "print"); return; }
+      const html = docSheetHtml(job, priv, opt);
+      // 発注先がいればその業者名、業者本人が出すときは自分の名前、発注前の管理者は案件名
+      const who = job.assignedTo ? (admin ? (S.crafts?.get(job.assignedTo) || await api().getProfile(job.assignedTo).catch(() => null)) : S.profile) : (admin ? {name:job.title} : S.profile);
+      const fname = pdfFileName(who);
+      // 印刷画面の「PDFとして保存」でも同じ名前になるよう、タイトルをファイル名にそろえる
+      if(w){ showDocHtml(w, html, fname.replace(/\.pdf$/, ""), mode === "print"); return; }
       toast("PDFを作成しています…");
-      await downloadPdf(html, `${title}.pdf`);
+      await downloadPdf(html, fname);
     } catch(err) { w?.close(); throw err; }
   },
   async pdf(el){
@@ -3185,7 +3191,7 @@ const ACTIONS = {
     if(!d) throw new Error("書類が見つかりません");
     toast("PDFを作成しています…");
     const html = d.type === "order" ? docOrderHtml(d) : docPaymentHtml(d);
-    await downloadPdf(html, `${d.type === "order" ? "発注書" : "支払明細書"}_${d.number}.pdf`);
+    await downloadPdf(html, pdfFileName(d.to));
   },
   async "work-start"(el){
     const id = el.dataset.id, job = await api().getJob(id), today = todayIso();
