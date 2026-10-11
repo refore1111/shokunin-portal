@@ -230,8 +230,15 @@ textarea{min-height:110px;resize:vertical}
 .items-ed{display:grid;gap:8px}
 .item-row{display:grid;grid-template-columns:110px 1fr 70px 64px 96px 90px 34px;gap:6px;align-items:center;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .item-row [name=i_note]{grid-column:2/5}
-.item-row .i-move{grid-column:1;grid-row:2;display:flex;gap:4px}
-.item-row .i-move .i-x{font-size:15px}
+.item-row .i-grip{grid-column:1;grid-row:2;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0;border:1px dashed var(--line);border-radius:4px;background:var(--paper);color:var(--sub);font:inherit;font-size:13px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.item-row .i-grip b{font-size:18px;line-height:1}
+.item-row.dragging{position:relative;z-index:5;background:var(--surface);box-shadow:0 10px 28px rgba(13,29,68,.28);opacity:.95}
+.item-row.dragging .i-grip{cursor:grabbing}
+.items-ed.sorting{user-select:none;-webkit-user-select:none}
+.items-ed.sorting .item-row:not(.dragging){transition:transform .2s ease}
+.item-row.moved{animation:rowmoved .9s ease}
+@keyframes rowmoved{0%,30%{background:var(--kon-soft)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.items-ed.sorting .item-row:not(.dragging){transition:none}.item-row.moved{animation:none}}
 .item-row .i-checks{grid-column:5/-1;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;white-space:nowrap}
 .item-row:not(.manual) .i-add{display:none}
 .item-row input,.item-row select{padding:8px 10px;font-size:15px}
@@ -251,8 +258,7 @@ textarea{min-height:110px;resize:vertical}
   .item-row .i-name{grid-column:1/-1;grid-row:1}
   .item-row [name=i_loc]{grid-column:1/-1}
   .item-row [name=i_note],.item-row .i-checks{grid-column:1/-1}
-  .item-row .i-move{grid-column:1/-1;grid-row:auto;justify-content:flex-end}
-  .item-row .i-move .i-x{width:48px;height:40px}
+  .item-row .i-grip{grid-column:1/-1;grid-row:auto;height:44px}
   .itbl-note{display:block}
   .price-row{grid-template-columns:1fr 1fr 34px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--paper)}
   .price-row [name=p_name],.price-row [name=p_note],.price-row [name=p_cat]{grid-column:1/-1}
@@ -388,6 +394,7 @@ mark{background:var(--warn-soft);color:inherit;padding:0}
 .del-main b{overflow-wrap:anywhere}
 .danger-text{color:var(--shu)}
 .big-action{font-size:17px;min-height:56px}
+.field[hidden]{display:none}
 
 /* ===== GPテーマ（ロゴのネイビー×白×墨、斜めカットがモチーフ） ===== */
 :root{
@@ -575,6 +582,7 @@ const yen = n => Number(n) > 0 ? "¥" + Number(n).toLocaleString("ja-JP") : "応
 // 単価表（よく使う作業と職人への発注単価＝実行単価）の初期値。アイレントホームの工事項目シートから作成
 // 設定画面で編集すると Firestore の master/prices に保存されます
 const DEFAULT_PRICES = [
+  {"id": "p_cross_tema", "cat": "表装工事", "name": "クロス張替え（手間のみ）", "unit": "㎡", "unitPrice": 600},
   {"id": "p_001", "cat": "表装工事", "name": "クロス貼替(壁)", "unit": "㎡", "unitPrice": 600},
   {"id": "p_002", "cat": "表装工事", "name": "クロス貼替(天井)", "unit": "㎡", "unitPrice": 600},
   {"id": "p_003", "cat": "表装工事", "name": "クロス貼替(天井・壁)", "unit": "㎡", "unitPrice": 600},
@@ -640,6 +648,12 @@ const PRICE_CATS = ["表装工事", "塗装工事", "クリーニング", "雑�
 const priceCats = () => [...new Set([...PRICE_CATS, ...(S.prices || []).map(p => p.cat || "未分類")])];
 // 作業内訳の「箇所」の候補
 const ITEM_LOCS = ["洋室", "洋室収納", "通路", "通路収納", "トイレ", "洗濯機置場", "洗面所", "和室", "キッチン", "DK", "LD", "LDK", "室内", "洋室①", "洋室②", "洋室③", "汚損箇所", "浴室", "玄関"];
+// 工事番号：収支一覧と同じ「略号-期の年-連番」（例：FT-2627-122）。期は8月始まり（2026年8月〜2027年7月＝2627）
+const JOBNO_PREFIX = {"FLEX TOKYO":"FT", "Nワークス":"NW", "nworks":"NW", "アイレントホーム":"A", "イデアルシーク":"IS", "ジェントリーブルーエージェント":"GBE",
+  "ベストホームクリエイト":"BHC", "ベストホームクリエート":"BHC", "リアルエステート":"RE", "リアルホームエステート":"RE", "ファミリープロパティー":"FP", "その他":"O"};
+const jobNoPrefix = manager => { const m = String(manager || "").trim(); const k = Object.keys(JOBNO_PREFIX).find(k => k.replace(/\s/g, "") === m.replace(/\s/g, "")); return k ? JOBNO_PREFIX[k] : "O"; };
+const jobNoPeriod = (d = new Date()) => { const y = d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1; return String(y % 100).padStart(2, "0") + String((y + 1) % 100).padStart(2, "0"); };
+const normJobNo = v => String(v || "").normalize("NFKC").replace(/\s/g, "").replace(/[ー－―‐]/g, "-").toUpperCase();
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const clone = o => o == null ? o : JSON.parse(JSON.stringify(o));
 function fmtDay(s){
@@ -736,7 +750,7 @@ function itemRowHtml(i = {qty:1, unit:"式"}){
     <input type="text" name="i_note" value="${esc(i.note)}" placeholder="備考・品番（例：SP-9934）" aria-label="備考・品番">
     <div class="i-checks"><label class="toggle" title="材料込み（材工）で発注する作業。発注書と職人さんの画面に「材工」と出ます"><input type="checkbox" name="i_zai" ${i.zai ? "checked" : ""}>材工</label>
       <label class="toggle i-add" title="案件を保存すると、この作業と単価が単価表に入り、次からプルダウンで選べます"><input type="checkbox" name="i_add">単価表に追加</label></div>
-    <div class="i-move"><button type="button" class="i-x" data-act="mv-item" data-dir="-1" aria-label="この作業を上へ移動">↑</button><button type="button" class="i-x" data-act="mv-item" data-dir="1" aria-label="この作業を下へ移動">↓</button></div></div>`;
+    <button type="button" class="i-grip" aria-label="この作業の並び順を変える（つかんで上下に動かす。キーボードは上下の矢印キー）"><b aria-hidden="true">≡</b>移動</button></div>`;
 }
 function readItems(form){
   return [...form.querySelectorAll(".item-row")].map(r => {
@@ -959,7 +973,7 @@ function buildOrderDoc(job, priv, c){
   return {
     id:`${job.id}_order`, type:"order", jobId:job.id, craftsmanId:c.uid, number:docNumber("PO", job.id), status:"issued", issuedAt:Date.now(),
     to:{name:c.name || "", tradeName:c.tradeName || "", phone:c.phone || "", invoiceNumber:c.invoiceNumber || ""},
-    job:{title:job.title || "", pref:job.pref || "", city:job.city || "", address:priv.address || "", building:priv.building || "",
+    job:{jobNo:job.jobNo || "", title:job.title || "", pref:job.pref || "", city:job.city || "", address:priv.address || "", building:priv.building || "",
       startDate:job.startDate || "", endDate:job.endDate || "", description:job.description || "", priceNote:job.priceNote || "", items:clone(priv.items?.length ? priv.items : job.items || [])},
     amount:calcAmount(job.price, taxMode), taxMode, terms:PAYMENT_TERMS, company:{...COMPANY, staff:job.staff || null}
   };
@@ -970,7 +984,7 @@ function buildPaymentDoc(job, c, order, input){
     id:`${job.id}_payment`, type:"payment", jobId:job.id, craftsmanId:c.uid, number:input.number || docNumber("PS", job.id),
     status:"draft", createdAt:Date.now(), issuedAt:null,
     to:{name:c.name || "", tradeName:c.tradeName || "", invoiceNumber:c.invoiceNumber || ""},
-    job:{title:job.title || "", pref:job.pref || "", city:job.city || "", startDate:job.startDate || "", endDate:job.endDate || "", startedAt:job.startedAt || null, finishedAt:job.finishedAt || null},
+    job:{jobNo:job.jobNo || "", title:job.title || "", pref:job.pref || "", city:job.city || "", startDate:job.startDate || "", endDate:job.endDate || "", startedAt:job.startedAt || null, finishedAt:job.finishedAt || null},
     orderNumber:order?.number || "", amount:{base, tax, total}, fee, transferAmount:total - fee, transferDate:input.transferDate, note:input.note || "", company:{...COMPANY, staff:job.staff || null}
   };
 }
@@ -2030,8 +2044,8 @@ async function viewAdminJobs(sf){
     const c = S.crafts.get(j.assignedTo);
     const before = ["draft","open","closed"].includes(j.status);
     const foot = before
-      ? `<p class="foot">応募 <span class="count">${cnt[j.id] || 0}</span> 件　${j.status === "draft" ? "作成" : "掲載"} ${fmtTime(posted(j))}</p>`
-      : `<p class="foot">${progressMini(j)}${esc(JOB_STATUS[j.status])}${c ? `　${esc(c.name)}` : ""}</p>`;
+      ? `<p class="foot">${j.jobNo ? `${esc(j.jobNo)}　` : ""}応募 <span class="count">${cnt[j.id] || 0}</span> 件　${j.status === "draft" ? "作成" : "掲載"} ${fmtTime(posted(j))}</p>`
+      : `<p class="foot">${j.jobNo ? `${esc(j.jobNo)}　` : ""}${progressMini(j)}${esc(JOB_STATUS[j.status])}${c ? `　${esc(c.name)}` : ""}</p>`;
     return jobCard(j, {href:`#/admin/job/${j.id}`, foot, showPrice:true, stampHtml:statusStamp(j)});
   };
   let body;
@@ -2073,6 +2087,8 @@ async function viewJobEdit(id){
   const staffSel = id ? (job.staff?.name || "") : lastStaff;
   const staffOpts = [...S.staff.map(p => p.name), ...(staffSel && !S.staff.some(p => p.name === staffSel) && id ? [staffSel] : [])];
   S.editPdf = pdfA; S.editPdfSrc = null; S.editPdfChanged = false;
+  S.jobNos = (await api().listJobs({}).catch(() => [])).filter(j => j.jobNo && j.id !== id).map(j => j.jobNo);
+  setTimeout(() => { const f = document.querySelector("form[data-form=job]"); if(f) fillJobNo(f); }, 0);
   S.editPhotos = [...(job.photos || [])];
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
   const isDraft = !id || job.status === "draft";
@@ -2103,6 +2119,9 @@ async function viewJobEdit(id){
       <section class="panel"><h2>工種・作業日</h2>
         <label class="field"><span>Reforeの担当者 <small>発注書に載ります。一覧は「設定」で編集</small></span>
           <select name="staff"><option value="">選ばない</option>${staffOpts.map(n => `<option ${n === staffSel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
+        <label class="field"><span>工事番号 <small>収支一覧の番号（例：FT-2627-122）。管理会社を入れると頭の部分が自動で入ります</small></span>
+          <input type="text" name="jobNo" value="${esc(job.jobNo)}" placeholder="例：FT-2627-122" autocomplete="off" inputmode="latin">
+          <span class="small" id="jobno-hint"></span></label>
         <label class="field"><span>案件名 <small>一覧・予定表に表示されます（PDFを添付した場合はファイル名が初期値）</small></span><input type="text" name="title" maxlength="80" value="${esc(job.title)}" placeholder="例：グリーンハイツ203 原状回復"></label>
         <label class="field"><span>作業内容 <small>募集中の案件として業者さまに表示されます。PDFを添付しない場合はここに内容を書いてください</small></span>
           <textarea name="description" rows="3" placeholder="例：1K 退去後のクロス張替え（壁・天井）と下地補修">${esc(job.description)}</textarea></label>
@@ -2173,7 +2192,7 @@ async function viewAdminJob(id){
     ${pdfA ? attachedPdfRow(id) : ""}
     </section>` : "";
   return `${back("#/admin", "案件")}
-    <div class="page-head"><div class="row"><span class="pill ${job.status}">${JOB_STATUS[job.status]}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span><span class="small">管理会社：<b style="color:var(--ink)">${esc(priv.manager) || "未登録"}</b>（Reforeだけに表示）</span></div>
+    <div class="page-head"><div class="row"><span class="pill ${job.status}">${JOB_STATUS[job.status]}</span><span class="small">作成 ${fmtTime(job.createdAt)}</span><span class="small">工事番号：<b style="color:var(--ink)">${esc(job.jobNo) || "未入力"}</b></span><span class="small">管理会社：<b style="color:var(--ink)">${esc(priv.manager) || "未登録"}</b>（Reforeだけに表示）</span></div>
       <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
     ${pdfViewHtml(pdfA, "発注先の業者にも表示されます")}
     <div class="cols">
@@ -2327,11 +2346,21 @@ function moveAc(input, d){
   items[S.acIdx].scrollIntoView({block:"nearest"});
 }
 function hideAc(){ const b = $("#prop-ac"); if(b) b.hidden = true; const i = $("[data-propsearch]"); if(i){ i.setAttribute("aria-expanded", "false"); i.removeAttribute("aria-activedescendant"); } }
+// 管理会社から工事番号の頭（略号-期の年-）を入れ、ポータルで最後に使った番号を案内する
+function fillJobNo(form, force = false){
+  const el = form.elements.jobNo, hint = $("#jobno-hint"); if(!el) return;
+  const head = `${jobNoPrefix(form.elements.manager?.value)}-${jobNoPeriod()}-`;
+  const cur = normJobNo(el.value);
+  if(!cur || (force && /^[A-Z]+-\d{4}-$/.test(cur))) el.value = head;
+  const used = (S.jobNos || []).filter(n => n.startsWith(head)).sort((a, b) => Number(a.split("-")[2]) - Number(b.split("-")[2]));
+  if(hint) hint.textContent = used.length ? `ポータルで最後に使った番号：${used[used.length - 1]}（収支一覧の番号を確認して入れてください）` : "収支一覧を見て、最後の番号を入れてください";
+}
 function applyProp(form, p){
   const set = (n, v) => { if(form.elements[n]) form.elements[n].value = v || ""; };
   set("building", p.name); set("address", p.address); set("manager", p.company);
   set("autolock", p.al); set("elevator", p.ev); set("masterId", p.id);
   if(p.note && !form.elements.contact.value.trim()) set("contact", p.note);
+  fillJobNo(form, true);
   const {pref, city} = splitAddress(p.address);
   if(pref){ set("pref", pref); set("city", city); }
   autoTitle(form);
@@ -2466,9 +2495,14 @@ function renderPropList(){
 function propEditor(p = {}){
   return new Promise(res => {
     const bg = document.createElement("div"); bg.className = "modal-bg";
+    // 管理会社はプルダウンから選ぶ。一覧にない会社は「＋ 新しい管理会社を追加」で入力
+    const cos = [...new Set([...(S.props || []).map(x => x.company), p.company].filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+    const companyOpts = `<option value="">選んでください</option>${cos.map(c => `<option ${c === p.company ? "selected" : ""}>${esc(c)}</option>`).join("")}<option value="__new" ${cos.length ? "" : "selected"}>＋ 新しい管理会社を追加</option>`;
     const f = (n, l, v, ph = "") => `<label class="field"><span>${l}</span><input type="text" name="${n}" value="${esc(v)}" placeholder="${esc(ph)}"></label>`;
     bg.innerHTML = `<form class="modal" role="dialog" aria-modal="true" aria-labelledby="pe-t"><h2 id="pe-t">${p.id ? "物件を編集" : "物件を追加"}</h2>
-      ${f("name", "物件名", p.name)}${f("address", "所在地", p.address)}${f("company", "管理会社", p.company, "例：FLEX TOKYO")}
+      ${f("name", "物件名", p.name)}${f("address", "所在地", p.address)}
+      <label class="field"><span>管理会社</span><select name="companySel">${companyOpts}</select></label>
+      <label class="field pe-new" ${cos.length ? "hidden" : ""}><span>新しい管理会社の名前</span><input type="text" name="companyNew" placeholder="例：FLEX TOKYO"></label>
       <div class="two">${f("al", "オートロック", p.al, "有／無／鍵対応／呼出1131")}${f("ev", "エレベーター", p.ev, "有／無")}</div>${f("note", "備考", p.note)}
       <div class="row end"><button type="button" class="btn sub pe-no">キャンセル</button><button class="btn">保存</button></div></form>`;
     const close = v => { bg.remove(); res(v); };
@@ -2476,7 +2510,13 @@ function propEditor(p = {}){
     bg.querySelector("form").onsubmit = e => {
       e.preventDefault(); const fd = new FormData(e.target), g = k => String(fd.get(k) || "").trim();
       if(!g("name")){ toast("物件名を入力してください"); return; }
-      close({id:p.id || newId(), name:g("name"), address:g("address"), company:g("company"), al:g("al"), ev:g("ev"), note:g("note")});
+      const sel = g("companySel"), company = sel === "__new" ? g("companyNew") : sel;
+      if(sel === "__new" && !company){ toast("新しい管理会社の名前を入力してください"); return; }
+      close({id:p.id || newId(), name:g("name"), address:g("address"), company, al:g("al"), ev:g("ev"), note:g("note")});
+    };
+    bg.querySelector("[name=companySel]").onchange = e => {
+      const box = bg.querySelector(".pe-new"); box.hidden = e.target.value !== "__new";
+      if(!box.hidden) box.querySelector("input").focus();
     };
     document.body.appendChild(bg); bg.querySelector("input").focus();
   });
@@ -2862,7 +2902,7 @@ const pdfPeriod = (a, b) => `${fmtDate(a)}${b && b !== a ? ` 〜 ${fmtDate(b)}` 
 function docOrderHtml(d){
   const j = d.job, a = d.amount;
   return `<div class="pdfdoc">
-    <div class="hd"><table class="meta"><tr><td>発注番号</td><td>${esc(d.number)}</td></tr><tr><td>発行日</td><td>${fmtDate(d.issuedAt)}</td></tr></table></div>
+    <div class="hd"><table class="meta">${d.job.jobNo ? `<tr><td>工事番号</td><td>${esc(d.job.jobNo)}</td></tr>` : ""}<tr><td>発注番号</td><td>${esc(d.number)}</td></tr><tr><td>発行日</td><td>${fmtDate(d.issuedAt)}</td></tr></table></div>
     <h1>発注書</h1>
     <div class="parties"><div class="to">${pdfTo(d.to)}</div>${pdfFrom(d.company)}</div>
     <p style="margin:0 0 6px">下記のとおり発注いたします。</p>
@@ -2886,7 +2926,7 @@ function docPaymentHtml(d){
   const j = d.job, a = d.amount;
   const period = j.startedAt && j.finishedAt ? `${fmtFull(j.startedAt)} 〜 ${fmtFull(j.finishedAt)}` : pdfPeriod(j.startDate, j.endDate);
   return `<div class="pdfdoc">
-    <div class="hd"><table class="meta"><tr><td>明細番号</td><td>${esc(d.number)}</td></tr><tr><td>発行日</td><td>${fmtDate(d.issuedAt || d.createdAt)}</td></tr></table></div>
+    <div class="hd"><table class="meta">${d.job.jobNo ? `<tr><td>工事番号</td><td>${esc(d.job.jobNo)}</td></tr>` : ""}<tr><td>明細番号</td><td>${esc(d.number)}</td></tr><tr><td>発行日</td><td>${fmtDate(d.issuedAt || d.createdAt)}</td></tr></table></div>
     <h1>支払明細書</h1>
     <div class="parties"><div class="to">${pdfTo(d.to)}${d.to.invoiceNumber ? `<small>登録番号 ${esc(d.to.invoiceNumber)}</small>` : ""}</div>${pdfFrom(d.company)}</div>
     <p style="margin:0 0 6px">下記のとおりお支払いいたしました。</p>
@@ -3067,13 +3107,6 @@ const ACTIONS = {
     toast(`${add.length}件を追加しました。「単価表を保存」を押すと反映されます`);
   },
   async "rm-price"(el){ el.closest(".price-row").remove(); },
-  async "mv-item"(el){
-    const row = el.closest(".item-row"), up = el.dataset.dir === "-1";
-    const to = up ? row.previousElementSibling : row.nextElementSibling;
-    if(!to?.classList.contains("item-row")) return;
-    up ? to.before(row) : to.after(row);
-    el.focus(); row.scrollIntoView({block:"nearest", behavior:"smooth"});
-  },
   async "rm-item"(el){ const form = el.closest("form"); el.closest(".item-row").remove(); syncItems(form); },
   async "cal-job"(el){ const j = S.cal?.jobs.get(el.dataset.id); if(j) calPopup(j); },
   async "rm-pdf"(el){ S.editPdf = null; S.editPdfSrc = null; S.editPdfChanged = true; el.closest("form").querySelector("#pdf-attach").innerHTML = pdfAttachHtml(); },
@@ -3400,10 +3433,14 @@ const FORMS = {
     const publicItems = items.map(i => ({loc:i.loc || "", name:i.name, qty:i.qty, unit:i.unit, unitPrice:i.unitPrice, note:i.note || "", zai:!!i.zai}));
     // 住所・物件名・オートロック・エレベーターは募集中の業者にも見せる（鍵・入室方法・連絡事項・写真URLは発注先だけ。管理会社は業者に見せない）
     const site = {address:g("address"), building:g("building"), room:g("room"), autolock:g("autolock"), elevator:g("elevator")};
+    let jobNo = normJobNo(g("jobNo"));
+    if(/^[A-Z]+-\d{4}-$/.test(jobNo)) jobNo = "";   // 頭だけで番号が入っていなければ空のまま保存
+    if(jobNo && !/^[A-Z]+-\d{4}-\d+$/.test(jobNo)) throw new Error("工事番号は「FT-2627-122」の形で入力してください");
+    if(jobNo && (S.jobNos || []).includes(jobNo)) throw new Error(`工事番号「${jobNo}」はほかの案件で使われています`);
     const staffName = g("staff"), sp = (S.staff || []).find(p => p.name === staffName);
     const staff = staffName ? {name:staffName, phone:sp ? sp.phone || "" : ""} : null;
     if(staffName){ try { localStorage.setItem("refore_last_staff", staffName); } catch(e) {} }
-    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price, taxMode:"税別", items:publicItems, site, staff, description:g("description")};
+    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price, taxMode:"税別", items:publicItems, site, staff, jobNo, description:g("description")};
     if(!id) Object.assign(data, {priceNote:"", photos:[]});
     if(mode === "open" || mode === "draft") data.status = mode;
     if(mode === "open") data.publishedAt = Date.now();
@@ -3512,6 +3549,76 @@ document.addEventListener("submit", async e => {
   catch(err) { console.error(err); toast(err.message || String(err)); }
   finally { btns.forEach(b => b.disabled = false); }
 });
+// 作業内訳の並べ替え：つまみをつかんで上下に動かす。ほかの行はよけて場所を空け、離すと行がその場所に滑り込む
+// （動かしている間は見た目だけ動かし、離したときに並びを変える）
+let itemDrag = null;
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+// 並びを変えたあと、行が元の位置から新しい位置へ滑るように動かす（FLIP）
+function slideRows(rows, change, moved){
+  const before = new Map(rows.map(r => [r, r.getBoundingClientRect().top]));
+  change();
+  if(reduceMotion()){ moved?.classList.add("moved"); return; }
+  rows.forEach(r => {
+    const dy = before.get(r) - r.getBoundingClientRect().top; if(!dy) return;
+    r.style.transition = "none"; r.style.transform = `translateY(${dy}px)`;
+  });
+  requestAnimationFrame(() => requestAnimationFrame(() => rows.forEach(r => {
+    if(!r.style.transform) return;
+    r.style.transition = "transform .25s ease"; r.style.transform = "";
+    r.addEventListener("transitionend", () => { r.style.transition = ""; }, {once:true});
+  })));
+  if(moved){ moved.classList.remove("moved"); void moved.offsetWidth; moved.classList.add("moved"); }
+}
+document.addEventListener("pointerdown", e => {
+  const g = e.target.closest?.(".i-grip"); if(!g || e.button > 0) return;
+  e.preventDefault();
+  const row = g.closest(".item-row"), ed = row.parentElement, rows = [...ed.querySelectorAll(".item-row")];
+  const gap = parseFloat(getComputedStyle(ed).rowGap) || 0;
+  itemDrag = {id:e.pointerId, row, ed, rows, from:rows.indexOf(row), to:rows.indexOf(row), startY:e.pageY,
+    size:row.getBoundingClientRect().height + gap,
+    mids:rows.map(r => { const b = r.getBoundingClientRect(); return b.top + scrollY + b.height / 2; })};
+  row.classList.add("dragging"); ed.classList.add("sorting");
+});
+document.addEventListener("pointermove", e => {
+  const d = itemDrag; if(!d || e.pointerId !== d.id) return;
+  e.preventDefault();
+  const dy = e.pageY - d.startY, y = d.mids[d.from] + dy;
+  d.row.style.transform = `translateY(${dy}px)`;
+  d.to = d.rows.filter((r, k) => k !== d.from && d.mids[k] < y).length;
+  // 動かしている行が通り過ぎた行は、1行ぶん上（または下）によける
+  d.rows.forEach((r, k) => {
+    if(r === d.row) return;
+    const shift = d.from < d.to && k > d.from && k <= d.to ? -d.size : d.to < d.from && k >= d.to && k < d.from ? d.size : 0;
+    r.style.transform = shift ? `translateY(${shift}px)` : "";
+  });
+  if(e.clientY < 90) scrollBy(0, -14); else if(e.clientY > innerHeight - 90) scrollBy(0, 14);   // 端に来たら自動でスクロール
+}, {passive:false});
+const endItemDrag = e => {
+  const d = itemDrag; if(!d || e.pointerId !== d.id) return;
+  itemDrag = null;
+  d.ed.classList.remove("sorting"); d.row.classList.remove("dragging");
+  if(e.type === "pointerup" && d.to !== d.from){
+    // 見た目の位置から、並べ替えたあとの位置へ滑り込ませる
+    slideRows(d.rows, () => {
+      d.rows.forEach(r => { r.style.transform = ""; });
+      const others = d.rows.filter(r => r !== d.row);
+      if(d.to < others.length) others[d.to].before(d.row); else others[others.length - 1].after(d.row);
+    }, d.row);
+    syncItems(d.row.closest("form"));
+  } else {
+    slideRows(d.rows, () => d.rows.forEach(r => { r.style.transform = ""; }));
+  }
+};
+document.addEventListener("pointerup", endItemDrag); document.addEventListener("pointercancel", endItemDrag);
+// キーボード：つまみを選んで上下の矢印キーで動かす
+document.addEventListener("keydown", e => {
+  const g = e.target.closest?.(".i-grip"); if(!g || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  e.preventDefault();
+  const row = g.closest(".item-row"), to = e.key === "ArrowUp" ? row.previousElementSibling : row.nextElementSibling;
+  if(!to?.classList.contains("item-row")) return;
+  slideRows([row, to], () => { e.key === "ArrowUp" ? to.before(row) : to.after(row); }, row);
+  g.focus();
+});
 document.addEventListener("keydown", e => {
   if(e.target.matches?.("[data-propsearch]")){
     const box = $("#prop-ac");
@@ -3534,6 +3641,7 @@ document.addEventListener("input", e => {
     autoTitle(f);
   }
   if(e.target.matches?.("form[data-form=job] [name=room]")) autoTitle(e.target.form);
+  if(e.target.matches?.("form[data-form=job] [name=manager]")) fillJobNo(e.target.form, true);
   if(e.target.matches?.("form[data-form=job] [name=title]")) e.target.dataset.auto = "";
   if(e.target.matches?.("[data-delfilter=q]")){ S.delFilter.q = e.target.value; renderDelList(); }
   if(e.target.matches?.("[data-propfilter=q]")){ S.propFilter.q = e.target.value; renderPropList(); } if(e.target.closest(".item-row")) syncItems(e.target.form);  });
