@@ -749,6 +749,22 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width
 input[type=date]::-webkit-date-and-time-value{text-align:left}
 .brand b .nw{white-space:nowrap}
 @media (max-width:480px){.brand b{font-size:15px}.brand-mark.gp{width:44px;height:28px}}
+
+.co-banner{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;border:1px solid var(--line);border-left:4px solid var(--gp, var(--kon));background:var(--surface);border-radius:6px;padding:10px 12px;margin:0 0 12px}
+.co-from{display:block;font-size:12px;color:var(--sub);margin-top:2px}
+.prepay{border-color:var(--warn);background:var(--warn-soft)}
+.sumbox{display:grid;grid-template-columns:1fr auto;gap:4px 16px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:0 0 10px;font-variant-numeric:tabular-nums}
+.sumbox span:nth-child(even){text-align:right}
+.sumbox .big{font-weight:700;font-size:17px;border-top:1px solid var(--line);padding-top:6px}
+.meter{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin:4px 0 8px}
+.meter i{display:block;height:100%;background:var(--kon)}
+.plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:0 0 18px}
+.plan{display:flex;flex-direction:column;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px}
+.plan.cur{border:2px solid var(--kon)}
+.plan .pr{font-size:22px;font-weight:700}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:0 0 16px}
+.kpi{display:flex;flex-direction:column;gap:2px}
+.kpi .l{font-size:12px;color:var(--sub)}.kpi .v{font-size:22px;font-weight:700}.kpi .s{font-size:12px;color:var(--sub)}
 </style>
 </head>
 <body>
@@ -796,11 +812,11 @@ const UNITS = ["式","㎡","m","枚","台","箇所","個","本","室","セット
 
 const TRADES = ["ハウスクリーニング","エアコンクリーニング","クロス張替え","床（CF・フロアタイル）","塗装","設備交換","簡易修繕","退去立会","その他"];
 const PREFS = ["東京都","神奈川県","埼玉県","千葉県"];
-const JOB_STATUS = {draft:"下書き",open:"募集中",closed:"締切",assigned:"発注済み",working:"作業中",finished:"作業完了",completed:"完了確認済み",paid:"支払済み"};
+const JOB_STATUS = {draft:"下書き",open:"募集中",closed:"締切",selected:"先払い待ち",assigned:"発注済み",working:"作業中",finished:"作業完了",completed:"完了確認済み",paid:"支払済み"};
 // 発注済み（assigned）は、業者が金額を確認して承諾したかどうかで表示を分ける
 const statusLabel = j => j.status === "assigned" ? (j.acceptedAt ? (j.craftStart ? "承諾済み" : "入る日待ち") : j.declinedAt ? "辞退" : "承諾待ち") : (JOB_STATUS[j.status] || j.status);
 const pillClass = j => j.status === "assigned" ? (j.declinedAt ? "declined" : !j.acceptedAt || !j.craftStart ? "waiting" : "assigned") : j.status;
-const APP_STATUS = {applied:"応募中",selected:"採用",rejected:"見送り",withdrawn:"取り下げ",declined:"辞退"};
+const APP_STATUS = {applied:"応募中",selected:"採用",rejected:"見送り",withdrawn:"取り下げ",declined:"辞退",waiting:"採用予定（工務店の先払い待ち）"};
 const REPORT_STATUS = {submitted:"確認待ち",approved:"確認済み",returned:"差し戻し"};
 const CRAFT_STATUS = {pending:"審査中",approved:"承認済み",suspended:"停止中"};
 
@@ -1028,8 +1044,9 @@ async function splitAssign(jobD, priv, uid, name, ids){
   await api().saveJob(jobD.id, {items:keep(pubAll), price:itemsTotal(keep(privAll)), allItems:jobD.allItems?.length ? jobD.allItems : pubAll});
   await api().setJobPrivate(jobD.id, {...priv, items:keep(privAll)});
   const c = S.crafts.get(uid) || await api().getProfile(uid), childJob = await api().getJob(cid);
-  await api().assign(cid, uid, buildOrderDoc(childJob, {...priv, items:selPriv}, c, await orderExtra(cid)));
-  await api().setAppStatus(`${jobD.id}_${uid}`, "selected").catch(e => console.error(e));
+  const how = await assignOrPrepay(cid, uid, buildOrderDoc(childJob, {...priv, items:selPriv}, c, await orderExtra(cid)));
+  await api().setAppStatus(`${jobD.id}_${uid}`, how === "prepay" ? "waiting" : "selected").catch(e => console.error(e));
+  if(how === "prepay"){ toast(`${name} さんを${selPriv.length}件の工事の発注先に選びました。先払いをお願いします`); return go(`#/admin/job/${cid}`); }
   notifyMail(cid, "発注されました", `「${child.title}」をあなたに発注しました。ポータルで発注内容と金額を確認して、「承諾する」を押してください。\n工期：${fmtRange(child.startDate, child.endDate)}`, {to:uid});
   toast(`${name} さんに${selPriv.length}件の工事を発注しました（残りは募集を続けます）`); go(`#/admin/job/${cid}`);
 }
@@ -1403,13 +1420,13 @@ async function importPdf(input){
 function buildOrderDoc(job, priv, c, extra = {}){
   const taxMode = taxModeOf(job);
   return {seal:extra.seal || "", others:extra.others || [],
-    id:`${job.id}_order`, type:"order", jobId:job.id, craftsmanId:c.uid, number:docNumber("PO", job.id), status:"issued", issuedAt:Date.now(),
+    id:`${job.id}_order`, type:"order", jobId:job.id, companyId:job.companyId || COMPANY_ID, craftsmanId:c.uid, number:docNumber("PO", job.id), status:"issued", issuedAt:Date.now(),
     to:{name:c.name || "", tradeName:c.tradeName || "", phone:c.phone || "", invoiceNumber:c.invoiceNumber || ""},
     job:{jobNo:job.jobNo || "", title:job.title || "", pref:job.pref || "", city:job.city || "", address:priv.address || "", building:priv.building || "",
       startDate:job.startDate || "", endDate:job.endDate || "", description:job.description || "", priceNote:job.priceNote || "", items:clone(priv.items?.length ? priv.items : job.items || []),
       room:priv.room || "", autolock:priv.autolock || "", elevator:priv.elevator || "", keyInfo:priv.keyInfo || "", contact:priv.contact || "",
       workDate:job.craftStart ? pdfPeriod(job.craftStart, job.craftEnd) : ""},
-    amount:calcAmount(job.price, taxMode), taxMode, terms:PAYMENT_TERMS, company:{...COMPANY, staff:job.staff || null}
+    amount:calcAmount(job.price, taxMode), taxMode, terms:isRefJob(job) ? PAYMENT_TERMS : coTermsOf(job), company:{...(isRefJob(job) ? COMPANY : coInfo()), staff:job.staff || null}
   };
 }
 function buildPaymentDoc(job, c, order, input){
@@ -1419,7 +1436,7 @@ function buildPaymentDoc(job, c, order, input){
     status:"draft", createdAt:Date.now(), issuedAt:null,
     to:{name:c.name || "", tradeName:c.tradeName || "", invoiceNumber:c.invoiceNumber || ""},
     job:{jobNo:job.jobNo || "", title:job.title || "", pref:job.pref || "", city:job.city || "", startDate:job.startDate || "", endDate:job.endDate || "", startedAt:job.startedAt || null, finishedAt:job.finishedAt || null},
-    orderNumber:order?.number || "", amount:{base, tax, total}, fee, transferAmount:total - fee, transferDate:input.transferDate, note:input.note || "", company:{...COMPANY, staff:job.staff || null}
+    orderNumber:order?.number || "", amount:{base, tax, total}, fee, transferAmount:total - fee, transferDate:input.transferDate, note:input.note || "", company:{...(isRefJob(job) ? COMPANY : coInfo()), staff:job.staff || null}
   };
 }
 
@@ -1454,7 +1471,11 @@ function seedDemo(){
       admin: {email:"admin@demo.jp", pw:"demo1234"},
       c1: {email:"yamada@demo.jp", pw:"demo1234"},
       c2: {email:"tanaka@demo.jp", pw:"demo1234"},
-      c3: {email:"suzuki@demo.jp", pw:"demo1234"}
+      c3: {email:"suzuki@demo.jp", pw:"demo1234"},
+      op: {email:"op@demo.jp", pw:"demo1234"},
+      k1: {email:"midori@demo.jp", pw:"demo1234"},
+      k2: {email:"sasaki@demo.jp", pw:"demo1234"},
+      w1: {email:"kenta@demo.jp", pw:"demo1234"}
     },
     users: {
       admin: {uid:"admin", role:"admin", status:"approved", name:"Refore 管理者", email:"admin@demo.jp", createdAt:now - 90*day},
@@ -1588,6 +1609,26 @@ function seedDemo(){
       ]
     }
   };
+  // 工務店（招待された会社）・運営・職人の従業員
+  Object.assign(d.users, {
+    op: {uid:"op", role:"op", status:"approved", name:"GENPUKU Pro 運営", email:"op@demo.jp", createdAt:now - 90*day},
+    k1: {uid:"k1", role:"co", status:"approved", companyId:"midori", coRole:"管理者", owner:true, name:"緑川 誠", email:"midori@demo.jp", createdAt:now - 20*day},
+    k2: {uid:"k2", role:"co", status:"approved", companyId:"midori", coRole:"担当者", name:"佐々木 美穂", email:"sasaki@demo.jp", createdAt:now - 10*day},
+    w1: {uid:"w1", role:"crew", status:"approved", ownerUid:"c1", name:"山田 健太", email:"kenta@demo.jp", createdAt:now - 7*day}
+  });
+  d.companies = {midori:{id:"midori", name:"みどり建装株式会社", status:"active", plan:"p10", money:false, extra:{}, priority:["c3"], closeDay:20, prefix:"MD",
+    ownerEmail:"midori@demo.jp", notifyEmail:"midori@demo.jp", info:{zip:"130-0001", address:"東京都墨田区吾妻橋1-1-1", tel:"03-0000-1111", invoiceNumber:"T5555555555555"}, createdAt:now - 20*day}};
+  d.opSettings = {bank:"サンプル銀行 本店（普通）0000000 カ）リフォア"};
+  Object.assign(d.jobs, {
+    m1: {id:"m1", companyId:"midori", coName:"みどり建装株式会社", coEmail:"midori@demo.jp", coClose:20, status:"open", audience:"all", pay:true, priCrafts:[], countedYm:curMonth(),
+      title:"2DK 退去後クリーニング", trades:["ハウスクリーニング"], pref:"東京都", city:"墨田区", startDate:iso(6), endDate:iso(6), price:28000, taxMode:"税別", priceNote:"",
+      description:"2DK（約40㎡）の退去後クリーニング一式です。", photos:[], assignedTo:null, createdAt:now - 4*hour, publishedAt:now - 4*hour},
+    m2: {id:"m2", companyId:"midori", coName:"みどり建装株式会社", coEmail:"midori@demo.jp", coClose:20, status:"open", audience:"priority", pay:false, priCrafts:["c3"], countedYm:curMonth(),
+      title:"1LDK クロス張替え（壁のみ）", trades:["クロス張替え"], pref:"東京都", city:"墨田区", startDate:iso(8), endDate:iso(8), price:52000, taxMode:"税別", priceNote:"",
+      description:"1LDKの壁のみ。量産品。", photos:[], assignedTo:null, createdAt:now - 2*hour, publishedAt:now - 2*hour}
+  });
+  d.jobPrivate.m1 = {address:"東京都墨田区本所3-3-3 サンプルハイツ101", key:"キーボックス 1234"};
+  d.jobPrivate.m2 = {address:"東京都墨田区向島2-2-2 サンプル荘202", key:""};
   for(const jid of ["j5", "j6"]){
     const o = buildOrderDoc(d.jobs[jid], d.jobPrivate[jid], d.users.c1);
     o.issuedAt = d.jobs[jid].assignedAt;
@@ -1598,7 +1639,7 @@ function seedDemo(){
 
 class DemoBackend {
   constructor(){
-    this.mode = "demo"; this.key = "refore_shokunin_demo_v17"; this.listeners = []; this.watchers = new Set();
+    this.mode = "demo"; this.key = "refore_shokunin_demo_v18"; this.listeners = []; this.watchers = new Set();
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
@@ -1635,10 +1676,20 @@ class DemoBackend {
   async getIdToken(){ return "demo"; }
   async uploadReportPhoto(){ await new Promise(r => setTimeout(r, 40)); return {ok:true, folderUrl:"https://drive.google.com/drive/folders/demo"}; }
 
-  async getProfile(uid){ return clone(this.data.users[uid] || null); }
+  // 工務店のときは、見積・収支・単価表などを工務店ごとの入れ物に分ける
+  sd(){ if(!tenant()) return this.data; const t = (this.data.tenants ||= {}); return (t[S.cid] ||= {}); }
+  async getProfile(uid){
+    const u = this.data.users[uid] || null;
+    if(u && tenant() && uid !== S.user?.uid && u.role === "craftsman") return pubCraftOf(u, S.company);
+    return clone(u);
+  }
   async createProfile(uid, d){ this.data.users[uid] = {...d, uid}; this.save(); }
   async updateProfile(uid, d){ Object.assign(this.data.users[uid], d); this.save(); }
-  async listCraftsmen(){ return Object.values(this.data.users).filter(u => u.role === "craftsman").map(clone); }
+  async listCraftsmen(){
+    const all = Object.values(this.data.users).filter(u => u.role === "craftsman" && !u.employee);
+    if(tenant()) return all.filter(u => u.status === "approved").map(u => pubCraftOf(u, S.company));
+    return Object.values(this.data.users).filter(u => u.role === "craftsman").map(clone);
+  }
   async setCraftsmanStatus(uid, status){ this.data.users[uid].status = status; this.save(); }
 
   async listJobs(f = {}){
@@ -1646,16 +1697,21 @@ class DemoBackend {
     if(f.status) a = a.filter(j => j.status === f.status);
     if(f.assignedTo) a = a.filter(j => j.assignedTo === f.assignedTo);
     if(f.audience) a = a.filter(j => (j.audience || "all") === f.audience);
-    if(myRole() !== "admin") a = a.filter(j => j.assignedTo === S.user?.uid || j.status !== "open" || (j.audience || "all") === "all" || S.profile?.priority);
+    if(myRole() !== "admin") a = a.filter(j => j.assignedTo === S.user?.uid || j.status !== "open" || (j.audience || "all") === "all" || (isRefJob(j) ? S.profile?.priority : (j.priCrafts || []).includes(S.user?.uid)));
+    else a = scopeList(a);
     return a.map(clone);
   }
   async getJob(id){ return clone(this.data.jobs[id] || null); }
   async saveJob(id, d){ S.ldCache = null;
-    if(!id){ id = "j_" + newId(); this.data.jobs[id] = {...d, id, companyId:COMPANY_ID, assignedTo:null, createdAt:Date.now()}; }
+    d = coJobPatch(d, !id);
+    if(d.status === "open") await coPostGuard(id, d);
+    if(!id){ id = "j_" + newId(); this.data.jobs[id] = {...d, id, companyId:coId(), assignedTo:null, createdAt:Date.now()}; }
     else Object.assign(this.data.jobs[id], d);
     this.data.jobs[id].updatedAt = Date.now(); this.save(); return id;
   }
-  async setJobStatus(id, status){ S.ldCache = null; Object.assign(this.data.jobs[id], {status, ...stampFor(status), updatedAt:Date.now()}); this.save(); }
+  async setJobStatus(id, status){ S.ldCache = null; const x = {};
+    if(status === "open") await coPostGuard(id, x);
+    Object.assign(this.data.jobs[id], {status, ...stampFor(status), ...x, updatedAt:Date.now()}); this.save(); }
   async setWorkProgress(id, status, extra = {}){ Object.assign(this.data.jobs[id], {status, ...stampFor(status), ...extra, updatedAt:Date.now()}); this.save(); }
   async acceptOrder(id){ Object.assign(this.data.jobs[id], {acceptedAt:Date.now(), updatedAt:Date.now()}); this.save(); }
   async declineOrder(id, reason){ Object.assign(this.data.jobs[id], {declinedAt:Date.now(), declineReason:reason, updatedAt:Date.now()}); this.save(); }
@@ -1679,42 +1735,42 @@ class DemoBackend {
   async getJobPdf(id){ const v = (this.data.jobPdf || {})[id]; return v ? clone({...v, src:(this.data.jobPdfSrc || {})[id] || null, jobId:id}) : null; }
   async getJobPdfSource(id){ return clone((this.data.jobPdfSrc || {})[id] || null); }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
-  async getProperties(){ return clone(this.data.properties || []); }
-  async getPrices(){ return clone(this.data.prices || DEFAULT_PRICES); }
-  async getStaff(){ return clone(this.data.staff || []); }
+  async getProperties(){ return clone(this.sd().properties || []); }
+  async getPrices(){ return clone(this.sd().prices || DEFAULT_PRICES); }
+  async getStaff(){ return clone(this.sd().staff || []); }
   async addPushToken(uid, t){ const u = this.data.users[uid]; u.pushTokens = [...new Set([...(u.pushTokens || []), t])]; this.save(); }
   async removePushToken(uid, t){ const u = this.data.users[uid]; u.pushTokens = (u.pushTokens || []).filter(x => x !== t); this.save(); }
-  async getNotifySettings(){ return clone(this.data.notify || {}); }
-  async listAdmins(){ return Object.values(this.data.users).filter(u => u.role === "admin").map(clone); }
-  async listEstimates(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.data.estimates || {})); }
-  async getEstimate(id){ return clone((this.data.estimates || {})[id] || null); }
-  async saveEstimate(e){ S.ldCache = null; (this.data.estimates ||= {})[e.id] = clone(e); this.save(); return e.id; }
-  async deleteEstimate(id){ S.ldCache = null; delete (this.data.estimates || {})[id]; this.save(); }
-  async listBills(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.data.bills || {})); }
-  async saveBill(b){ S.ldCache = null; (this.data.bills ||= {})[b.id] = clone(b); this.save(); }
-  async deleteBill(id){ S.ldCache = null; delete (this.data.bills || {})[id]; this.save(); }
-  async getBilling(){ return clone(this.data.billing || {bank:"（デモ）サンプル銀行 本店（普通）0000000 名義；カ）リフォア", invoiceNumber:"T0000000000000"}); }
-  async saveBilling(d){ this.data.billing = clone(d); this.save(); }
-  async listLedger(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.data.ledger || {})); }
-  async saveLedger(r){ S.ldCache = null; (this.data.ledger ||= {})[r.id] = clone(r); this.save(); }
-  async saveLedgerMany(rs){ S.ldCache = null; rs.forEach(r => { (this.data.ledger ||= {})[r.id] = clone(r); }); this.save(); }
-  async deleteLedger(id){ S.ldCache = null; delete (this.data.ledger || {})[id]; this.save(); }
-  async getLedgerCfg(){ return clone(this.data.ledgerCfg || {fees:{}, staffRate:0.5}); }
-  async saveLedgerCfg(d){ S.ldCache = null; this.data.ledgerCfg = clone(d); this.save(); }
+  async getNotifySettings(){ return clone(this.sd().notify || {}); }
+  async listAdmins(){ return Object.values(this.data.users).filter(u => tenant() ? (u.role === "co" && u.companyId === S.cid) : u.role === "admin").map(clone); }
+  async listEstimates(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().estimates || {})); }
+  async getEstimate(id){ return clone((this.sd().estimates || {})[id] || null); }
+  async saveEstimate(e){ S.ldCache = null; (this.sd().estimates ||= {})[e.id] = clone(e); this.save(); return e.id; }
+  async deleteEstimate(id){ S.ldCache = null; delete (this.sd().estimates || {})[id]; this.save(); }
+  async listBills(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().bills || {})); }
+  async saveBill(b){ S.ldCache = null; (this.sd().bills ||= {})[b.id] = clone(b); this.save(); }
+  async deleteBill(id){ S.ldCache = null; delete (this.sd().bills || {})[id]; this.save(); }
+  async getBilling(){ if(tenant()) return clone(this.sd().billing || {}); return clone(this.data.billing || {bank:"（デモ）サンプル銀行 本店（普通）0000000 名義；カ）リフォア", invoiceNumber:"T0000000000000"}); }
+  async saveBilling(d){ this.sd().billing = clone(d); this.save(); }
+  async listLedger(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().ledger || {})); }
+  async saveLedger(r){ S.ldCache = null; (this.sd().ledger ||= {})[r.id] = clone(r); this.save(); }
+  async saveLedgerMany(rs){ S.ldCache = null; rs.forEach(r => { (this.sd().ledger ||= {})[r.id] = clone(r); }); this.save(); }
+  async deleteLedger(id){ S.ldCache = null; delete (this.sd().ledger || {})[id]; this.save(); }
+  async getLedgerCfg(){ return clone(this.sd().ledgerCfg || {fees:{}, staffRate:0.5}); }
+  async saveLedgerCfg(d){ S.ldCache = null; this.sd().ledgerCfg = clone(d); this.save(); }
   async getAdminInfo(id){ return {manager:this.data.jobPrivate[id]?.manager || ""}; }
-  async saveNotifySettings(d){ this.data.notify = {...(this.data.notify || {}), ...d}; this.save(); }
-  async listRatings(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.data.ratings || {})); }
-  async saveRating(r){ (this.data.ratings ||= {})[r.id] = clone(r); this.save(); }
-  async getSuppliers(){ return clone(this.data.suppliers || DEFAULT_SUPPLIERS); }
-  async saveSuppliers(list){ this.data.suppliers = clone(list); this.save(); }
-  async getMaterials(){ return clone(this.data.materials || DEFAULT_MATERIALS); }
-  async saveMaterials(list){ this.data.materials = clone(list); this.save(); }
-  async getSeal(){ return this.data.seal || ""; }
-  async saveSeal(data){ this.data.seal = data || ""; this.save(); }
+  async saveNotifySettings(d){ this.sd().notify = {...(this.sd().notify || {}), ...d}; this.save(); }
+  async listRatings(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().ratings || {})); }
+  async saveRating(r){ (this.sd().ratings ||= {})[r.id] = clone(r); this.save(); }
+  async getSuppliers(){ return clone(this.sd().suppliers || DEFAULT_SUPPLIERS); }
+  async saveSuppliers(list){ this.sd().suppliers = clone(list); this.save(); }
+  async getMaterials(){ return clone(this.sd().materials || DEFAULT_MATERIALS); }
+  async saveMaterials(list){ this.sd().materials = clone(list); this.save(); }
+  async getSeal(){ return this.sd().seal || ""; }
+  async saveSeal(data){ this.sd().seal = data || ""; this.save(); }
   async getMatOrders(jobId){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone((this.data.matOrders || {})[jobId] || []); }
   async saveMatOrders(jobId, orders){ S.ldCache = null; (this.data.matOrders ||= {})[jobId] = clone(orders); this.save(); }
-  async saveStaff(list){ this.data.staff = clone(list); this.save(); }
-  async savePrices(list){ this.data.prices = clone(list); this.save(); }
+  async saveStaff(list){ this.sd().staff = clone(list); this.save(); }
+  async savePrices(list){ this.sd().prices = clone(list); this.save(); }
   async wipeJobData(progress){
     const d = this.data, jobs = Object.keys(d.jobs || {}).length;
     const total = ["jobs","jobPrivate","jobPdf","jobPdfSrc","applications","reports","documents","invoices","threads","messages"].reduce((a, k) => a + Object.keys(d[k] || {}).length, 0);
@@ -1722,7 +1778,7 @@ class DemoBackend {
     progress?.("削除しました"); this.save();
     return {jobs, total};
   }
-  async saveProperties(list){ this.data.properties = clone(list); this.save(); }
+  async saveProperties(list){ this.sd().properties = clone(list); this.save(); }
   // 選んだ案件だけ削除（応募・完了報告・発注書・連絡も一緒に。請求書は残す）
   async deleteJobs(ids, progress){ S.ldCache = null;
     const d = this.data, set = new Set(ids); let total = 0;
@@ -1737,10 +1793,10 @@ class DemoBackend {
     return {jobs:ids.length, total};
   }
   // --- 連絡（チャット） ---
-  _threads(f = {}){ let a = Object.values(this.data.threads || {}); if(f.craftsmanId) a = a.filter(t => t.craftsmanId === f.craftsmanId); if(f.jobId) a = a.filter(t => t.jobId === f.jobId); return a.map(clone); }
+  _threads(f = {}){ let a = Object.values(this.data.threads || {}); if(f.craftsmanId) a = a.filter(t => t.craftsmanId === f.craftsmanId); if(f.jobId) a = a.filter(t => t.jobId === f.jobId); if(myRole() === "admin") a = scopeList(a); return a.map(clone); }
   async listThreads(f){ return this._threads(f); }
   async getThread(id){ return clone((this.data.threads || {})[id] || null); }
-  async ensureThread(t){ this.data.threads ||= {}; if(!this.data.threads[t.id]){ this.data.threads[t.id] = t; this.save(); } }
+  async ensureThread(t){ t = await withCo(t); this.data.threads ||= {}; if(!this.data.threads[t.id]){ this.data.threads[t.id] = t; this.save(); } }
   async sendMessage(tid, m){
     this.data.messages ||= {}; (this.data.messages[tid] ||= []).push({...m, id:newId()});
     Object.assign(this.data.threads[tid], {lastAt:m.createdAt, lastText:m.text.slice(0, 120), lastFrom:m.from, [m.from + "ReadAt"]:m.createdAt});
@@ -1750,14 +1806,15 @@ class DemoBackend {
   watchThreads(f, cb){ const run = () => cb(this._threads(f)); this.watchers.add(run); setTimeout(run); return () => this.watchers.delete(run); }
   watch(name, where, cb){
     const val = (d, f) => f === "audience" ? (d[f] || "all") : d[f];
-    const run = () => cb(Object.values(this.data[name] || {}).filter(d => where.every(([f, op, v]) => op === "in" ? v.includes(val(d, f)) : val(d, f) === v)).map(clone));
+    const scoped = l => myRole() === "admin" && SCOPED_COLS.includes(name) ? scopeList(l) : (name === "jobs" && myRole() !== "admin" ? l.filter(j => j.assignedTo === S.user?.uid || j.status !== "open" || (j.audience || "all") === "all" || (isRefJob(j) ? S.profile?.priority : (j.priCrafts || []).includes(S.user?.uid))) : l);
+    const run = () => cb(scoped(Object.values(this.data[name] || {}).filter(d => where.every(([f, op, v]) => op === "in" ? v.includes(val(d, f)) : val(d, f) === v))).map(clone));
     this.watchers.add(run); setTimeout(run); return () => this.watchers.delete(run);
   }
   async reactMessage(tid, mid, role, e){ const m = ((this.data.messages || {})[tid] || []).find(x => x.id === mid); if(!m) return; m.reactions = {...(m.reactions || {}), [role]:e || ""}; this.save(); }
   watchMessages(tid, cb){ const run = () => cb(clone((this.data.messages || {})[tid] || [])); this.watchers.add(run); setTimeout(run); return () => this.watchers.delete(run); }
   async saveInvoice(d){ (this.data.invoices ||= {})[d.id] = d; this.save(); }
   async updateInvoice(id, d){ Object.assign(this.data.invoices[id], d); this.save(); }
-  async listInvoices(f = {}){ let a = Object.values(this.data.invoices || {}); if(f.month) a = a.filter(x => x.month === f.month); if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId); return a.map(clone); }
+  async listInvoices(f = {}){ let a = Object.values(this.data.invoices || {}); if(f.month) a = a.filter(x => x.month === f.month); if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId); if(f.type) a = a.filter(x => x.type === f.type); if(myRole() === "admin") a = scopeList(a); return a.map(clone); }
   async setJobPdf(id, d, src){
     this.data.jobPdf ||= {}; this.data.jobPdfSrc ||= {};
     if(d) this.data.jobPdf[id] = d; else delete this.data.jobPdf[id];
@@ -1770,9 +1827,11 @@ class DemoBackend {
     let a = Object.values(this.data.applications);
     if(f.jobId) a = a.filter(x => x.jobId === f.jobId);
     if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId);
+    if(myRole() === "admin") a = scopeList(a);
     return a.map(clone);
   }
   async apply(app){
+    app = await withCo(app);
     if(this.data.applications[app.id]) throw new Error("この案件にはすでに応募しています");
     if(this.data.jobs[app.jobId]?.status !== "open") throw new Error("この案件の募集は終了しています");
     this.data.applications[app.id] = app; this.save();
@@ -1792,9 +1851,10 @@ class DemoBackend {
     let a = Object.values(this.data.reports);
     if(f.jobId) a = a.filter(x => x.jobId === f.jobId);
     if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId);
+    if(myRole() === "admin") a = scopeList(a);
     return a.map(clone);
   }
-  async submitReport(d){ const id = "r_" + newId(); this.data.reports[id] = {...d, id, status:"submitted", createdAt:Date.now()}; this.save(); }
+  async submitReport(d){ d = await withCo(d); const id = "r_" + newId(); this.data.reports[id] = {...d, id, status:"submitted", createdAt:Date.now()}; this.save(); }
   async setReportStatus(id, status, comment){ Object.assign(this.data.reports[id], {status, reviewComment:comment || "", reviewedAt:Date.now()}); this.save(); }
   async addReportPhotos(id, a){ const r = this.data.reports[id]; if(!r) return; (r.additions ||= []).push(a); r.photoCount = (r.photoCount || 0) + a.count; this.save(); }
 
@@ -1803,6 +1863,61 @@ class DemoBackend {
     for(const f of files) out.push(await blobToDataURL(await resizeImage(f, 800, 0.65)));
     return out;
   }
+  // ---- 工務店・運営・招待・先払い（デモ） ----
+  async getCompany(cid){ return clone((this.data.companies || {})[cid] || null); }
+  async listCompanies(){ return clone(Object.values(this.data.companies || {})); }
+  async createCompany(c){ const id = c.id || "co_" + newId(); (this.data.companies ||= {})[id] = {...c, id, createdAt:Date.now()}; this.save(); return id; }
+  async updateCompany(cid, d){ Object.assign(this.data.companies[cid], d); this.save(); }
+  async listMembers(cid){ return clone(Object.values(this.data.users).filter(u => u.role === "co" && u.companyId === cid)); }
+  async listCrew(owner){ return clone(Object.values(this.data.users).filter(u => u.role === "crew" && u.ownerUid === owner)); }
+  async updateMember(uid, d){ Object.assign(this.data.users[uid], d); this.save(); }
+  async removeMember(uid){ Object.assign(this.data.users[uid], {status:"suspended", removedAt:Date.now()}); this.save(); }
+  async createInvite(d){ const id = "iv_" + newId() + newId(); (this.data.invites ||= {})[id] = {...d, id, createdAt:Date.now(), expiresAt:Date.now() + 7 * 86400000}; this.save(); return id; }
+  async getInvite(id){ return clone((this.data.invites || {})[id] || null); }
+  async listInvites(f = {}){ let a = Object.values(this.data.invites || {}); if(f.companyId) a = a.filter(x => x.companyId === f.companyId); if(f.ownerUid) a = a.filter(x => x.ownerUid === f.ownerUid); return clone(a.filter(x => !x.usedAt)); }
+  async deleteInvite(id){ delete (this.data.invites || {})[id]; this.save(); }
+  async acceptInvite(inv, uid, prof){ this.data.users[uid] = {...prof, uid}; this.data.invites[inv.id].usedAt = Date.now(); this.data.invites[inv.id].usedBy = uid; this.save(); }
+  async getPayment(id){ return clone((this.data.payments || {})[id] || null); }
+  async listPayments(f = {}){ let a = Object.values(this.data.payments || {}); if(f.companyId) a = a.filter(x => x.companyId === f.companyId); if(f.status) a = a.filter(x => x.status === f.status); return clone(a); }
+  async savePayment(p){ (this.data.payments ||= {})[p.id] = clone(p); this.save(); }
+  async updatePayment(id, d){ Object.assign(this.data.payments[id], d); this.save(); }
+  async getOpSettings(){ return clone(this.data.opSettings || {}); }
+  async saveOpSettings(d){ this.data.opSettings = clone(d); this.save(); }
+  async listCoBills(f = {}){ let a = Object.values(this.data.coBills || {}); if(f.companyId) a = a.filter(x => x.companyId === f.companyId); if(f.month) a = a.filter(x => x.month === f.month); return clone(a); }
+  async saveCoBill(b){ (this.data.coBills ||= {})[b.id] = clone(b); this.save(); }
+  async opListJobs(){ return clone(Object.values(this.data.jobs)); }
+  async opListInvoices(){ return clone(Object.values(this.data.invoices || {}).filter(x => x.type === "job")); }
+  async opListUsers(){ return clone(Object.values(this.data.users)); }
+  async countPosted(cid, ym){ return Object.values(this.data.jobs).filter(j => j.companyId === cid && j.countedYm === ym).length; }
+  async getOwnerProfile(uid){ return clone(this.data.users[uid] || null); }
+  // 先払い：発注先を選んだら、支払い待ちにする（案件は「先払い待ち」、発注書は下書き）
+  async requestPrepay(jobId, uid, order, pay){
+    const j = this.data.jobs[jobId];
+    Object.assign(j, {status:"selected", selectedTo:uid, selectedAt:Date.now(), payId:pay.id, updatedAt:Date.now()});
+    (this.data.documents ||= {})[order.id] = {...order, status:"draft"};
+    (this.data.payments ||= {})[pay.id] = pay;
+    const a = this.data.applications[`${jobId}_${uid}`]; if(a){ a.status = "waiting"; a.updatedAt = Date.now(); }
+    this.save();
+  }
+  async cancelPrepay(jobId){
+    const j = this.data.jobs[jobId], uid = j.selectedTo, p = (this.data.payments || {})[j.payId];
+    if(p && p.status === "waiting") delete this.data.payments[j.payId];
+    delete (this.data.documents || {})[`${jobId}_order`];
+    const a = this.data.applications[`${jobId}_${uid}`]; if(a && a.status === "waiting"){ a.status = "applied"; a.updatedAt = Date.now(); }
+    ["selectedTo", "selectedAt", "payId"].forEach(k => delete j[k]); j.status = "open"; j.updatedAt = Date.now();
+    this.save();
+  }
+  // 運営：入金を確認して発注を確定
+  async confirmPrepay(payId){
+    const p = this.data.payments[payId], j = this.data.jobs[p.jobId], uid = p.craftsmanId;
+    Object.assign(j, {status:"assigned", assignedTo:uid, assignedAt:Date.now(), updatedAt:Date.now()});
+    ["selectedTo", "selectedAt"].forEach(k => delete j[k]);
+    const o = (this.data.documents || {})[`${p.jobId}_order`]; if(o){ o.status = "issued"; o.issuedAt = Date.now(); }
+    Object.values(this.data.applications).filter(a => a.jobId === p.jobId && ["applied", "waiting"].includes(a.status)).forEach(a => { a.status = a.craftsmanId === uid ? "selected" : "rejected"; a.updatedAt = Date.now(); });
+    Object.assign(p, {status:"held", confirmedAt:Date.now()});
+    this.save();
+  }
+  async upsertPubCraft(){ }
 }
 
 /* =========================================================
@@ -1831,6 +1946,11 @@ class FirebaseBackend {
   }
   col(n){ return this.db.collection(n); }
   docs(s){ return s.docs.map(d => ({id:d.id, ...d.data()})); }
+  // 工務店のときは companies/{cid}/… の中（見積・請求・収支・評価・設定など）
+  scol(n){ return tenant() ? this.db.collection("companies").doc(S.cid).collection(n) : this.db.collection(n); }
+  smaster(id){ return this.scol("master").doc(id); }
+  // 案件・応募・チャット・完了報告・請求書は、工務店なら自社の分だけを読む（ルールもそうなっている）
+  scoped(q, name){ return tenant() && SCOPED_COLS.includes(name) ? q.where("companyId", "==", S.cid) : q; }
   onAuth(cb){ this.auth.onAuthStateChanged(u => cb(u ? {uid:u.uid, email:u.email} : null)); }
   async signUp(email, pw){ try { await this.auth.createUserWithEmailAndPassword(email.trim(), pw); } catch(e) { throw authError(e); } }
   async signIn(email, pw, remember = true){
@@ -1851,28 +1971,53 @@ class FirebaseBackend {
     return j;
   }
 
-  async getProfile(uid){ const s = await this.col("users").doc(uid).get(); return s.exists ? {uid, ...s.data()} : null; }
-  async createProfile(uid, d){ await this.col("users").doc(uid).set(d); }
-  async updateProfile(uid, d){ await this.col("users").doc(uid).update(d); }
-  async listCraftsmen(){ const s = await this.col("users").where("role", "==", "craftsman").get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
-  async setCraftsmanStatus(uid, status){ await this.col("users").doc(uid).update({status}); }
+  async getProfile(uid){
+    if(tenant() && uid !== S.user?.uid){ const p = await this.col("pubcrafts").doc(uid).get().catch(() => null); return p?.exists ? pubCraftOf({uid, ...p.data()}, S.company) : null; }
+    const s = await this.col("users").doc(uid).get(); return s.exists ? {uid, ...s.data()} : null;
+  }
+  async createProfile(uid, d){ await this.col("users").doc(uid).set(d); if(d.role === "craftsman" && !d.employee) this.upsertPubCraft(uid, d).catch(e => console.warn(e)); }
+  async updateProfile(uid, d){ await this.col("users").doc(uid).update(d);
+    if(uid === S.user?.uid && S.profile?.role === "craftsman" && !S.profile?.employee) this.upsertPubCraft(uid, {...S.profile, ...d}).catch(e => console.warn(e)); }
+  async listCraftsmen(){
+    if(tenant()){ const s = await this.col("pubcrafts").where("status", "==", "approved").get(); return s.docs.map(d => pubCraftOf({uid:d.id, ...d.data()}, S.company)); }
+    const s = await this.col("users").where("role", "==", "craftsman").get(); return s.docs.map(d => ({uid:d.id, ...d.data()}));
+  }
+  async setCraftsmanStatus(uid, status){ await this.col("users").doc(uid).update({status}); this.col("pubcrafts").doc(uid).set({status, updatedAt:Date.now()}, {merge:true}).catch(e => console.warn(e)); }
+  // 工務店・運営が見る、職人さんの公開用の登録情報（振込先などは入れない）
+  async upsertPubCraft(uid, d){ await this.col("pubcrafts").doc(uid).set(pubCraftFields(d), {merge:true}); }
 
   async listJobs(f = {}){
-    let q = this.col("jobs");
+    let q = this.scoped(this.col("jobs"), "jobs");
     if(f.status) q = q.where("status", "==", f.status);
     if(f.assignedTo) q = q.where("assignedTo", "==", f.assignedTo);
     if(f.audience) q = q.where("audience", "==", f.audience);
-    return this.docs(await q.get());
+    // 既存業者（Refore）の「募集中」は Refore の案件だけを聞く（工務店の案件は下で別に読む）
+    if(myRole() === "craftsman" && f.status === "open" && !f.audience) q = q.where("companyId", "==", COMPANY_ID);
+    let list = this.docs(await q.get());
+    if(myRole() === "admin") return scopeList(list);
+    // 職人：工務店が「既存業者のみ」に出した案件は、その工務店の既存業者だけに見える
+    if(f.status === "open"){
+      const me = S.user?.uid;
+      const qs = [this.col("jobs").where("status", "==", "open").where("priCrafts", "array-contains", me)];
+      if(!f.audience) qs.push(this.col("jobs").where("status", "==", "open").where("audience", "==", "all"));
+      for(const r of await Promise.all(qs.map(x => x.get().catch(() => ({docs:[]}))))) this.docs(r).forEach(j => { if(!list.some(x => x.id === j.id)) list.push(j); });
+      list = list.filter(j => isRefJob(j) || j.audience !== "priority" || (j.priCrafts || []).includes(me));
+    }
+    return list;
   }
   async getJob(id){
     try { const s = await this.col("jobs").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
   }
   async saveJob(id, d){ S.ldCache = null;
-    if(!id){ const ref = this.col("jobs").doc(); await ref.set({...d, companyId:COMPANY_ID, assignedTo:null, createdAt:Date.now(), updatedAt:Date.now()}); return ref.id; }
+    d = coJobPatch(d, !id);
+    if(d.status === "open") await coPostGuard(id, d);
+    if(!id){ const ref = this.col("jobs").doc(); await ref.set({...d, companyId:coId(), assignedTo:null, createdAt:Date.now(), updatedAt:Date.now()}); return ref.id; }
     await this.col("jobs").doc(id).update({...d, updatedAt:Date.now()}); return id;
   }
-  async setJobStatus(id, status){ S.ldCache = null; await this.col("jobs").doc(id).update({status, ...stampFor(status), updatedAt:Date.now()}); }
+  async setJobStatus(id, status){ S.ldCache = null; const x = {};
+    if(status === "open") await coPostGuard(id, x);
+    await this.col("jobs").doc(id).update({status, ...stampFor(status), ...x, updatedAt:Date.now()}); }
   // 業者が自分で押す「作業開始」「作業完了」（ルールで許可された項目だけを更新）
   async setWorkProgress(id, status, extra = {}){ await this.col("jobs").doc(id).update({status, ...stampFor(status), ...extra, updatedAt:Date.now()}); }
   async acceptOrder(id){ await this.col("jobs").doc(id).update({acceptedAt:Date.now(), updatedAt:Date.now()}); }
@@ -1881,7 +2026,8 @@ class FirebaseBackend {
   async unassign(jobId){ S.ldCache = null;
     const F = firebase.firestore.FieldValue, ref = this.col("jobs").doc(jobId);
     const job = (await ref.get()).data() || {}, uid = job.assignedTo;
-    const apps = await this.col("applications").where("jobId", "==", jobId).get();
+    const apps = await this.scoped(this.col("applications"), "applications").where("jobId", "==", jobId).get();
+    if(tenant() && job.payId){ const p = await this.col("payments").doc(job.payId).get().catch(() => null); if(p?.exists && p.data().status === "held") await p.ref.update({status:"refund", refundAt:Date.now()}); }
     const b = this.db.batch();
     b.update(ref, {status:"open", assignedTo:null, assignedAt:F.delete(), acceptedAt:F.delete(), declinedAt:F.delete(), declineReason:F.delete(), craftStart:F.delete(), craftEnd:F.delete(), updatedAt:Date.now()});
     b.delete(this.col("documents").doc(`${jobId}_order`));
@@ -1975,9 +2121,9 @@ class FirebaseBackend {
       progress?.(`案件を削除しています… ${++i} / ${ids.length}`);
       const ref = this.col("jobs").doc(id);
       for(const sub of ["files", "private", "admin"]){ const s = await ref.collection(sub).get(); s.docs.forEach(d => refs.push(d.ref)); }
-      for(const c of ["applications", "reports"]){ const s = await this.col(c).where("jobId", "==", id).get(); s.docs.forEach(d => refs.push(d.ref)); }
-      for(const k of ["order", "payment"]){ const s = await this.col("documents").doc(`${id}_${k}`).get(); if(s.exists) refs.push(s.ref); }
-      const th = await this.col("threads").where("jobId", "==", id).get();
+      for(const c of ["applications", "reports"]){ const s = await this.scoped(this.col(c), c).where("jobId", "==", id).get(); s.docs.forEach(d => refs.push(d.ref)); }
+      for(const k of ["order", "payment"]){ const s = await this.col("documents").doc(`${id}_${k}`).get().catch(() => null); if(s?.exists) refs.push(s.ref); }
+      const th = await this.scoped(this.col("threads"), "threads").where("jobId", "==", id).get();
       for(const t of th.docs){ const m = await t.ref.collection("messages").get(); m.docs.forEach(d => refs.push(d.ref)); refs.push(t.ref); }
       refs.push(ref);
       if(refs.length > 300) await flush();
@@ -1988,82 +2134,84 @@ class FirebaseBackend {
   }
   // 物件マスタ：master/props_000… に700件ずつまとめて保存（読み込み回数を抑えるため）
   async getProperties(){
-    const s = await this.col("master").get();
+    const s = await this.scol("master").get();
     return s.docs.filter(d => d.id.startsWith("props_")).sort((a, b) => a.id.localeCompare(b.id)).flatMap(d => d.data().items || []);
   }
   async saveProperties(list){
     const size = 700, items = list.map(p => ({id:p.id, company:p.company || "", name:p.name || "", address:p.address || "", al:p.al || "", ev:p.ev || "", note:p.note || ""}));
-    const n = Math.ceil(items.length / size), old = await this.col("master").get(), b = this.db.batch();
-    for(let i = 0; i < n; i++) b.set(this.col("master").doc(`props_${String(i).padStart(3, "0")}`), {items:items.slice(i * size, (i + 1) * size), updatedAt:Date.now()});
+    const n = Math.ceil(items.length / size), old = await this.scol("master").get(), b = this.db.batch();
+    for(let i = 0; i < n; i++) b.set(this.smaster(`props_${String(i).padStart(3, "0")}`), {items:items.slice(i * size, (i + 1) * size), updatedAt:Date.now()});
     old.docs.forEach(d => { if(d.id.startsWith("props_") && Number(d.id.slice(6)) >= n) b.delete(d.ref); });
     await b.commit();
   }
   // 材料・外部の発注先、材料マスタ、社印（master/…）と、案件ごとの材料・外部発注（jobs/{id}/admin/matorders）
-  async getSuppliers(){ const s = await this.col("master").doc("suppliers").get(); return s.exists ? (s.data().items || []) : clone(DEFAULT_SUPPLIERS); }
-  async saveSuppliers(list){ await this.col("master").doc("suppliers").set({items:list, updatedAt:Date.now()}); }
-  async getMaterials(){ const s = await this.col("master").doc("materials").get(); return s.exists ? (s.data().items || []) : clone(DEFAULT_MATERIALS); }
-  async saveMaterials(list){ await this.col("master").doc("materials").set({items:list, updatedAt:Date.now()}); }
-  async getSeal(){ const s = await this.col("master").doc("seal").get(); return s.exists ? (s.data().data || "") : ""; }
-  async saveSeal(data){ await this.col("master").doc("seal").set({data:data || "", updatedAt:Date.now()}); }
+  async getSuppliers(){ const s = await this.smaster("suppliers").get(); return s.exists ? (s.data().items || []) : clone(DEFAULT_SUPPLIERS); }
+  async saveSuppliers(list){ await this.smaster("suppliers").set({items:list, updatedAt:Date.now()}); }
+  async getMaterials(){ const s = await this.smaster("materials").get(); return s.exists ? (s.data().items || []) : clone(DEFAULT_MATERIALS); }
+  async saveMaterials(list){ await this.smaster("materials").set({items:list, updatedAt:Date.now()}); }
+  async getSeal(){ const s = await this.smaster("seal").get(); return s.exists ? (s.data().data || "") : ""; }
+  async saveSeal(data){ await this.smaster("seal").set({data:data || "", updatedAt:Date.now()}); }
   async getMatOrders(jobId){ const s = await this.col("jobs").doc(jobId).collection("admin").doc("matorders").get(); return s.exists ? (s.data().orders || []) : []; }
   async saveMatOrders(jobId, orders){ S.ldCache = null; await this.col("jobs").doc(jobId).collection("admin").doc("matorders").set({orders, updatedAt:Date.now()}); }
   // Reforeの担当者：master/staff にまとめて保存
   // プッシュ通知の端末（users/{uid}.pushTokens）と、Reforeあてメールのオン・オフ（master/notify）
   async addPushToken(uid, t){ await this.col("users").doc(uid).update({pushTokens:firebase.firestore.FieldValue.arrayUnion(t)}); }
   async removePushToken(uid, t){ await this.col("users").doc(uid).update({pushTokens:firebase.firestore.FieldValue.arrayRemove(t)}); }
-  async getNotifySettings(){ const s = await this.col("master").doc("notify").get(); return s.exists ? s.data() : {}; }
-  async listAdmins(){ const s = await this.col("users").where("role", "==", "admin").get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
+  async getNotifySettings(){ const s = await this.smaster("notify").get(); return s.exists ? s.data() : {}; }
+  async listAdmins(){ const s = await (tenant() ? this.col("users").where("companyId", "==", S.cid) : this.col("users").where("role", "==", "admin")).get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
   // 見積（estimates/{id}）と、見積・請求書の設定（master/billing）。管理者だけ
-  async listEstimates(){ return this.docs(await this.col("estimates").get()); }
-  async getEstimate(id){ const s = await this.col("estimates").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
-  async saveEstimate(e){ S.ldCache = null; await this.col("estimates").doc(e.id).set(e); return e.id; }
-  async deleteEstimate(id){ S.ldCache = null; await this.col("estimates").doc(id).delete(); }
-  async getBilling(){ const s = await this.col("master").doc("billing").get(); return s.exists ? s.data() : {}; }
+  async listEstimates(){ return this.docs(await this.scol("estimates").get()); }
+  async getEstimate(id){ const s = await this.scol("estimates").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
+  async saveEstimate(e){ S.ldCache = null; await this.scol("estimates").doc(e.id).set(e); return e.id; }
+  async deleteEstimate(id){ S.ldCache = null; await this.scol("estimates").doc(id).delete(); }
+  async getBilling(){ const s = await this.smaster("billing").get(); return s.exists ? s.data() : {}; }
   // 管理会社への請求書（bills/{管理会社_締め月}。管理者だけ）
-  async listBills(){ return this.docs(await this.col("bills").get()); }
-  async saveBill(b){ S.ldCache = null; await this.col("bills").doc(b.id).set(b); }
-  async deleteBill(id){ S.ldCache = null; await this.col("bills").doc(id).delete(); }
-  async saveBilling(d){ await this.col("master").doc("billing").set(d); }
+  async listBills(){ return this.docs(await this.scol("bills").get()); }
+  async saveBill(b){ S.ldCache = null; await this.scol("bills").doc(b.id).set(b); }
+  async deleteBill(id){ S.ldCache = null; await this.scol("bills").doc(id).delete(); }
+  async saveBilling(d){ await this.smaster("billing").set(d); }
   // 収支（ledger/{案件ID か l_…}。管理者だけ）と、その設定（master/ledger）
-  async listLedger(){ return this.docs(await this.col("ledger").get()); }
-  async saveLedger(r){ S.ldCache = null; await this.col("ledger").doc(r.id).set(r); }
-  async saveLedgerMany(rs){ S.ldCache = null; for(let i = 0; i < rs.length; i += 400){ const b = this.db.batch(); rs.slice(i, i + 400).forEach(r => b.set(this.col("ledger").doc(r.id), r)); await b.commit(); } }
-  async deleteLedger(id){ S.ldCache = null; await this.col("ledger").doc(id).delete(); }
-  async getLedgerCfg(){ const s = await this.col("master").doc("ledger").get(); return s.exists ? s.data() : {staffRate:0.5}; }
-  async saveLedgerCfg(d){ S.ldCache = null; await this.col("master").doc("ledger").set(d); }
+  async listLedger(){ return this.docs(await this.scol("ledger").get()); }
+  async saveLedger(r){ S.ldCache = null; await this.scol("ledger").doc(r.id).set(r); }
+  async saveLedgerMany(rs){ S.ldCache = null; for(let i = 0; i < rs.length; i += 400){ const b = this.db.batch(); rs.slice(i, i + 400).forEach(r => b.set(this.scol("ledger").doc(r.id), r)); await b.commit(); } }
+  async deleteLedger(id){ S.ldCache = null; await this.scol("ledger").doc(id).delete(); }
+  async getLedgerCfg(){ const s = await this.smaster("ledger").get(); return s.exists ? s.data() : {staffRate:0.5}; }
+  async saveLedgerCfg(d){ S.ldCache = null; await this.smaster("ledger").set(d); }
   async getAdminInfo(id){ const s = await this.col("jobs").doc(id).collection("admin").doc("info").get(); return s.exists ? s.data() : {}; }
-  async saveNotifySettings(d){ await this.col("master").doc("notify").set(d, {merge:true}); }
+  async saveNotifySettings(d){ await this.smaster("notify").set(d, {merge:true}); }
   // 評価（ratings/{案件ID}。管理者だけが読み書きできる）
-  async listRatings(){ return this.docs(await this.col("ratings").get()); }
-  async saveRating(r){ await this.col("ratings").doc(r.id).set(r); }
+  async listRatings(){ return this.docs(await this.scol("ratings").get()); }
+  async saveRating(r){ await this.scol("ratings").doc(r.id).set(r); }
   async getStaff(){
-    const s = await this.col("master").doc("staff").get();
+    const s = await this.smaster("staff").get();
     return s.exists ? (s.data().items || []) : [];
   }
   async saveStaff(list){
-    await this.col("master").doc("staff").set({items:list.map(p => ({id:p.id, name:p.name || "", phone:p.phone || ""})), updatedAt:Date.now()});
+    await this.smaster("staff").set({items:list.map(p => ({id:p.id, name:p.name || "", phone:p.phone || ""})), updatedAt:Date.now()});
   }
   // 単価表：master/prices にまとめて保存（未登録なら初期値）
   async getPrices(){
-    const s = await this.col("master").doc("prices").get();
+    const s = await this.smaster("prices").get();
     return s.exists ? (s.data().items || []) : clone(DEFAULT_PRICES);
   }
   async savePrices(list){
     const items = list.map(p => ({id:p.id, cat:p.cat || "", name:p.name || "", unit:p.unit || "", unitPrice:Number(p.unitPrice) || 0, note:p.note || ""}));
-    await this.col("master").doc("prices").set({items, updatedAt:Date.now()});
+    await this.smaster("prices").set({items, updatedAt:Date.now()});
   }
   // --- 連絡（チャット）: threads/{案件ID_業者UID} と その下の messages ---
   async listThreads(f = {}){
-    let q = this.col("threads");
+    let q = this.scoped(this.col("threads"), "threads");
     if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
     if(f.jobId) q = q.where("jobId", "==", f.jobId);
-    return this.docs(await q.get());
+    const list = this.docs(await q.get());
+    return myRole() === "admin" ? scopeList(list) : list;
   }
   async getThread(id){
     try { const s = await this.col("threads").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
   }
   async ensureThread(t){
+    t = await withCo(t);
     const ref = this.col("threads").doc(t.id);
     let exists = false;
     try { exists = (await ref.get()).exists; } catch(e) { if(e.code !== "permission-denied") throw e; }
@@ -2077,14 +2225,24 @@ class FirebaseBackend {
   }
   async markRead(tid, role){ await this.col("threads").doc(tid).update({[role + "ReadAt"]:Date.now()}); }
   watch(name, where, cb){
-    let q = this.col(name);
+    const admin = myRole() === "admin";
+    let q = admin ? this.scoped(this.col(name), name) : this.col(name);
     where.forEach(([f, op, v]) => { q = q.where(f, op, v); });
-    return q.onSnapshot(s => cb(this.docs(s)), e => console.error("更新の受信に失敗：" + name, e));
+    const fix = l => admin && SCOPED_COLS.includes(name) ? scopeList(l) : l;
+    // 職人の「募集中」：工務店が既存業者のみに出した案件も合わせる
+    const isOpen = !admin && name === "jobs" && where.some(([f, op, v]) => f === "status" && v === "open");
+    if(!isOpen) return q.onSnapshot(s => cb(fix(this.docs(s))), e => console.error("更新の受信に失敗：" + name, e));
+    const me = S.user?.uid, got = [[], [], []];
+    const out = () => { const m = new Map(); got.flat().filter(j => isRefJob(j) || j.audience !== "priority" || (j.priCrafts || []).includes(me)).forEach(j => m.set(j.id, j)); cb([...m.values()]); };
+    const qs = [q, this.col("jobs").where("status", "==", "open").where("priCrafts", "array-contains", me)];
+    if(!where.some(([f]) => f === "audience")) qs.push(this.col("jobs").where("status", "==", "open").where("audience", "==", "all"));
+    const us = qs.map((x, i) => x.onSnapshot(s => { got[i] = this.docs(s); out(); }, e => console.warn("案件の受信に失敗：" + name, e)));
+    return () => us.forEach(u => u());
   }
   watchThreads(f, cb){
-    let q = this.col("threads");
+    let q = myRole() === "admin" ? this.scoped(this.col("threads"), "threads") : this.col("threads");
     if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
-    return q.onSnapshot(s => cb(this.docs(s)), e => console.error("連絡の受信に失敗", e));
+    return q.onSnapshot(s => cb(myRole() === "admin" ? scopeList(this.docs(s)) : this.docs(s)), e => console.error("連絡の受信に失敗", e));
   }
   // スタンプ：messages/{id}.reactions.{admin|craftsman}
   async reactMessage(tid, mid, role, e){ await this.col("threads").doc(tid).collection("messages").doc(mid).update({[`reactions.${role}`]:e || firebase.firestore.FieldValue.delete()}); }
@@ -2093,10 +2251,12 @@ class FirebaseBackend {
   }
   async updateInvoice(id, d){ await this.col("invoices").doc(id).update(d); }
   async listInvoices(f = {}){
-    let q = this.col("invoices");
+    let q = myRole() === "admin" ? this.scoped(this.col("invoices"), "invoices") : this.col("invoices");
     if(f.month) q = q.where("month", "==", f.month);
     if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
-    return this.docs(await q.get());
+    if(f.type) q = q.where("type", "==", f.type);
+    const list = this.docs(await q.get());
+    return myRole() === "admin" ? scopeList(list) : list;
   }
   async setJobPdf(id, d, src){
     const j = this.col("jobs").doc(id), files = j.collection("files");
@@ -2118,12 +2278,14 @@ class FirebaseBackend {
   }
 
   async listApplications(f = {}){
-    let q = this.col("applications");
+    let q = myRole() === "admin" ? this.scoped(this.col("applications"), "applications") : this.col("applications");
     if(f.jobId) q = q.where("jobId", "==", f.jobId);
     if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
-    return this.docs(await q.get());
+    const list = this.docs(await q.get());
+    return myRole() === "admin" ? scopeList(list) : list;
   }
   async apply(app){
+    app = await withCo(app);
     try { await this.col("applications").doc(app.id).set(app); }
     catch(e) { if(e.code === "permission-denied") throw new Error("応募できませんでした。募集が終了したか、すでに応募済みです"); throw e; }
   }
@@ -2131,7 +2293,7 @@ class FirebaseBackend {
   async updateApp(id, d){ await this.col("applications").doc(id).update(d); }
   async setAppStatus(id, status){ const r = this.col("applications").doc(id); if((await r.get()).exists) await r.update({status, updatedAt:Date.now()}); }
   async assign(jobId, uid, order, extra = {}){ S.ldCache = null;
-    const apps = await this.col("applications").where("jobId", "==", jobId).get();
+    const apps = await this.scoped(this.col("applications"), "applications").where("jobId", "==", jobId).get();
     const b = this.db.batch();
     b.update(this.col("jobs").doc(jobId), {status:"assigned", assignedTo:uid, assignedAt:Date.now(), updatedAt:Date.now(), ...extra});
     b.set(this.col("documents").doc(order.id), order);
@@ -2140,12 +2302,13 @@ class FirebaseBackend {
   }
 
   async listReports(f = {}){
-    let q = this.col("reports");
+    let q = myRole() === "admin" ? this.scoped(this.col("reports"), "reports") : this.col("reports");
     if(f.jobId) q = q.where("jobId", "==", f.jobId);
     if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
-    return this.docs(await q.get());
+    const list = this.docs(await q.get());
+    return myRole() === "admin" ? scopeList(list) : list;
   }
-  async submitReport(d){ await this.col("reports").add({...d, status:"submitted", createdAt:Date.now()}); }
+  async submitReport(d){ d = await withCo(d); await this.col("reports").add({...d, status:"submitted", createdAt:Date.now()}); }
   async setReportStatus(id, status, comment){ await this.col("reports").doc(id).update({status, reviewComment:comment || "", reviewedAt:Date.now()}); }
   async addReportPhotos(id, a){
     const F = firebase.firestore.FieldValue;
@@ -2158,6 +2321,68 @@ class FirebaseBackend {
     for(const f of files) out.push(await blobToDataURL(await resizeImage(f, 800, 0.65)));
     return out;
   }
+  // ---- 工務店・運営・招待・先払い ----
+  async getCompany(cid){ const s = await this.col("companies").doc(cid).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
+  async listCompanies(){ return this.docs(await this.col("companies").get()); }
+  async createCompany(c){ const ref = c.id ? this.col("companies").doc(c.id) : this.col("companies").doc(); await ref.set({...c, createdAt:Date.now()}); return ref.id; }
+  async updateCompany(cid, d){ await this.col("companies").doc(cid).update(d); }
+  async listMembers(cid){ const s = await this.col("users").where("companyId", "==", cid).get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
+  async listCrew(owner){ const s = await this.col("users").where("ownerUid", "==", owner).get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
+  async updateMember(uid, d){ await this.col("users").doc(uid).update(d); }
+  async removeMember(uid){ await this.col("users").doc(uid).update({status:"suspended", removedAt:Date.now()}); }
+  async createInvite(d){ const ref = this.col("invites").doc(); await ref.set({...d, createdAt:Date.now(), expiresAt:Date.now() + 7 * 86400000}); return ref.id; }
+  async getInvite(id){ try { const s = await this.col("invites").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; } catch(e) { if(e.code === "permission-denied") return null; throw e; } }
+  async listInvites(f = {}){ let q = this.col("invites"); if(f.companyId) q = q.where("companyId", "==", f.companyId); if(f.ownerUid) q = q.where("ownerUid", "==", f.ownerUid); return this.docs(await q.get()).filter(x => !x.usedAt); }
+  async deleteInvite(id){ await this.col("invites").doc(id).delete(); }
+  // 招待されたメールアドレスでアカウントを作ったあと、自分のプロフィールを作り、招待を「使用済み」にする
+  async acceptInvite(inv, uid, prof){
+    const b = this.db.batch();
+    b.set(this.col("users").doc(uid), prof);
+    b.update(this.col("invites").doc(inv.id), {usedAt:Date.now(), usedBy:uid});
+    await b.commit();
+  }
+  async getPayment(id){ try { const s = await this.col("payments").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; } catch(e) { if(e.code === "permission-denied") return null; throw e; } }
+  async listPayments(f = {}){ let q = this.col("payments"); if(f.companyId) q = q.where("companyId", "==", f.companyId); if(f.status) q = q.where("status", "==", f.status); return this.docs(await q.get()); }
+  async savePayment(p){ await this.col("payments").doc(p.id).set(p); }
+  async updatePayment(id, d){ await this.col("payments").doc(id).update(d); }
+  async getOpSettings(){ const s = await this.col("opdata").doc("settings").get().catch(() => null); return s?.exists ? s.data() : {}; }
+  async saveOpSettings(d){ await this.col("opdata").doc("settings").set(d); }
+  async listCoBills(f = {}){ let q = this.col("cobills"); if(f.companyId) q = q.where("companyId", "==", f.companyId); if(f.month) q = q.where("month", "==", f.month); return this.docs(await q.get()); }
+  async saveCoBill(b){ await this.col("cobills").doc(b.id).set(b); }
+  async opListJobs(){ return this.docs(await this.col("jobs").get()); }
+  async opListInvoices(){ return this.docs(await this.col("invoices").where("type", "==", "job").get()); }
+  async opListUsers(){ const s = await this.col("users").get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
+  async countPosted(cid, ym){ const s = await this.col("jobs").where("companyId", "==", cid).where("countedYm", "==", ym).get(); return s.size; }
+  async getOwnerProfile(uid){ const s = await this.col("users").doc(uid).get(); return s.exists ? {uid, ...s.data()} : null; }
+  async requestPrepay(jobId, uid, order, pay){ S.ldCache = null;
+    const b = this.db.batch();
+    b.update(this.col("jobs").doc(jobId), {status:"selected", selectedTo:uid, selectedAt:Date.now(), payId:pay.id, updatedAt:Date.now()});
+    b.set(this.col("documents").doc(order.id), {...order, status:"draft"});
+    b.set(this.col("payments").doc(pay.id), pay);
+    const a = await this.col("applications").doc(`${jobId}_${uid}`).get().catch(() => null);
+    if(a?.exists) b.update(a.ref, {status:"waiting", updatedAt:Date.now()});
+    await b.commit();
+  }
+  async cancelPrepay(jobId){ S.ldCache = null;
+    const F = firebase.firestore.FieldValue, ref = this.col("jobs").doc(jobId), j = (await ref.get()).data() || {}, uid = j.selectedTo;
+    const b = this.db.batch();
+    if(j.payId){ const p = await this.col("payments").doc(j.payId).get().catch(() => null); if(p?.exists && p.data().status === "waiting") b.delete(p.ref); }
+    b.delete(this.col("documents").doc(`${jobId}_order`));
+    const a = await this.col("applications").doc(`${jobId}_${uid}`).get().catch(() => null);
+    if(a?.exists && a.data().status === "waiting") b.update(a.ref, {status:"applied", updatedAt:Date.now()});
+    b.update(ref, {status:"open", selectedTo:F.delete(), selectedAt:F.delete(), payId:F.delete(), updatedAt:Date.now()});
+    await b.commit();
+  }
+  async confirmPrepay(payId){
+    const F = firebase.firestore.FieldValue, p = (await this.col("payments").doc(payId).get()).data(), uid = p.craftsmanId;
+    const apps = await this.col("applications").where("jobId", "==", p.jobId).get();
+    const b = this.db.batch();
+    b.update(this.col("jobs").doc(p.jobId), {status:"assigned", assignedTo:uid, assignedAt:Date.now(), selectedTo:F.delete(), selectedAt:F.delete(), updatedAt:Date.now()});
+    b.update(this.col("documents").doc(`${p.jobId}_order`), {status:"issued", issuedAt:Date.now()});
+    apps.forEach(s => { const a = s.data(); if(["applied", "waiting"].includes(a.status)) b.update(s.ref, {status:a.craftsmanId === uid ? "selected" : "rejected", updatedAt:Date.now()}); });
+    b.update(this.col("payments").doc(payId), {status:"held", confirmedAt:Date.now()});
+    await b.commit();
+  }
 }
 
 /* =========================================================
@@ -2165,6 +2390,27 @@ class FirebaseBackend {
    ========================================================= */
 const S = {api:null, user:null, profile:null, tok:0, lastHash:null, filter:{pref:"", trade:"", mine:false}, editPhotos:[], pending:0, crafts:new Map(), threads:new Map(), notifUnsub:null, pageUnsub:null, pressStamp:null, adminSort:"work"};
 const api = () => S.api;
+/* ===== 工務店（マルチテナント）・運営・職人のメンバー：共通の判定 =====
+   Refore（COMPANY_ID）のデータは今までどおりの場所。ほかの工務店は companies/{cid}/… と、案件などの companyId で分ける */
+const isCoRole = r => r === "admin" || r === "co";
+const tenant = () => S.profile?.role === "co" && !!S.cid && S.cid !== COMPANY_ID;
+const coId = () => tenant() ? S.cid : COMPANY_ID;
+const isRefJob = x => !x?.companyId || x.companyId === COMPANY_ID;
+const scopeList = list => { const r = S.profile?.role; if(r === "admin") return list.filter(isRefJob); if(r === "co") return list.filter(x => x.companyId === S.cid); return list; };
+const meName = () => tenant() ? (S.company?.name || "工務店") : "Refore";
+const coNameOf = j => isRefJob(j) ? "Refore" : (j?.coName || "工務店");
+const coAdmin = () => !tenant() || S.profile?.coRole === "管理者";
+const areaOf = a => (String(a || "").match(/^(.+?[都道府県].+?[市区町村郡])/) || [, ""])[1];
+const SCOPED_COLS = ["jobs", "applications", "threads", "reports", "invoices"];
+// 工務店の案件：作るときに会社名、公開範囲を決めたときに先払いの有無と既存業者を入れる。番地は発注まで見せない
+function coJobPatch(d, creating){
+  if(!tenant()) return d;
+  const c = S.company || {}, x = {...d};
+  if(creating){ x.coName = c.name || ""; x.coEmail = c.notifyEmail || c.ownerEmail || ""; x.coClose = Number(c.closeDay || 0); if(x.audience == null) x.audience = "all"; }
+  if(x.audience !== undefined && x.audience !== null){ x.pay = x.audience === "all"; x.priCrafts = x.audience === "priority" ? [...(c.priority || [])] : []; }
+  if(x.site) x.site = {address:areaOf(x.site.address) || x.site.address?.split(/[0-9０-９]/)[0] || "", autolock:x.site.autolock || "", elevator:x.site.elevator || ""};
+  return x;
+}
 
 const ICONS = {
   jobs:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="M8.5 7V5.2c0-.6.4-1 1-1h5c.6 0 1 .4 1 1V7M3 12.5h18"/></svg>',
@@ -2183,35 +2429,43 @@ function demoBar(){
     <button data-act="demo-login" data-email="yamada@demo.jp">職人（クリーニング）で入る</button>
     <button data-act="demo-login" data-email="suzuki@demo.jp">職人（内装）で入る</button>
     <button data-act="demo-login" data-email="tanaka@demo.jp">職人（審査中）で入る</button>
+    <button data-act="demo-login" data-email="midori@demo.jp">工務店（管理者）で入る</button>
+    <button data-act="demo-login" data-email="sasaki@demo.jp">工務店（担当者）で入る</button>
+    <button data-act="demo-login" data-email="kenta@demo.jp">職人の従業員で入る</button>
+    <button data-act="demo-login" data-email="op@demo.jp">運営で入る</button>
     <button data-act="demo-reset">データを初期化</button></div>`;
 }
 function adminNav(){
-  const onC = location.hash.startsWith("#/admin/craftsm"), onK = /^#\/admin\/(calendar|invoices|bills|chat|settings|est|money|home|memo)/.test(location.hash);
+  const onC = location.hash.startsWith("#/admin/craftsm"), onK = /^#\/admin\/(calendar|invoices|bills|chat|settings|est|money|home|memo|members|plan)/.test(location.hash);
   return `<nav class="admin-nav" aria-label="管理メニュー">
     <a href="#/admin/home" ${/^#\/admin\/(home|memo)/.test(location.hash) ? 'aria-current="page"' : ""}>ホーム</a>
-    <a href="#/admin/money" ${location.hash.startsWith("#/admin/money") ? 'aria-current="page"' : ""}>収支</a>
+    ${coAdmin() ? `<a href="#/admin/money" ${location.hash.startsWith("#/admin/money") ? 'aria-current="page"' : ""}>収支</a>` : ""}
     <a href="#/admin" ${!onC && !onK ? 'aria-current="page"' : ""}>案件${badge("jobs")}</a>
     <a href="#/admin/est" ${location.hash.startsWith("#/admin/est") ? 'aria-current="page"' : ""}>見積</a>
     <a href="#/admin/calendar" ${location.hash.startsWith("#/admin/calendar") ? 'aria-current="page"' : ""}>予定表</a>
     <a href="#/admin/invoices" ${/^#\/admin\/(invoices|bills)/.test(location.hash) ? 'aria-current="page"' : ""}>請求書${badge("invoices")}</a>
     <a href="#/admin/chat" ${location.hash.startsWith("#/admin/chat") ? 'aria-current="page"' : ""}>チャット${chatBadge()}</a>
     <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a>
-    <a href="#/admin/settings" ${location.hash.startsWith("#/admin/settings") ? 'aria-current="page"' : ""}>設定${S.empPending?.length ? `<span class="badge" aria-label="従業員の申し込み${S.empPending.length}件">${S.empPending.length}</span>` : ""}</a></nav>`;
+    ${tenant() ? coNavExtra() : ""}
+    ${coAdmin() ? "" : "<!--"}<a href="#/admin/settings" ${location.hash.startsWith("#/admin/settings") ? 'aria-current="page"' : ""}>設定${S.empPending?.length ? `<span class="badge" aria-label="従業員の申し込み${S.empPending.length}件">${S.empPending.length}</span>` : ""}</a>${coAdmin() ? "" : "-->"}</nav>`;
 }
 function craftTabs(){
   const a = location.hash.replace(/^#\/?/, "").split("/")[0] || "jobs";
   const cur = a === "job" ? "jobs" : a === "schedule" ? "work" : a;
-  const tabs = [["jobs","案件",ICONS.jobs],["applied","応募状況",ICONS.applied],["work","受注",ICONS.work],["chat","チャット",ICONS.chat],["invoice","請求書",ICONS.invoice],["profile","登録情報",ICONS.profile]];
+  const tabs = S.me ? [["work","受注",ICONS.work],["chat","チャット",ICONS.chat],["profile","登録情報",ICONS.profile]]
+    : [["jobs","案件",ICONS.jobs],["applied","応募状況",ICONS.applied],["work","受注",ICONS.work],["chat","チャット",ICONS.chat],["invoice","請求書",ICONS.invoice],["profile","登録情報",ICONS.profile]];
   return `<nav class="tabbar" aria-label="メニュー">${tabs.map(([k,l,i]) => `<a href="#/${k}" ${cur === k ? 'aria-current="page"' : ""}>${i}<span>${l}${k === "chat" ? chatBadge() : ["jobs", "applied", "work"].includes(k) ? badge(k) : ""}</span></a>`).join("")}</nav>`;
 }
 function paint(content, {bare = false} = {}){
   const app = $("#app");
   if(bare || !S.profile){ app.innerHTML = demoBar() + content; return; }
-  const p = S.profile, isAdmin = p.role === "admin";
+  const p = S.profile, isAdmin = isCoRole(p.role);
+  if(p.role === "op") return paintOp(content);
   const header = `<header class="top"><div class="top-in">
-      <a class="brand" href="${isAdmin ? "#/admin" : "#/jobs"}"><span class="brand-mark gp" aria-hidden="true"></span><span><b><span class="nw">GENPUKU Pro</span> <span class="nw">協力業者ポータル</span></b><small>${isAdmin ? "管理画面" : esc(p.name) + " さん"}</small></span></a>
+      <a class="brand" href="${isAdmin ? "#/admin" : "#/jobs"}"><span class="brand-mark gp" aria-hidden="true"></span><span><b><span class="nw">GENPUKU Pro</span> <span class="nw">協力業者ポータル</span></b><small>${isAdmin ? (tenant() ? esc(S.company?.name || "") + "　管理画面" : "管理画面") : esc(S.me?.name || p.name) + " さん"}</small></span></a>
       <button class="link" data-act="logout">ログアウト</button></div>${isAdmin ? adminNav() : ""}</header>`;
   const tabs = (!isAdmin && p.status === "approved") ? craftTabs() : "";
+  if(isAdmin && tenant() && S.company && S.company.status !== "active") content = coStatusNote() + content;
   app.innerHTML = demoBar() + header + tabs + `<main class="main">${content}</main>`;
 }
 const back = (href, label) => `<a class="back" href="${href}">‹ ${esc(label)}</a>`;
@@ -2238,7 +2492,7 @@ function itemsPeek(j){
   return `<ul class="peek">${it.slice(0, 3).map(i => `<li><span>${i.loc ? esc(i.loc) + "　" : ""}${esc(i.name)}</span><em>${fmtQty(i.qty)}${esc(i.unit)}</em></li>`).join("")}${it.length > 3 ? `<li class="more">ほか${it.length - 3}件</li>` : ""}</ul>`;
 }
 function jobCard(j, {href, stampHtml = "", foot = "", showPrice = false} = {}){
-  return `<a class="job" href="${href}">
+  return `<a class="job" href="${href}">${myRole() !== "admin" && !isRefJob(j) ? `<span class="co-from">掲載元：${esc(coNameOf(j))}${j.pay ? `<em>代金は先払い制</em>` : ""}</span>` : ""}
     ${j.status === "open" && j.audience === "priority" ? `<span class="aud-tag">${myRole() === "admin" ? "既存業者に先行公開中" : "既存業者さまへ先行公開"}</span>` : ""}
     ${tagsHtml(j.trades)}
     <h3>${esc(j.title)}</h3>
@@ -2251,8 +2505,8 @@ function jobDetailBlock(j, showPrice = false, withItems = false, admin = false){
   return `<article class="panel detail">
     ${admin ? "" : tagsHtml(j.trades)}
     <h1>${esc(j.title)}</h1>
-    ${showPrice ? (Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : `<p class="small warn" style="margin:4px 0 10px">支払金額はReforeが設定します（未設定）</p>`) : ""}
-    <dl class="kv">${admin ? "" : j.site?.address ? `<dt>場所</dt><dd>${esc([j.site.address, [j.site.building, j.site.room].filter(Boolean).join(" ")].filter(Boolean).join("　"))}</dd>` : j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}${j.staff?.name ? `<dt>Refore担当</dt><dd>${esc(j.staff.name)}${j.staff.phone ? `（<a href="tel:${esc(j.staff.phone)}">${esc(j.staff.phone)}</a>）` : ""}</dd>` : ""}${(w => `<dt>開始日</dt><dd>${fmtDay(w.start)}</dd><dt>終了日</dt><dd>${fmtDay(w.end)}</dd>`)(workDays(j))}</dl>
+    ${showPrice ? (Number(j.price) > 0 ? `<div class="price big"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : `<p class="small warn" style="margin:4px 0 10px">支払金額は${esc(coNameOf(j))}が設定します（未設定）</p>`) : ""}
+    <dl class="kv">${admin ? "" : j.site?.address ? `<dt>場所</dt><dd>${esc([j.site.address, [j.site.building, j.site.room].filter(Boolean).join(" ")].filter(Boolean).join("　"))}</dd>` : j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}${j.staff?.name ? `<dt>${esc(coNameOf(j))}担当</dt><dd>${esc(j.staff.name)}${j.staff.phone ? `（<a href="tel:${esc(j.staff.phone)}">${esc(j.staff.phone)}</a>）` : ""}</dd>` : ""}${(w => `<dt>開始日</dt><dd>${fmtDay(w.start)}</dd><dt>終了日</dt><dd>${fmtDay(w.end)}</dd>`)(workDays(j))}</dl>
     ${withItems && j.items?.length ? `<h2>作業内訳</h2>${j.items.some(i => i.unitPrice) ? itemsTable(j) : itemsTablePublic(j.items)}` : ""}
     ${j.description ? `<h2>作業内容</h2><p class="pre">${esc(j.description)}</p>` : ""}
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
@@ -2290,7 +2544,7 @@ function estDocHtml(e, type, seal, billing = {}){
   if(type === "invoice" && e.status === "tachiai" && e.billRows?.length) e = {...e, rows:e.billRows};
   if(type === "est" && e.estRows?.length) e = {...e, rows:e.estRows};   // 受注後も、見積書は出したときの内容
   if(type === "ukesho" && e.ukeIssuedAt) e = {...e, issuedAt:e.ukeIssuedAt};
-  const t = estTotals(e), c = COMPANY, rows = e.rows || [], n = Math.max(28, rows.length);
+  const t = estTotals(e), c = coInfo(), rows = e.rows || [], n = Math.max(28, rows.length);
   const staff = e.staff?.name ? `${esc(e.staff.name)}${e.staff.phone ? `（${esc(e.staff.phone)}）` : ""}` : "";
   const to = `<div class="es-to"><span class="es-co">${esc(e.company || "")}</span><span class="es-hon">${esc(e.honor || "御中")}</span>${type === "invoice" ? "" : `<span class="es-tan">担当；</span><span class="es-person">${esc(e.person || "")}</span><span class="es-hon">様</span>`}</div>`;
   const prop = `<table class="es-prop"><tr><th>物件名称${type === "invoice" ? "；" : "："}</th><td>${esc(e.building || "")}</td><td class="es-room">${esc(e.room || "")}</td><td class="es-kind">${esc(e.kind || "")}</td></tr>
@@ -2342,7 +2596,7 @@ async function viewEstimates(f){
   const st = EST_STATUS[f] ? f : "";
   const rows = list.filter(e => !st || e.status === st);
   const cnt = k => list.filter(e => e.status === k).length;
-  return `<div class="page-head"><div><h1>見積</h1><p class="lead">Reforeの書式で見積書・発注請書・御請求書を作ります。受注したら、そのまま業者に発注する案件と収支ができます。</p></div>
+  return `<div class="page-head"><div><h1>見積</h1><p class="lead">${esc(meName())}の書式で見積書・発注請書・御請求書を作ります。受注したら、そのまま業者に発注する案件と収支ができます。</p></div>
       <div class="row"><a class="btn" href="#/admin/est/edit/new">＋ 新しい見積</a></div></div>
     <nav class="chips"><a href="#/admin/est" ${st ? "" : 'aria-current="true"'}>すべて ${list.length}</a>${Object.entries(EST_STATUS).map(([k, l]) => `<a href="#/admin/est/${k}" ${st === k ? 'aria-current="true"' : ""}>${l} ${cnt(k)}</a>`).join("")}</nav>
     ${rows.length ? `<div class="tbl-wrap"><table class="mtbl nb"><thead><tr><th>NO</th><th>発行日</th><th>宛先</th><th>物件・工事</th><th class="r">お見積金額（税込）</th><th class="r">粗利率</th><th>状態</th><th></th></tr></thead><tbody>
@@ -2608,7 +2862,7 @@ async function viewBills(ymArg){
 }
 // まとめ請求書（案件の一覧1枚。御請求書と同じグレーの書式）
 function billSummaryHtml(b, seal, billing){
-  const c = COMPANY, n = Math.max(20, b.rows.length);
+  const c = coInfo(), n = Math.max(20, b.rows.length);
   return `<div class="pdfdoc es inv">
     <div class="es-invhead"><div class="es-to"><span class="es-co">${esc(b.company)}</span><span class="es-hon">御中</span></div><div class="es-invt"><b>御請求書</b></div></div>
     <div class="es-mid"><div class="es-left"><table class="es-prop"><tr><th>対象期間；</th><td>${fmtDate(b.from)} 〜 ${fmtDate(b.to)}（${esc(closeLabel(b.close))}）</td></tr><tr><th>発行日；</th><td>${fmtDate(b.issuedAt)}</td></tr></table>
@@ -2856,6 +3110,7 @@ function ledgerCsv(rows){
 }
 // --- 従業員（管理画面にログインする人）：担当者名と通知の範囲 ---
 function employeePanel(){
+  if(tenant()) return `<section class="panel"><h2>メンバー</h2><p class="small" style="margin:0 0 10px">管理画面にログインする人の招待・役割の変更は「メンバー」の画面で行います。</p><a class="btn sub" href="#/admin/members">メンバーを開く</a></section>`;
   const names = (S.staff || []).map(p => p.name);
   const sel = cur => `<select name="emp_staff" aria-label="担当者名"><option value="">（担当者名なし＝会社）</option>${[...new Set([...names, cur].filter(Boolean))].map(n => `<option ${n === cur ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>`;
   const pend = (S.empPending || []).map(u => `<div class="emp-row doc-row"><span class="row-main"><b>${esc(u.name)}</b><span class="small">${esc(u.email)}　${esc(u.phone)}　希望の担当者名：${esc(u.staffName || "なし")}</span></span>
@@ -2960,16 +3215,16 @@ function reportsBlock(rs, admin){
     ${commentBox(r.craftsmanName, r.createdAt, r.note, r.method === "photos" ? `写真 ${(r.photoCount || 0) - (r.additions || []).reduce((s, a) => s + (a.count || 0), 0)}枚` : "", admin, true)}
     ${(r.additions || []).map(a => commentBox(r.craftsmanName, a.at, a.note, `追加の写真 ${a.count}枚`, admin, false)).join("")}
     ${photosGrid(r.photos)}
-    ${r.reviewComment ? `<div class="note" style="margin-top:10px">Reforeからのコメント：${esc(r.reviewComment)}</div>` : ""}
+    ${r.reviewComment ? `<div class="note" style="margin-top:10px">${esc(r.coName || (myRole() === "admin" ? meName() : "Refore"))}からのコメント：${esc(r.reviewComment)}</div>` : ""}
     ${admin && r.status === "submitted" ? `<div class="row" style="margin-top:10px"><button class="btn" data-act="report-ok" data-id="${esc(r.id)}" data-job="${esc(r.jobId)}">確認済みにする</button><button class="btn danger" data-act="report-return" data-id="${esc(r.id)}" data-job="${esc(r.jobId)}">差し戻す</button></div>` : ""}
   </section>`).join("");
 }
 
 const priceSmall = j => esc([Number(j.price) > 0 ? taxModeOf(j) : "", j.priceNote].filter(Boolean).join("・"));
-const STATUS_STAMP = {draft:["下書", true], closed:["締切", true], assigned:["発注済", false], working:["作業中", false], finished:["完了", false], completed:["確認済", false], paid:["支払済", true]};
+const STATUS_STAMP = {draft:["下書", true], closed:["締切", true], selected:["支払待", false], assigned:["発注済", false], working:["作業中", false], finished:["完了", false], completed:["確認済", false], paid:["支払済", true]};
 const statusStamp = j => STATUS_STAMP[j.status] ? stamp(STATUS_STAMP[j.status][0], STATUS_STAMP[j.status][1]) : "";
 const STEPS = [["募集開始","publishedAt"],["発注","assignedAt"],["承諾","acceptedAt"],["作業開始","startedAt"],["作業完了","finishedAt"],["完了報告",null],["完了確認","completedAt"],["支払","paidAt"]];
-const STAGE = {draft:-1, open:0, closed:0, assigned:1, working:3, finished:4, completed:6, paid:7};
+const STAGE = {draft:-1, open:0, closed:0, selected:0, assigned:1, working:3, finished:4, completed:6, paid:7};
 const stageOf = job => { const st = STAGE[job.status] ?? -1; return job.status === "assigned" && job.acceptedAt ? 2 : st; };
 function progressTrack(job, reports = []){
   const rep = reports.filter(r => r.jobId === job.id && r.status !== "returned").sort((a, b) => b.createdAt - a.createdAt)[0];
@@ -3182,15 +3437,15 @@ async function viewJobDetail(id){
       ${app.status === "applied" ? `<button class="btn danger" data-act="withdraw" data-id="${esc(app.id)}" style="margin-top:8px">応募を取り下げる</button>` : ""}</div>`;
   } else if(app && !again){
     action = `<div class="panel"><p style="margin:0">この案件への応募は${app.status === "declined" ? "辞退" : "取り下げ"}しました。</p>
-      ${job.status !== "open" ? "" : app.reapplyAsk ? `<p class="small" style="margin:8px 0 0">Reforeに再応募の許可をお願いしています（${fmtTime(app.reapplyAsk)}）。許可が出ると、ここから応募できます。</p>`
-        : `<p class="small" style="margin:8px 0 10px">もう一度応募するには、Reforeの許可が必要です。</p><button class="btn sub block" data-act="reapply-ask" data-id="${esc(app.id)}" data-job="${esc(id)}" data-title="${esc(job.title)}">もう一度応募したい（Reforeに許可をお願いする）</button>`}</div>`;
+      ${job.status !== "open" ? "" : app.reapplyAsk ? `<p class="small" style="margin:8px 0 0">${esc(coNameOf(job))}に再応募の許可をお願いしています（${fmtTime(app.reapplyAsk)}）。許可が出ると、ここから応募できます。</p>`
+        : `<p class="small" style="margin:8px 0 10px">もう一度応募するには、${esc(coNameOf(job))}の許可が必要です。</p><button class="btn sub block" data-act="reapply-ask" data-id="${esc(app.id)}" data-job="${esc(id)}" data-title="${esc(job.title)}">もう一度応募したい（${esc(coNameOf(job))}に許可をお願いする）</button>`}</div>`;
   } else if(job.status !== "open"){
     action = `<div class="panel"><p style="margin:0">この案件の募集は終了しました。</p></div>`;
   } else {
     action = `<form class="panel" data-form="apply" data-id="${esc(id)}">
-      <h2>${again ? "もう一度応募する" : "この案件に応募する"}</h2>${again ? `<p class="note" style="margin:0 0 10px">Reforeから再応募の許可が出ています。</p>` : ""}
+      <h2>${again ? "もう一度応募する" : "この案件に応募する"}</h2>${again ? `<p class="note" style="margin:0 0 10px">${esc(coNameOf(job))}から再応募の許可が出ています。</p>` : ""}
       <p class="small" style="margin:0 0 10px">工期：${fmtRange(job.startDate, job.endDate)}。現場に入る日は、発注を承諾したあとに決めます。</p>
-      <label class="field"><span>Reforeへのひとこと <small>任意</small></span><textarea name="message" maxlength="1000" placeholder="例：当日は9時から作業できます。前日の下見も可能です。"></textarea></label>
+      <label class="field"><span>${esc(coNameOf(job))}へのひとこと <small>任意</small></span><textarea name="message" maxlength="1000" placeholder="例：当日は9時から作業できます。前日の下見も可能です。"></textarea></label>
       <button class="btn block">応募する</button>
       <p class="small" style="margin:10px 0 0">鍵・入室方法と連絡事項は、発注が決まった業者さまにだけ表示されます。</p></form>`;
   }
@@ -3202,13 +3457,13 @@ async function viewJobDetail(id){
   const items0 = itemsWithId(job.items);
   const work = !canPick ? "" : `<section class="panel"><h2>工事の内容</h2>${canPick ? `<p class="note" style="margin:0 0 10px">できない工事は<b>左のチェックを外して</b>から、「この案件に応募する」を押してください。${anyTema ? `<br>「材工」の工事は、材料の用意ができなければ<b>「手間のみでやる」</b>を選べます（単価が手間のみの金額になります）。` : ""}</p>` : ""}${workListHtml(job.items, taxModeOf(job), true, canPick) || `<p class="small" style="margin:0">作業内訳はまだ登録されていません。</p>`}</section>`;
 
-  const askBox = job.status === "open" || job.assignedTo === uid ? `<div class="panel"><p class="small" style="margin:0 0 10px">案件についてわからないことがあれば、Reforeに質問できます。</p>
-    <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">Reforeに質問する</button></div>` : "";
+  const askBox = job.status === "open" || job.assignedTo === uid ? `<div class="panel"><p class="small" style="margin:0 0 10px">案件についてわからないことがあれば、${esc(coNameOf(job))}に質問できます。</p>
+    <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${esc(coNameOf(job))}に質問する</button></div>` : "";
   // 応募したあと・募集が終わったあとは、工事の内訳を案件の中で開いて見る（応募した工事に✓）
   const mine = app?.itemIds && !app.allItems ? new Set(app.itemIds) : null;
   const detailItems = !canPick && items0.length ? (mine ? familyListHtml(temaConv(items0, app.tema || []), mine, {taxMode:taxModeOf(job)}) : workListHtml(temaConv(items0, app?.tema || []), taxModeOf(job))) : "";
   const block = craftJobBlock(job, site, {full:job.assignedTo === uid, itemsHtml:detailItems, itemsLabel:items0.length ? `${items0.length}件` : "", itemsOpen:true});
-  return `${back("#/jobs", "案件一覧")}${pdfViewHtml(pdfA)}<div class="cols"><div class="stack">${block}${work}</div><div class="stack">${action}${askBox}</div></div>`;
+  return `${back("#/jobs", "案件一覧")}${pdfViewHtml(pdfA)}${coJobBanner(job)}<div class="cols"><div class="stack">${block}${work}</div><div class="stack">${action}${askBox}</div></div>`;
 }
 async function viewApplied(){
   const apps = (await api().listApplications({craftsmanId:S.user.uid})).sort((a, b) => b.createdAt - a.createdAt);
@@ -3269,7 +3524,7 @@ async function viewMySchedule(ym){
     <div class="earn-bar" aria-hidden="true"><i style="width:${pctBar}%"></i></div>
     <div class="earn-sub"><span>これから入る予定 <b>${yenFull(a2)}</b>（${coming.length}件）</span><span>${yr}年の合計 <b>${yenFull(amt(yearJobs))}</b></span></div>
     ${billNow.length ? `<a class="btn block" href="#/invoice" style="margin-top:10px">今月の請求書を作る</a>` : ""}</section>`;
-  return `<h1>受注した案件</h1>${money}<p class="lead">受けた工事の予定と一覧です。入る日を決めた工事は濃い色、まだ決めていない工事は「（未定）」で工期の日に出ます。押すと受注のページが開きます。</p>
+  return `<h1>受注した案件</h1>${S.me ? "" : money}<p class="lead">受けた工事の予定と一覧です。入る日を決めた工事は濃い色、まだ決めていない工事は「（未定）」で工期の日に出ます。押すと受注のページが開きます。</p>
     ${lateNotes(all, false)}
     <div class="cal-tool"><a class="btn sub" href="${url(prev)}" aria-label="前の月">‹</a><h2>${y}年${m}月</h2><a class="btn sub" href="${url(next)}" aria-label="次の月">›</a>
       ${mm !== today.slice(0, 7) ? `<a class="textlink" href="${url(today.slice(0, 7))}">今月へ</a>` : ""}</div>
@@ -3302,19 +3557,19 @@ async function viewWorkDetail(id){
   let step = "";
   const lateTop = lateNotes([job], false);
   if(job.status === "assigned" && job.declinedAt){
-    step = `<section class="panel"><h2>発注を辞退しました</h2><p style="margin:0">${fmtFull(job.declinedAt)} に辞退しました。${job.declineReason ? `<br>理由：${esc(job.declineReason)}` : ""}<br>Reforeが確認して対応します。</p></section>`;
+    step = `<section class="panel"><h2>発注を辞退しました</h2><p style="margin:0">${fmtFull(job.declinedAt)} に辞退しました。${job.declineReason ? `<br>理由：${esc(job.declineReason)}` : ""}<br>${esc(coNameOf(job))}が確認して対応します。</p></section>`;
   } else if(job.status === "assigned" && !job.acceptedAt){
     const amt = calcAmount(job.price, taxModeOf(job));
     step = `<section class="panel" style="border:2px solid var(--kon-text)"><h2>発注内容の確認</h2>
-      <p style="margin:0 0 10px">Reforeから発注がありました。「工事の内訳」と金額を確認して、問題なければ「承諾する」を押してください。</p>
+      <p style="margin:0 0 10px">${esc(coNameOf(job))}から発注がありました。「工事の内訳」と金額を確認して、問題なければ「承諾する」を押してください。</p>
       <div class="price big" style="margin:0 0 4px"><span class="num">${yenFull(amt.base)}</span><small>発注金額（税抜）／税込 ${yenFull(amt.total)}</small></div>
-      <button class="btn block big-action" data-act="accept-order" data-id="${esc(id)}">内容と金額を確認して承諾する</button>
+      ${S.me ? `<p class="note" style="margin:0">承諾・辞退は親方（${esc(S.profile.name)}さん）が行います。</p>` : `<button class="btn block big-action" data-act="accept-order" data-id="${esc(id)}">内容と金額を確認して承諾する</button>`}
       <button class="btn sub block" style="margin-top:10px" data-act="chat-open" data-job="${esc(id)}">金額や内容について相談する</button>
-      <button class="btn danger block" style="margin-top:10px" data-act="decline-order" data-id="${esc(id)}">この発注を断る</button></section>`;
+      ${S.me ? "" : `<button class="btn danger block" style="margin-top:10px" data-act="decline-order" data-id="${esc(id)}">この発注を断る</button>`}</section>`;
   } else if(job.status === "assigned" && !job.craftStart){
     step = "";   // 承諾したら、まず入る日を決めてもらう（下の「入る日」欄）
   } else if(job.status === "assigned"){
-    step = `<section class="panel"><h2>作業の開始</h2><p class="small" style="margin:0 0 6px">${fmtFull(job.acceptedAt)} に発注を承諾しました。</p><p style="margin:0 0 12px">現場で作業を始めるときに押してください。押した日時が記録され、Reforeにも表示されます。</p>
+    step = `<section class="panel"><h2>作業の開始</h2><p class="small" style="margin:0 0 6px">${fmtFull(job.acceptedAt)} に発注を承諾しました。</p><p style="margin:0 0 12px">現場で作業を始めるときに押してください。押した日時が記録され、${esc(coNameOf(job))}にも表示されます。</p>
       <button class="btn block big-action" data-act="work-start" data-id="${esc(id)}">作業を開始する</button></section>`;
   } else if(job.status === "working"){
     step = `<section class="panel"><h2>作業の完了</h2><p class="small" style="margin:0 0 8px">開始：${fmtFull(job.startedAt)}</p><p style="margin:0 0 12px">作業が終わったら押してください。押した日時が記録され、続けて完了報告に進みます。</p>
@@ -3327,9 +3582,9 @@ async function viewWorkDetail(id){
       <a class="btn block" href="${reportMailto(job, priv)}">報告メールを作成する</a>
       <p class="small" style="margin:8px 0 16px">メールアプリが開き、宛先・件名・案件情報が入った状態になります。写真を添付して送信してください。</p>
       <button class="btn sub block">メールを送ったので「報告済み」にする</button></form>`
-      : `<div class="note" style="margin:0 0 12px">完了報告を受け付けました。Reforeが内容を確認しています。</div>${photoUploadOn() && rs[0]?.status === "submitted" ? photoReportForm(id, false, true, rs[0].id) : ""}`;
+      : `<div class="note" style="margin:0 0 12px">完了報告を受け付けました。${esc(coNameOf(job))}が内容を確認しています。</div>${photoUploadOn() && rs[0]?.status === "submitted" ? photoReportForm(id, false, true, rs[0].id) : ""}`;
   } else if(job.status === "completed"){
-    step = `<div class="note" style="margin:0">Reforeが完了を確認しました。月末に「請求書」タブから、その月の案件をまとめて請求してください。</div>`;
+    step = `<div class="note" style="margin:0">${isRefJob(job) ? "Reforeが完了を確認しました。月末に「請求書」タブから、その月の案件をまとめて請求してください。" : job.pay ? `${esc(coNameOf(job))}が完了を確認しました。「請求書」タブから、この案件の請求書をReforeに発行してください（代金は先払い済みです）。` : `${esc(coNameOf(job))}が完了を確認しました。${esc(coNameOf(job))}の締め日で、「請求書」タブからまとめて請求してください。`}</div>`;
   } else if(job.status === "paid"){
     step = `<div class="note" style="margin:0">お支払いが完了しました。</div>`;
   }
@@ -3338,16 +3593,16 @@ async function viewWorkDetail(id){
   const cs = job.craftStart || job.startDate, ce = job.craftEnd || job.endDate || cs;
   const firstDates = job.status === "assigned" && job.acceptedAt && !job.craftStart;
   const dates = (job.status === "assigned" && job.acceptedAt) || job.status === "working" ? `<form class="panel" data-form="craftdates" data-id="${esc(id)}" ${firstDates ? 'style="border:2px solid var(--kon-text)"' : ""}><h2>${firstDates ? "入る日を決めてください" : "入る日"}</h2>
-    <p class="small" style="margin:0 0 10px">${job.craftStart ? `いまの予定：<b>${fmtRange(job.craftStart, job.craftEnd)}</b>。変更するとReforeにも表示され、メールで知らせます。` : `発注を承諾しました。工期（${fmtRange(job.startDate, job.endDate)}）の中で、現場に入る日を決めてください。決めると「作業を開始する」が押せるようになります。`}</p>
+    <p class="small" style="margin:0 0 10px">${job.craftStart ? `いまの予定：<b>${fmtRange(job.craftStart, job.craftEnd)}</b>。変更すると${esc(coNameOf(job))}にも表示され、メールで知らせます。` : `発注を承諾しました。工期（${fmtRange(job.startDate, job.endDate)}）の中で、現場に入る日を決めてください。決めると「作業を開始する」が押せるようになります。`}</p>
     <div class="two"><label class="field"><span>入る日</span><input type="date" name="craftStart" required value="${esc(cs)}"></label>
       <label class="field"><span>終わる予定日 <small>1日で終わる場合は空欄</small></span><input type="date" name="craftEnd" value="${ce && ce !== cs ? esc(ce) : ""}"></label></div>
     <button class="btn ${firstDates ? "" : "sub "}block">入る日を${firstDates ? "決める" : "保存する"}</button>
     ${job.craftStart ? `<p class="row" style="margin:10px 0 0;justify-content:center;gap:8px 18px"><a class="textlink" target="_blank" rel="noopener" href="${esc(gcalUrl(job, priv))}">Googleカレンダーに追加</a><button type="button" class="textlink" data-act="ics" data-id="${esc(id)}">iPhoneなどのカレンダーに追加</button></p>` : ""}</form>` : "";
   const t = S.threads.get(`${id}_${uid}`);
-  const contact = `<section class="panel"><h2>Reforeとのチャット</h2>
-    ${t?.lastAt ? `<p class="small" style="margin:0 0 10px">${isUnread(t) ? `<span class="badge">新着</span> ` : ""}${fmtTime(t.lastAt)}　${esc(t.lastText)}</p>` : `<p class="small" style="margin:0 0 10px">現場のことで確認したいことは、ここからReforeにチャットを送れます。</p>`}
-    <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${t?.lastAt ? "やりとりを開く" : "Reforeとチャットする"}</button></section>`;
-  return `${back("#/work", "受注した案件")}${pdfViewHtml(pdfA)}<div class="cols">
+  const contact = `<section class="panel"><h2>${esc(coNameOf(job))}とのチャット</h2>
+    ${t?.lastAt ? `<p class="small" style="margin:0 0 10px">${isUnread(t) ? `<span class="badge">新着</span> ` : ""}${fmtTime(t.lastAt)}　${esc(t.lastText)}</p>` : `<p class="small" style="margin:0 0 10px">現場のことで確認したいことは、ここから${esc(coNameOf(job))}にチャットを送れます。</p>`}
+    <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${t?.lastAt ? "やりとりを開く" : `${esc(coNameOf(job))}とチャットする`}</button></section>`;
+  return `${back("#/work", "受注した案件")}${pdfViewHtml(pdfA)}${coJobBanner(job)}<div class="cols">
     <div class="stack">${lateTop}${step}${dates}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${craftJobBlock(job, priv, {full:true, showPrice:!(job.status === "assigned" && !job.acceptedAt && !job.declinedAt), itemsHtml:itemsPanelBody(job, priv), itemsLabel:priv.items?.length ? `${itemsWithId(priv.items).length}件` : "", itemsOpen:true})}</div></div>`;
 }
@@ -3468,7 +3723,7 @@ function reportMailto(job, priv){
 }
 
 /* ---------- 管理：案件 ---------- */
-const ADMIN_GROUPS = {open:["open"], active:["assigned","working","finished"], unpaid:["completed"], paid:["paid"], other:["draft","closed"]};
+const ADMIN_GROUPS = {open:["open"], active:["selected","assigned","working","finished"], unpaid:["completed"], paid:["paid"], other:["draft","closed"]};
 async function viewAdminJobs(sf){
   if(sf !== "all" && !ADMIN_GROUPS[sf]) sf = "open";
   const [jobs, apps] = await Promise.all([api().listJobs({}), api().listApplications({})]);
@@ -3536,13 +3791,13 @@ async function viewJobEdit(id){
   const usedItems = (priv.items?.length ? priv.items : job.items || []).filter(i => i.name || i.unitPrice);
   const editItems = usedItems.length ? usedItems : [{qty:1, unit:"式"}];
   const buttons = isDraft
-    ? `<div class="aud-pick" role="radiogroup" aria-label="公開する相手"><label><input type="radio" name="audience" value="priority" ${job.audience !== "all" ? "checked" : ""}>既存業者のみに公開（あとから全体に公開もできます）</label><label><input type="radio" name="audience" value="all" ${job.audience === "all" ? "checked" : ""}>最初から全体に公開</label>
+    ? `<div class="aud-pick" role="radiogroup" aria-label="公開する相手"><label><input type="radio" name="audience" value="priority" ${job.audience !== "all" ? "checked" : ""}>既存業者のみに公開（あとから全体に公開もできます）</label><label><input type="radio" name="audience" value="all" ${job.audience === "all" ? "checked" : ""}>最初から全体に公開${tenant() ? `（発注時に先払い・運営手数料${Math.round(opFee() * 100)}%）` : ""}</label>${tenant() ? coPostNote() : ""}
 </div>
       <label class="toggle" style="flex-basis:100%;margin-bottom:4px"><input type="checkbox" name="mailNew" checked>公開したら、工種と対応エリアが合う協力業者にメールで知らせる（既存業者に先に公開するときは、既存業者にだけ）</label><button class="btn" name="mode" value="open">公開して募集する</button><button class="btn sub" name="mode" value="draft">下書き保存</button>`
     : `<button class="btn" name="mode" value="keep">変更を保存</button>`;
   return `${back(id ? `#/admin/job/${id}` : "#/admin", id ? "案件の管理" : "案件")}
     <h1>${id ? "案件を編集" : "新しい案件"}</h1>
-    <p class="lead">添付したPDF・案件名・作業内容・作業内訳（単価・金額を含む）・工種・作業日は承認済みの協力業者全員に公開されます。住所・物件名・オートロック・エレベーターも公開されます。鍵・入室方法・連絡事項・写真URLは発注した業者にだけ表示され、管理会社は業者には表示されません。PDFがなくても案件を公開できます。</p>
+    <p class="lead">添付したPDF・案件名・作業内容・作業内訳（単価・金額を含む）・工種・作業日は承認済みの協力業者全員に公開されます。${tenant() ? "住所は市区町村まで、オートロック・エレベーターは公開されます（番地・物件名は発注先にだけ表示）。" : "住所・物件名・オートロック・エレベーターも公開されます。"}鍵・入室方法・連絡事項・写真URLは発注した業者にだけ表示され、管理会社は業者には表示されません。PDFがなくても案件を公開できます。</p>
     <form data-form="job" data-id="${esc(id || "")}" class="stack">
       <section class="panel import"><h2>案件PDFの添付 <small>任意</small></h2>
         <p class="small" style="margin:0 0 10px">管理会社からの発注書・依頼書のPDFを選ぶと、案件に添付して大きく表示します（中身の読み取りや自動入力はしません）。PDFは募集中の案件として承認済みの業者全員に表示され、発注後は発注先の業者が「発注書」としてダウンロードできます。</p>
@@ -3560,7 +3815,7 @@ async function viewJobEdit(id){
           <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${usedItems.length ? itemsTotal(usedItems) : Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000" ${usedItems.length ? "readonly" : ""}></label>
       </section>
       <section class="panel"><h2>工種・作業日</h2>
-        <label class="field"><span>Reforeの担当者 <small>発注書に載ります。一覧は「設定」で編集</small></span>
+        <label class="field"><span>${esc(meName())}の担当者 <small>発注書に載ります。一覧は「設定」で編集</small></span>
           <select name="staff"><option value="">選ばない</option>${staffOpts.map(n => `<option ${n === staffSel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
         <label class="field"><span>工事番号 <small>収支一覧の番号（例：FT-2627-122）。管理会社を入れると頭の部分が自動で入ります</small></span>
           <input type="text" name="jobNo" value="${esc(job.jobNo)}" placeholder="例：FT-2627-122" autocomplete="off" inputmode="latin">
@@ -3606,7 +3861,7 @@ async function viewAdminJob(id){
   const fix = {};
   if(priv.items?.length && !job.items?.some(i => i.unitPrice))
     fix.items = priv.items.map((i, k) => ({iid:i.iid || "k" + k, cat:i.cat || "その他", loc:i.loc || "", name:i.name, qty:i.qty, unit:i.unit, unitPrice:i.unitPrice, note:i.note || "", zai:!!i.zai}));
-  if((!job.site && (priv.address || priv.building)) || (job.site && "manager" in job.site))
+  if(!tenant() && ((!job.site && (priv.address || priv.building)) || (job.site && "manager" in job.site)))
     fix.site = {address:priv.address || "", building:priv.building || "", room:priv.room || "", autolock:priv.autolock || "", elevator:priv.elevator || ""};
   if(Object.keys(fix).length){ Object.assign(job, fix); api().saveJob(id, fix).catch(e => console.error(e)); }
   api().moveManager?.(id).catch(e => console.error(e));
@@ -3618,6 +3873,7 @@ async function viewAdminJob(id){
   apps.sort((a, b) => (order0[a.status] - order0[b.status]) || (a.createdAt - b.createdAt));
   const rs = reports.sort((a, b) => b.createdAt - a.createdAt);
   const canAssign = job.status === "open" || job.status === "closed";
+  if(tenant() && job.audience === "priority" && JSON.stringify(job.priCrafts || []) !== JSON.stringify(S.company?.priority || [])){ job.priCrafts = [...(S.company?.priority || [])]; api().saveJob(id, {priCrafts:job.priCrafts}).catch(e => console.error(e)); }
   if(!job.audience){ job.audience = "all"; api().saveJob(id, {audience:"all"}).catch(e => console.error(e)); }
   const act = (st, l, cls = "sub", aud = "") => `<button class="btn ${cls}" data-act="job-status" data-id="${esc(id)}" data-status="${st}"${aud ? ` data-aud="${aud}"` : ""}>${l}</button>`;
   const acts = {draft:act("open", "既存業者に先に公開", "", "priority") + act("open", "全体に公開", "sub", "all"),
@@ -3677,7 +3933,7 @@ async function viewAdminJob(id){
       <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
     ${pdfViewHtml(pdfA, "発注先の業者にも表示されます")}
     <div class="cols">
-      <div class="stack">${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true, false, true)}${await adminItemsPanel(job, priv, apps, family)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
+      <div class="stack">${job.status === "selected" ? await prepayPanel(job) : ""}${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true, false, true)}${await adminItemsPanel(job, priv, apps, family)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
         ${ratingPanel(job)}
         ${chatPanel(threads, id, job.assignedTo)}
@@ -3708,7 +3964,7 @@ function docInvoiceHtml(d){
   return `<div class="pdfdoc">
     <div class="hd"><table class="meta"><tr><td>請求番号</td><td>${esc(d.number)}</td></tr><tr><td>請求日</td><td>${fmtDate(d.issuedAt)}</td></tr></table></div>
     <h1>請求書</h1>
-    <div class="parties"><div class="to">${esc(COMPANY.name)} 御中</div>
+    <div class="parties"><div class="to">${esc(d.toName || COMPANY.name)} 御中</div>
       <div class="from"><b>${esc(f.tradeName || f.name)}</b>${f.tradeName ? `<br>${esc(f.name)}` : ""}${f.address ? `<br>${esc(f.address)}` : ""}<br>TEL ${esc(f.phone)}<br>${esc(f.email)}${f.invoiceNumber ? `<br>登録番号 ${esc(f.invoiceNumber)}` : ""}</div></div>
     <p style="margin:0 0 6px">${fmtMonth(d.month)}分のご請求を申し上げます。</p>
     <div class="total"><span>ご請求金額（税込）</span><strong>${yenFull(d.total)}</strong></div>
@@ -3724,9 +3980,10 @@ function docInvoiceHtml(d){
 async function viewInvoice(ym){
   const uid = S.user.uid, p = S.profile;
   if(!/^\d{4}-\d{2}$/.test(ym || "")) ym = curMonth();
-  const [jobs, inv] = await Promise.all([api().listJobs({assignedTo:uid}), api().getInvoice(`${uid}_${ym}`)]);
+  const [jobs0, inv] = await Promise.all([api().listJobs({assignedTo:uid}), api().getInvoice(`${uid}_${ym}`)]);
+  const jobs = jobs0.filter(isRefJob), coPart = await craftCoInvoices(jobs0);
   const targets = jobs.filter(j => invoiceable(j) && jobMonth(j) === ym).sort((a, b) => jobMonth(a).localeCompare(jobMonth(b)) || (a.finishedAt || 0) - (b.finishedAt || 0));
-  const head = `<h1>請求書</h1><p class="lead">月末に、その月に作業完了した案件をまとめて1枚の請求書として発行します。</p>${monthNav("#/invoice", ym)}`;
+  const head = `<h1>請求書</h1>${coPart}<h2 class="day-head"><b>Refore宛て</b>月ごとにまとめて</h2><p class="lead">月末に、その月に作業完了したReforeの案件をまとめて1枚の請求書として発行します。</p>${monthNav("#/invoice", ym)}`;
   const issuedBox = inv ? `<section class="panel"><div class="row between"><h2 style="margin:0">${fmtMonth(ym)}分の請求書</h2><span class="pill ${inv.status}">${INV_STATUS[inv.status]}</span></div>
       <dl class="kv" style="margin-top:10px"><dt>請求番号</dt><dd>${esc(inv.number)}</dd><dt>発行日</dt><dd>${fmtFull(inv.issuedAt)}</dd><dt>案件数</dt><dd>${inv.lines.length}件</dd><dt>請求金額</dt><dd><b>${yenFull(inv.total)}</b>（税込）</dd>${inv.paidAt ? `<dt>支払日</dt><dd>${fmtDate(inv.paidAt)}</dd>` : ""}</dl>
       <div class="row" style="margin-top:12px"><button class="btn" data-act="inv-pdf" data-id="${esc(inv.id)}">PDFをダウンロード</button></div></section>` : "";
@@ -3756,12 +4013,13 @@ function syncInvoice(form){
 }
 async function viewAdminInvoices(ym){
   if(!/^\d{4}-\d{2}$/.test(ym || "")) ym = curMonth();
-  const [invs, jobs] = await Promise.all([api().listInvoices({month:ym}), api().listJobs({})]);
+  const T = tenant(), [invs0, jobs] = await Promise.all([api().listInvoices({month:ym}), api().listJobs({})]);
+  const invs = T ? invs0.filter(i => i.type === "co") : invs0;
   const byC = new Map(invs.map(i => [i.craftsmanId, i]));
   const jobMap = new Map(jobs.map(j => [j.id, j]));
   const diffOf = i => i.lines.filter(l => jobMap.get(l.jobId) && Number(jobMap.get(l.jobId).price) !== Number(l.amount));
   const waiting = new Map();
-  jobs.filter(j => j.assignedTo && invoiceable(j) && jobMonth(j) === ym).forEach(j => { if(!byC.has(j.assignedTo)) waiting.set(j.assignedTo, (waiting.get(j.assignedTo) || 0) + 1); });
+  jobs.filter(j => j.assignedTo && (T ? !j.pay && ["completed", "paid"].includes(j.status) && periodOf(j.completedAt, j.coClose) === ym : invoiceable(j) && jobMonth(j) === ym)).forEach(j => { if(!byC.has(j.assignedTo)) waiting.set(j.assignedTo, (waiting.get(j.assignedTo) || 0) + 1); });
   const sum = invs.reduce((a, i) => a + i.total, 0), unpaid = invs.filter(i => i.status === "issued").reduce((a, i) => a + i.total, 0);
   const rows = invs.sort((a, b) => a.status.localeCompare(b.status)).map(i => `<div class="row-item">
       <span class="row-main"><b>${esc(i.from.name)}${i.from.tradeName ? ` <span class="small">${esc(i.from.tradeName)}</span>` : ""}</b>
@@ -3771,7 +4029,8 @@ async function viewAdminInvoices(ym){
       <span class="inv-right"><b class="inv-money">${yenFull(i.total)}</b><span class="pill ${i.status}">${INV_STATUS[i.status]}</span>
         <span class="row end"><button class="btn sub" data-act="inv-pdf" data-id="${esc(i.id)}">PDF</button>${i.status === "issued" ? `<button class="btn" data-act="inv-paid" data-id="${esc(i.id)}">支払済みにする</button>` : ""}</span></span></div>`).join("");
   const wait = [...waiting].map(([uid, n]) => { const c = S.crafts.get(uid); return `<div class="row-item"><span class="row-main"><b>${esc(c?.name || uid)}</b><span class="small">完了した案件 ${n}件　請求書はまだ届いていません</span></span>${c?.phone ? `<a class="btn sub" href="tel:${esc(c.phone)}">電話</a>` : ""}</div>`; }).join("");
-  return `<nav class="seg" aria-label="請求書の種類"><a href="#/admin/invoices" aria-current="true">業者からの請求</a><a href="#/admin/bills">管理会社への請求</a></nav><h1>請求書</h1><p class="lead">業者さまから届いた月ごとの請求書です。振込が済んだら「支払済みにする」を押すと、含まれる案件が「支払済み」になります。</p>
+  return `<nav class="seg" aria-label="請求書の種類"><a href="#/admin/invoices" aria-current="true">業者からの請求</a><a href="#/admin/bills">管理会社への請求</a></nav><h1>請求書</h1><p class="lead">${T ? "既存業者として受けてもらった案件の、締め日ごとの請求書です（全体に公開した案件は先払いのため、ここには届きません）。" : "業者さまから届いた月ごとの請求書です。"}振込が済んだら「支払済みにする」を押すと、含まれる案件が「支払済み」になります。</p>
+    ${T ? await coInvoiceHead() : ""}
     ${monthNav("#/admin/invoices", ym)}
     <div class="inv-sum" style="margin-bottom:14px"><span>請求合計 <b>${yenFull(sum)}</b></span><span>未払い <b>${yenFull(unpaid)}</b></span><span>${invs.length}件</span></div>
     ${rows ? `<div class="list">${rows}</div>` : `<div class="empty">${fmtMonth(ym)}分の請求書はまだありません。</div>`}
@@ -4019,7 +4278,7 @@ async function viewMatOrder(jobId, oid){
 // 書類：Reforeの雛形（青い帯の発注書）に合わせた材料発注書・工事の発注書
 const CIRCLED = k => k < 20 ? String.fromCharCode(0x2460 + k) : String(k + 1);
 function rfCompany(staff, terms, seal){
-  const c = COMPANY;
+  const c = coInfo();
   return `<div class="rf-from">${seal ? `<img class="rf-seal" src="${esc(seal)}" alt="">` : ""}<b>${esc(c.name)}</b>
     ${staff?.name ? `<div class="rf-staff">弊社担当：　${esc(staff.name)}${staff.phone ? `（${esc(staff.phone)}）` : ""}</div>` : ""}
     <div>〒${esc(c.zip)}</div><div>${esc(c.address)}</div>${c.address2 ? `<div>${esc(c.address2)}</div>` : ""}
@@ -4161,7 +4420,7 @@ async function viewSettings(tab){
         <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-mat">＋ 材料を追加</button><button class="btn">材料マスタを保存</button></div>
       </form></details></section>
 ` : ""}
-    ${tab === "docs" ? `    <section class="panel"><h2>見積・請求書 <small>見積書・御請求書に入る内容（Reforeだけが見られる場所に保存）</small></h2>
+    ${tab === "docs" ? `${tenant() ? coInfoPanel() : ""}    <section class="panel"><h2>見積・請求書 <small>見積書・御請求書に入る内容（${esc(meName())}だけが見られる場所に保存）</small></h2>
       <form data-form="billing" class="stack">
         <div class="two"><label class="field"><span>インボイス登録番号</span><input type="text" name="invoiceNumber" value="${esc(S.billingCfg?.invoiceNumber || "")}" placeholder="例：T1234567890123"></label>
           <label class="field"><span>振込先（御請求書の下に入ります）</span><input type="text" name="bank" value="${esc(S.billingCfg?.bank || "")}" placeholder="例：○○銀行 ○○支店（普通）1234567 名義；カ）リフォア"></label></div>
@@ -4175,7 +4434,7 @@ async function viewSettings(tab){
         ${S.seal ? `<button class="btn danger" data-act="seal-del">社印を外す</button>` : ""}</div>
       <p class="small" style="margin:8px 0 0">背景が透明なPNGがきれいに出ます。</p></section>
 
-    <section class="panel"><h2>Reforeの担当者 <small>案件ごとに選び、発注書・支払明細に載ります</small></h2>
+    <section class="panel"><h2>${esc(meName())}の担当者 <small>案件ごとに選び、発注書・支払明細に載ります</small></h2>
       <form data-form="staff" class="stack">
         <div class="items-ed" id="staff-ed">${(S.staff.length ? S.staff : [{}]).map(staffRowHtml).join("")}</div>
         <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-staff">＋ 担当者を追加</button><button class="btn">担当者を保存</button></div>
@@ -4265,11 +4524,11 @@ function invoiceBadge(c){
 
 /* ---------- 連絡（チャット） ---------- */
 const BASE_TITLE = document.title;
-const myRole = () => S.profile?.role === "admin" ? "admin" : "craftsman";
+const myRole = () => isCoRole(S.profile?.role) ? "admin" : S.profile?.role === "op" ? "op" : "craftsman";
 const isUnread = t => { const r = myRole(), other = r === "admin" ? "craftsman" : "admin"; return t.lastFrom === other && (t.lastAt || 0) > (t[r + "ReadAt"] || 0); };
 const unreadCount = () => [...S.threads.values()].filter(isUnread).length;
 const chatHref = t => (myRole() === "admin" ? "#/admin/chat/" : "#/chat/") + t.id;
-const peerName = t => myRole() === "admin" ? (S.crafts.get(t.craftsmanId)?.name || t.craftsmanName || "業者") : "Refore";
+const peerName = t => myRole() === "admin" ? (S.crafts.get(t.craftsmanId)?.name || t.craftsmanName || "業者") : (t.coName || "Refore");
 const chatBadge = () => { const n = unreadCount(); return `<span class="badge" data-badge="chat" ${n ? "" : "hidden"} aria-label="未読">${n}</span>`; };
 function updateChatBadges(){
   const n = unreadCount();
@@ -4300,11 +4559,12 @@ function buildNotices(seenJobs, seenApplied){
     const list = out[k] ||= [], it = list.find(x => x.href === href);
     if(it) it.reasons.push({t, tone, key}); else list.push({href, title, reasons:[{t, tone, key}]});
   };
-  if(S.profile?.role === "admin"){
+  if(isCoRole(S.profile?.role)){
     const jobs = new Map((d.jobs || []).map(j => [j.id, j])), napp = {};
     (d.apps || []).forEach(a => { const j = jobs.get(a.jobId); if(j && (j.status === "open" || j.status === "closed")) napp[a.jobId] = (napp[a.jobId] || 0) + 1; });
     Object.entries(napp).forEach(([id, n]) => add("jobs", `#/admin/job/${id}`, jobs.get(id).title, `応募 ${n}件・発注先を選んでください`, "blue", "応募あり（発注先の選定待ち）"));
     (d.jobs || []).filter(j => j.status === "finished").forEach(j => add("jobs", `#/admin/job/${j.id}`, j.title, "作業完了・完了確認をしてください", "orange"));
+    (d.jobs || []).filter(j => j.status === "selected").forEach(j => add("jobs", `#/admin/job/${j.id}`, j.title, "先払い待ち・振込をお願いします", "orange", "先払い待ち"));
     (d.reports || []).forEach(r => add("jobs", `#/admin/job/${r.jobId}`, r.jobTitle || jobs.get(r.jobId)?.title || "案件", "完了報告が届きました", "orange"));
     (d.invoices || []).sort((a, b) => a.issuedAt - b.issuedAt).forEach(v => add("invoices", `#/admin/invoices/${v.month}`, `${v.from?.name || "業者"}　${fmtMonth(v.month)}分 ${yenFull(v.total)}`, "支払待ち", "orange"));
   } else {
@@ -4335,7 +4595,7 @@ function computeBadges(){
 // いま開いているタブの「お知らせ」：何についての通知かを一覧と目印で示す
 function currentNoticeKey(){
   const h = location.hash || "#/";
-  if(S.profile?.role === "admin"){
+  if(isCoRole(S.profile?.role)){
     if(/^#\/admin\/?$/.test(h) || h.startsWith("#/admin/list")) return "jobs";
     if(h.startsWith("#/admin/invoices")) return "invoices";
     return "";
@@ -4348,7 +4608,7 @@ function decorateNotices(){
   main.querySelectorAll(".notice-box, .flags").forEach(el => el.remove());
   const k = currentNoticeKey(); if(!k) return;
   // 新着・結果は「このタブを開く前に未読だったもの」を表示する
-  const items = (k === "jobs" || k === "applied") && S.profile?.role !== "admin"
+  const items = (k === "jobs" || k === "applied") && !isCoRole(S.profile?.role)
     ? (buildNotices(S.viewSeen?.jobs ?? getSeen("jobs"), S.viewSeen?.applied ?? getSeen("applied"))[k] || [])
     : (S.notices?.[k] || []);
   if(!items.length) return;
@@ -4366,19 +4626,21 @@ function decorateNotices(){
   }));
 }
 function startBadges(){
-  if(S.badgeUnsubs.length || !S.profile) return;
-  if(S.profile.role !== "admin" && S.profile.status !== "approved") return;
+  if(S.badgeUnsubs.length || !S.profile || S.profile.role === "op") return;
+  if(!isCoRole(S.profile.role) && S.profile.status !== "approved") return;
   const w = (key, name, where) => S.badgeUnsubs.push(api().watch(name, where, list => { S.bw[key] = list; computeBadges(); }));
-  if(S.profile.role === "admin"){
-    w("jobs", "jobs", [["status", "in", ["open", "closed", "finished"]]]);
+  if(isCoRole(S.profile.role)){
+    w("jobs", "jobs", [["status", "in", ["open", "closed", "finished", "selected"]]]);
     w("apps", "applications", [["status", "==", "applied"]]);
     w("reports", "reports", [["status", "==", "submitted"]]);
     w("invoices", "invoices", [["status", "==", "issued"]]);
   } else {
     const u = S.user.uid;
-    w("open", "jobs", S.profile.priority ? [["status", "==", "open"]] : [["status", "==", "open"], ["audience", "==", "all"]]);
+    if(!S.me){
+      w("open", "jobs", S.profile.priority ? [["status", "==", "open"], ["companyId", "==", COMPANY_ID]] : [["status", "==", "open"], ["audience", "==", "all"]]);
+      w("myApps", "applications", [["craftsmanId", "==", u]]);
+    }
     w("mine", "jobs", [["assignedTo", "==", u]]);
-    w("myApps", "applications", [["craftsmanId", "==", u]]);
     w("myReports", "reports", [["craftsmanId", "==", u]]);
   }
 }
@@ -4386,10 +4648,10 @@ function stopBadges(){ S.badgeUnsubs.forEach(f => f()); S.badgeUnsubs = []; S.bw
 
 function stopNotifier(){ if(S.notifUnsub){ S.notifUnsub(); S.notifUnsub = null; } S.threads = new Map(); updateChatBadges(); }
 function startNotifier(){
-  if(S.notifUnsub || !S.profile) return;
-  if(S.profile.role !== "admin" && S.profile.status !== "approved") return;
+  if(S.notifUnsub || !S.profile || S.profile.role === "op") return;
+  if(!isCoRole(S.profile.role) && S.profile.status !== "approved") return;
   let first = true;
-  S.notifUnsub = api().watchThreads(S.profile.role === "admin" ? {} : {craftsmanId:S.user.uid}, list => {
+  S.notifUnsub = api().watchThreads(isCoRole(S.profile.role) ? {} : {craftsmanId:S.user.uid}, list => {
     const prev = S.threads;
     S.threads = new Map(list.map(t => [t.id, t]));
     if(!first) list.forEach(t => { const o = prev.get(t.id); if(isUnread(t) && (!o || (t.lastAt || 0) > (o.lastAt || 0))) incoming(t); });
@@ -4529,7 +4791,7 @@ async function viewMemo(){
 /* ---------- 管理：予定表 ---------- */
 const dayDiff = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
 const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return isoOf(d.getTime()); };
-const CAL_CLASS = {open:"c-open", closed:"c-closed", assigned:"c-work", working:"c-work", finished:"c-done", completed:"c-done", paid:"c-done"};
+const CAL_CLASS = {open:"c-open", closed:"c-closed", selected:"c-open", assigned:"c-work", working:"c-work", finished:"c-done", completed:"c-done", paid:"c-done"};
 async function viewCalendar(ym, company = ""){
   const now = new Date();
   let [y, m] = String(ym || "").split("-").map(Number);
@@ -4629,7 +4891,7 @@ function priorityPanel(list){
 }
 async function viewCraftsmen(){
   const list = [...S.crafts.values()].sort((a, b) => ((a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)) || (b.createdAt - a.createdAt));
-  const head = `<h1>協力業者</h1><p class="lead">登録の審査と、登録情報の確認を行います。審査待ちの業者が上に表示されます。</p>${priorityPanel(list)}`;
+  const head = `<h1>協力業者</h1><p class="lead">${tenant() ? "Reforeが審査して登録された協力業者さんです。既存業者と評価は自社の中だけのもので、ほかの会社には見えません。" : "登録の審査と、登録情報の確認を行います。審査待ちの業者が上に表示されます。"}</p>${priorityPanel(list)}`;
   if(!list.length) return head + `<div class="empty">まだ登録はありません。<br>登録ページのURLを協力業者さまに送ってください。</div>`;
   return head + `<div class="list">${list.map(c => `<a class="row-item" href="#/admin/craftsman/${esc(c.uid)}">
     <span class="row-main"><b>${esc(c.name)} <span class="small">${esc(c.tradeName)}</span>　${ratingOf(c.uid) ? starsHtml(ratingOf(c.uid).avg, ratingOf(c.uid).n) : ""}</b>
@@ -4641,7 +4903,7 @@ async function viewCraftsman(uid){
   if(!c || c.role !== "craftsman") return `${back("#/admin/craftsmen", "協力業者")}<div class="empty">見つかりません。</div>`;
   const apps = (await api().listApplications({craftsmanId:uid})).sort((a, b) => b.createdAt - a.createdAt);
   const btn = (s, l, cls = "") => `<button class="btn ${cls}" data-act="craft-status" data-uid="${esc(uid)}" data-status="${s}">${l}</button>`;
-  const acts = c.status === "pending" ? btn("approved", "承認する") + btn("suspended", "登録を見送る", "danger")
+  const acts = tenant() ? "" : c.status === "pending" ? btn("approved", "承認する") + btn("suspended", "登録を見送る", "danger")
     : c.status === "approved" ? btn("suspended", "利用を停止する", "danger") : btn("approved", "利用を再開する");
   return `${back("#/admin/craftsmen", "協力業者")}
     <div class="page-head"><div><h1>${esc(c.name)}</h1><p class="lead">${esc(c.tradeName)}　<span class="pill ${c.status}">${CRAFT_STATUS[c.status]}</span>${c.priority ? `　<span class="aud-tag" style="margin:0">既存業者</span>` : ""}</p></div><div class="row">${acts}</div></div>
@@ -4939,23 +5201,29 @@ async function route(){
   const done = (html, opts) => { if(token !== S.tok) return; paint(html, opts); if(moved) window.scrollTo(0, 0); if(after) S.pageUnsub = after(); decorateNotices(); };
   if(!api()) return;
   try {
+    if(parts[0] === "join") return done(await viewJoin(parts[1]), {bare:true});
     if(!S.user) return done(parts[0] === "signup" ? viewSignup(parts[1] === "staff") : viewLogin(), {bare:true});
+    if(S.pendingJoin){ const t = S.pendingJoin; return done(await viewJoin(t), {bare:true}); }
     if(!S.profile){ let st = false; try { st = localStorage.getItem("refore_signup_staff") === "1"; } catch(e) {} return done(st ? viewStaffSignup() : viewProfileForm(null, true), {bare:true}); }
     const p = S.profile;
+    if(p.role === "op") return done(await routeOp(parts));
+    if(p.role === "co" && (p.status === "suspended" || !S.company)) return done(viewSuspended());
     startNotifier(); startBadges();
-    if(p.role !== "admin"){
+    if(!isCoRole(p.role)){
       const t = parts[0] || "jobs";
       S.viewSeen ||= {};
       if((t === "jobs" || t === "applied") && S.lastTab !== t){ S.viewSeen[t] = getSeen(t); setSeen(t); }
       if(t === "job" && S.lastTab !== "jobs" && S.lastTab !== "job"){ setSeen("jobs"); }
       S.lastTab = t; computeBadges();
     }
-    if(p.role === "admin"){
+    if(isCoRole(p.role)){
       if(parts[0] !== "admin"){ location.replace("#/admin"); return; }
+      if(tenant() && !coAdmin() && ["money", "settings", "plan", "members"].includes(parts[1])){ location.replace("#/admin"); return; }
       // 協力業者と評価は、操作がないあいだ（30秒）は読み直さない
       if(!S.craftsAt || Date.now() - S.craftsAt > 30000){
         const [all, ratings] = await Promise.all([api().listCraftsmen(), api().listRatings().catch(() => [])]), crafts = all.filter(c => !c.employee);
         S.crafts = new Map(crafts.map(c => [c.uid, c])); S.allCrafts = all; S.ratings = ratings; S.craftsAt = Date.now();
+        if(!tenant()) syncPubCrafts(crafts);
       }
       const all = S.allCrafts || [], crafts = all.filter(c => !c.employee);
       S.empPending = all.filter(c => c.employee && c.status === "pending");
@@ -4980,6 +5248,8 @@ async function route(){
       else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
       else if(a === "settings"){ html = await viewSettings(b); after = () => { renderPropList(); renderDelList(); return null; }; }
       else if(a === "craftsman") html = await viewCraftsman(b);
+      else if(a === "members" && tenant()) html = await viewCoMembers();
+      else if(a === "plan" && tenant()) html = await viewCoPlan();
       else { location.replace("#/admin"); return; }
       return done(html);
     }
@@ -4987,10 +5257,11 @@ async function route(){
     if(p.status !== "approved") return done(viewPending());
     const [a, b] = parts;
     let html;
+    if(S.me && (!a || ["jobs", "job", "applied", "invoice"].includes(a))){ location.replace("#/work"); return; }
     if(a === "job") html = await viewJobDetail(b);
     else if(a === "applied") html = await viewApplied();
     else if(a === "work") html = b ? await viewWorkDetail(b) : await viewWork();
-    else if(a === "profile") html = viewProfileForm(p, false);
+    else if(a === "profile") html = S.me ? viewCrewProfile() : viewProfileForm(p, false) + await crewPanel();
     else if(a === "invoice") html = await viewInvoice(b);
     else if(a === "schedule") html = await viewMySchedule(b);
     else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
@@ -5116,7 +5387,7 @@ const ACTIONS = {
     const d = await moDoc(el.dataset.job, el.dataset.id), j = d.job, st = j.staff || {};
     toast("PDFを作成しています…"); await downloadPdf(d.html, d.fname);
     const subject = `【発注書】${[d.priv.building, d.priv.room].filter(Boolean).join(" ") || j.title}${j.jobNo ? `（${j.jobNo}）` : ""}`;
-    const body = `${d.o.supplierName} 御中\n\nいつも大変お世話になっております。\n株式会社Reforeの${st.name || ""}です。\n\n下記の件につきまして、発注書をお送りいたします。\n添付のPDFをご確認のうえ、ご手配の程よろしくお願いいたします。\n\n物件：${[d.priv.building, d.priv.room].filter(Boolean).join(" ")}\n所在地：${d.priv.address || ""}\n${j.jobNo ? `NO：${j.jobNo}\n` : ""}\n――――――――――――\n株式会社Refore\n${st.name ? `担当：${st.name}${st.phone ? `（${st.phone}）` : ""}\n` : ""}TEL：${COMPANY.tel}　FAX：${COMPANY.fax}\n${COMPANY.email}`;
+    const body = `${d.o.supplierName} 御中\n\nいつも大変お世話になっております。\n${coInfo().name}の${st.name || ""}です。\n\n下記の件につきまして、発注書をお送りいたします。\n添付のPDFをご確認のうえ、ご手配の程よろしくお願いいたします。\n\n物件：${[d.priv.building, d.priv.room].filter(Boolean).join(" ")}\n所在地：${d.priv.address || ""}\n${j.jobNo ? `NO：${j.jobNo}\n` : ""}\n――――――――――――\n${coInfo().name}\n${st.name ? `担当：${st.name}${st.phone ? `（${st.phone}）` : ""}\n` : ""}TEL：${COMPANY.tel}　FAX：${COMPANY.fax}\n${COMPANY.email}`;
     location.href = `mailto:${encodeURIComponent(d.sup.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     setTimeout(async () => {
       if(!await ask({title:"メールを送りましたか？", body:"ダウンロードしたPDFをメールに添付して送ってください。送ったら「送信済みにする」を押すと、送った日時が記録されます。", ok:"送信済みにする"})) return;
@@ -5166,7 +5437,7 @@ const ACTIONS = {
   // 既存業者だけに先行公開していた案件を、全体に公開する
   async "aud-all"(el){
     const id = el.dataset.id;
-    if(!await ask({title:"全体に公開しますか？", body:"既存業者以外の協力業者にも、この案件が表示されて応募できるようになります。工種と対応エリアが合う業者には、新着案件のメールでお知らせします。", ok:"全体に公開する"})) return;
+    if(!await ask({title:"全体に公開しますか？", body:"既存業者以外の協力業者にも、この案件が表示されて応募できるようになります。工種と対応エリアが合う業者には、新着案件のメールでお知らせします。" + (tenant() ? `\n\n全体に公開した案件は、発注するときに工事代金と運営手数料（${Math.round(opFee() * 100)}%）をReforeへ先払いします。` : ""), ok:"全体に公開する"})) return;
     await api().saveJob(id, {audience:"all", autoAllAt:null});
     const j = await api().getJob(id); notifyNewJob(id, j);
     toast("全体に公開しました"); route();
@@ -5176,6 +5447,7 @@ const ACTIONS = {
   async "memo-rm"(el){ const box = $("#memo-rows"); if(box.children.length > 1) el.closest(".memo-row").remove(); },
   async "craft-priority"(el){
     const on = el.dataset.on === "1";
+    if(tenant()){ await coSetPriority(el.dataset.uid, on); const c0 = S.crafts.get(el.dataset.uid); if(c0) c0.priority = on; toast(on ? "既存業者にしました" : "既存業者から外しました"); return route(); }
     await api().updateProfile(el.dataset.uid, {priority:on});
     const c = S.crafts.get(el.dataset.uid); if(c) c.priority = on;
     toast(on ? "既存業者にしました。先行公開の案件が見られます" : "既存業者から外しました"); route();
@@ -5464,7 +5736,7 @@ const ACTIONS = {
     if(el.dataset.aud) await api().saveJob(id, {audience:el.dataset.aud, autoAllAt:null});
     await api().setJobStatus(id, status);
     if(status === "open" && el.dataset.aud){ const j = await api().getJob(id); if(j && !j.parentId) notifyNewJob(id, j); }
-    if(status === "completed"){ const j = await api().getJob(id); if(j?.assignedTo) notifyMail(id, "完了確認されました", "Reforeが作業の完了を確認しました。月末に「請求書」タブからまとめて請求してください。", {to:j.assignedTo}); }
+    if(status === "completed"){ const j = await api().getJob(id); if(j?.assignedTo) notifyMail(id, "完了確認されました", `${meName()}が作業の完了を確認しました。${!tenant() ? "月末に「請求書」タブからまとめて請求してください。" : j.pay ? "「請求書」タブから、この案件の請求書をReforeに発行してください。" : "締め日に「請求書」タブからまとめて請求してください。"}`, {to:j.assignedTo}); }
     toast({open:"公開しました", closed:"締め切りました", completed:"完了確認にしました。業者さんの評価をつけてください"}[status]); route();
   },
   async assign(el){ S.ldCache = null;
@@ -5482,7 +5754,7 @@ const ACTIONS = {
     } else if(!await ask({title:`${name} さんに発注しますか？`, body:`発注内容（作業内訳）から発注書を自動で作成し、業者さまがダウンロードできるようになります。現場情報もこの業者に表示されます。ほかの応募者は「見送り」になります。${noItems ? "\n\n※作業内訳がまだ入力されていません。先に「編集」で作業ごとの金額を入力してください（あとから入力して発注書を作り直すこともできます）。" : `\n\n発注金額（税抜）：${yenFull(jobD.price)}`}`, ok:"発注する"})) return;
     if(all.length <= 1) await applyTemaToJob(jobD, priv, tema);
     const c = S.crafts.get(uid) || await api().getProfile(uid);
-    await api().assign(job, uid, buildOrderDoc(jobD, priv, c, await orderExtra(job)));
+    if(await assignOrPrepay(job, uid, buildOrderDoc(jobD, priv, c, await orderExtra(job))) === "prepay"){ toast(`${name} さんを発注先に選びました。先払いをお願いします`); return route(); }
     notifyMail(job, "発注されました", `「${jobD.title}」をあなたに発注しました。ポータルで発注内容と金額を確認して、「承諾する」を押してください。\n工期：${fmtRange(jobD.startDate, jobD.endDate)}`, {to:uid});
     toast(`${name} さんに発注し、発注書を作成しました`); route();
   },
@@ -5690,7 +5962,7 @@ const ACTIONS = {
     if(comment === false) return;
     await api().setReportStatus(el.dataset.id, "returned", comment.trim());
     const j = await api().getJob(el.dataset.job);
-    if(j?.assignedTo) notifyMail(el.dataset.job, "完了報告が差し戻されました", `Reforeからのコメント：\n${comment.trim()}\n\n内容を確認して、もう一度完了報告をしてください。`, {to:j.assignedTo});
+    if(j?.assignedTo) notifyMail(el.dataset.job, "完了報告が差し戻されました", `${meName()}からのコメント：\n${comment.trim()}\n\n内容を確認して、もう一度完了報告をしてください。`, {to:j.assignedTo});
     toast("差し戻しました"); route();
   },
   async "craft-status"(el){
@@ -5947,7 +6219,7 @@ const FORMS = {
     const ta = form.elements.text, text = ta.value.trim();
     if(!text) return;
     const role = myRole();
-    await api().sendMessage(form.dataset.id, {from:role, uid:S.user.uid, name:role === "admin" ? "Refore" : (S.profile.name || ""), text, createdAt:Date.now()});
+    await api().sendMessage(form.dataset.id, {from:role, uid:S.me?.uid || S.user.uid, name:role === "admin" ? (tenant() ? `${S.company?.name || ""}　${S.profile.name || ""}`.trim() : "Refore") : (S.me?.name || S.profile.name || ""), text, createdAt:Date.now()});
     ta.value = ""; ta.focus();
     const t = S.threads.get(form.dataset.id) || await api().getThread(form.dataset.id);
     if(t) notifyMail(t.jobId, "新しいチャットがあります", text, {to:role === "admin" ? t.craftsmanId : "", kind:"chat"});
@@ -5955,7 +6227,7 @@ const FORMS = {
   async invoice(form){
     const ym = form.dataset.month, uid = S.user.uid, p = S.profile;
     if(!p.bank?.number) throw new Error("先に登録情報で振込先を入力してください");
-    const jobs = await api().listJobs({assignedTo:uid});
+    const jobs = (await api().listJobs({assignedTo:uid})).filter(isRefJob);
     // 金額は案件に設定された支払金額をそのまま使う（業者は変更できない）
     const lines = jobs.filter(j => invoiceable(j) && jobMonth(j) === ym && Number(j.price) > 0)
       .sort((a, b) => (a.finishedAt || 0) - (b.finishedAt || 0))
@@ -6263,6 +6535,572 @@ document.addEventListener("change", e => {
   route();
 });
 
+/* =========================================================
+   工務店（マルチテナント）・運営・職人のメンバー
+   ・Refore（COMPANY_ID）は今までどおり。ほかの工務店は companies/{cid} と、案件などの companyId で分ける
+   ・工務店が「全体に公開」した案件は、発注するときに工事代金（税込）＋運営手数料をReforeへ先払い（銀行振込・運営が入金を確認して発注確定）
+   ・「既存業者のみ」の案件は先払いなし。職人さんは工務店の締め日で、その工務店へまとめて請求
+   ・月額（プラン・メンバー・収支オプション・追加枠）は、運営が毎月請求書を発行
+   ========================================================= */
+const OP_DEFAULT = {
+  plans:{p10:{name:"10件プラン", price:3000, limit:10}, p30:{name:"30件プラン", price:5000, limit:30}, p50:{name:"50件プラン", price:8000, limit:50}},
+  fee:0.1, memberFee:100, moneyFee:1000, extraFee:500,
+  bank:"", opName:"株式会社Refore（GENPUKU Pro 運営）", opInvoiceNumber:""
+};
+const opCfg = () => ({...OP_DEFAULT, ...(S.opCfg || {}), plans:{...OP_DEFAULT.plans, ...((S.opCfg || {}).plans || {})}});
+const opFee = () => Number(opCfg().fee) || 0.1;
+const planOf = c => opCfg().plans[c?.plan] || opCfg().plans.p10;
+const CLOSE_DAYS = [[10, "10日"], [15, "15日"], [20, "20日"], [25, "25日"], [0, "末日"]];
+const coCloseLabel = d => (CLOSE_DAYS.find(x => x[0] === Number(d || 0)) || CLOSE_DAYS[4])[1];
+const CO_STATUS = {active:"利用中", stopped:"利用停止"};
+const PAY_STATUS = {waiting:"振込待ち", reported:"振込の連絡あり（入金確認待ち）", held:"入金確認済み（お預かり中）", billed:"職人の請求あり", sent:"職人に支払済み", refund:"返金が必要", refunded:"返金済み"};
+
+// 職人さんの公開用の登録情報（工務店・運営だけが見る。振込先・住所は入れない。メールはお知らせの送り先）
+function pubCraftFields(d){
+  return {name:d.name || "", tradeName:d.tradeName || "", phone:d.phone || "", email:d.email || "", emailNotify:d.emailNotify !== false, trades:d.trades || [], prefs:d.prefs || [], areaNote:d.areaNote || "",
+    years:d.years || "", licenses:d.licenses || "", insurance:d.insurance || "", invoiceNumber:d.invoiceNumber || "", pr:d.pr || "",
+    status:d.status || "pending", createdAt:d.createdAt || Date.now(), updatedAt:Date.now()};
+}
+function pubCraftOf(u, company){
+  const f = pubCraftFields(u);
+  return {uid:u.uid, role:"craftsman", ...f, invoiceVerified:u.invoiceVerified || null, priority:(company?.priority || []).includes(u.uid)};
+}
+// Refore の管理者が協力業者の一覧を開いたとき、公開用の登録情報（pubcrafts）を最新にしておく
+async function syncPubCrafts(crafts){
+  if(api()?.mode !== "firebase" || S.pubSynced) return; S.pubSynced = true;
+  for(const c of crafts){ try { await api().upsertPubCraft(c.uid, c); } catch(e) { console.warn("pubcrafts", e); break; } }
+}
+// 工務店の案件なら、応募・チャット・完了報告に会社を付ける（工務店はこの印で自社の分だけを読む）
+async function withCo(x){
+  if(!x?.jobId || x.companyId) return x;
+  const j = await api().getJob(x.jobId).catch(() => null);
+  return j && !isRefJob(j) ? {...x, companyId:j.companyId, coName:j.coName || ""} : x;
+}
+// 書類に載せる会社情報
+function coInfo(){
+  if(!tenant()) return COMPANY;
+  const c = S.company || {}, i = c.info || {};
+  return {name:c.name || "", zip:i.zip || "", address:i.address || "", address2:i.address2 || "", tel:i.tel || "", fax:i.fax || "", email:i.email || c.notifyEmail || "", invoiceNumber:i.invoiceNumber || ""};
+}
+const coTermsOf = j => j.pay ? "代金は工務店からReforeへ先払い済みです。完了確認のあと、株式会社Refore宛てに本件の請求書を発行してください。"
+  : `締め日（毎月${coCloseLabel(S.company?.closeDay)}）でまとめて${S.company?.name || "工務店"}宛てにご請求ください（翌月末日払い）。`;
+// 今月の投稿数（プランの上限＋追加枠まで）。初めて公開するときに数える
+async function coPostGuard(id, x){
+  if(!tenant()) return;
+  const cur = id ? await api().getJob(id).catch(() => null) : null;
+  if(cur?.countedYm) return;
+  const ym = curMonth(), c = S.company || {}, used = await api().countPosted(S.cid, ym), cap = planOf(c).limit + Number((c.extra || {})[ym] || 0);
+  if(used >= cap) throw new Error(`今月の投稿数（${cap}件）を使い切りました。「契約・料金」で追加枠を買うか、プランを変えてください`);
+  x.countedYm = ym;
+}
+// ログインした直後：工務店なら会社、職人のメンバーなら親方、運営の設定を読む
+async function afterLogin(){
+  S.cid = null; S.company = null; S.me = null;
+  const p = S.profile; if(!p) return;
+  S.opCfg = await api().getOpSettings().catch(() => ({}));
+  if(p.role === "co"){ S.cid = p.companyId; S.company = await api().getCompany(p.companyId).catch(() => null); }
+  if(p.role === "crew" && p.status !== "suspended"){
+    const o = await api().getOwnerProfile(p.ownerUid).catch(() => null);
+    if(o){ S.me = {...p}; S.user = {...S.user, uid:o.uid, realUid:p.uid}; S.profile = o; }
+  }
+}
+function coStatusNote(){ return `<div class="alert-box"><b>この会社の利用は停止中です。</b><p>運営（Refore）にお問い合わせください。</p></div>`; }
+function coNavExtra(){
+  const h = location.hash;
+  return coAdmin() ? `<a href="#/admin/members" ${h.startsWith("#/admin/members") ? 'aria-current="page"' : ""}>メンバー</a><a href="#/admin/plan" ${h.startsWith("#/admin/plan") ? 'aria-current="page"' : ""}>契約・料金</a>` : "";
+}
+function coPostNote(){
+  const c = S.company || {}, p = planOf(c);
+  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${esc(p.name)}：今月 ${p.limit}件まで公開できます${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。既存業者のみの案件は先払い・運営手数料はありません。</p>`;
+}
+// 職人さんが見る工務店の案件の帯（掲載元・代金・請求先）
+function coJobBanner(j){
+  if(!j || isRefJob(j)) return "";
+  return `<div class="co-banner"><b>掲載元：${esc(coNameOf(j))}</b>${j.pay ? `<span class="pill approved">代金は先払い制で安心</span><span class="small">完了確認のあと、この案件の請求書をReforeに発行します</span>` : `<span class="pill pending">既存業者として受ける案件</span><span class="small">${esc(coNameOf(j))}の締め日で、まとめて${esc(coNameOf(j))}に請求します</span>`}</div>`;
+}
+
+/* ---------- 先払い（工務店 → Refore、銀行振込） ---------- */
+async function assignOrPrepay(jobId, uid, order){
+  const j = await api().getJob(jobId);
+  if(tenant() && j?.pay){
+    const amt = calcAmount(j.price, taxModeOf(j)), fee = Math.round(amt.total * opFee());
+    const c = S.crafts.get(uid) || {};
+    const pay = {id:`${jobId}_${Date.now().toString(36)}`, jobId, companyId:S.cid, coName:S.company?.name || "", craftsmanId:uid, craftsmanName:c.tradeName || c.name || "",
+      jobTitle:j.title || "", jobNo:j.jobNo || "", amount:amt.total, base:amt.base, fee, total:amt.total + fee, status:"waiting", createdAt:Date.now(), month:curMonth()};
+    await api().requestPrepay(jobId, uid, order, pay);
+    return "prepay";
+  }
+  await api().assign(jobId, uid, order);
+  return "assigned";
+}
+async function prepayPanel(job){
+  const p = job.payId ? await api().getPayment(job.payId) : null;
+  if(!p) return `<section class="panel"><h2>先払い待ち</h2><p class="small">支払いの情報が見つかりません。発注先を選び直してください。</p><button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></section>`;
+  const c = S.crafts.get(p.craftsmanId), bank = opCfg().bank;
+  return `<section class="panel prepay"><h2>先払いをお願いします</h2>
+    <p style="margin:0 0 10px">${esc(c?.tradeName || c?.name || p.craftsmanName)}さんを発注先に選びました。下の金額をReforeの口座に振り込んでください。運営が入金を確認すると発注が確定し、職人さんに現場情報と発注書が届きます。</p>
+    <div class="sumbox"><span>職人への工事代金（税込）</span><span>${yenFull(p.amount)}</span><span>運営手数料（${Math.round(opFee() * 100)}%）</span><span>${yenFull(p.fee)}</span><span class="big">お振込金額</span><span class="big">${yenFull(p.total)}</span></div>
+    <dl class="kv"><dt>振込先</dt><dd>${bank ? esc(bank) : "（運営が振込先を登録すると、ここに表示されます）"}</dd><dt>振込名義</dt><dd>${esc(S.company?.name || "")}（工事番号 ${esc(job.jobNo || job.id.slice(-6))}）</dd><dt>状態</dt><dd><span class="pill ${p.status === "reported" ? "approved" : "pending"}">${esc(PAY_STATUS[p.status] || p.status)}</span>${p.reportedAt ? `　${fmtTime(p.reportedAt)} に振込の連絡` : ""}</dd></dl>
+    <div class="row" style="margin-top:10px">${p.status === "waiting" ? `<button class="btn" data-act="pp-reported" data-id="${esc(p.id)}">振り込みました（運営に知らせる）</button>` : ""}<button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></div>
+    <p class="small" style="margin:8px 0 0">発注が確定すると、運営手数料の領収書が「請求書」の画面からダウンロードできます。</p></section>`;
+}
+function feeReceiptHtml(p){
+  const o = opCfg();
+  return `<div class="pdfdoc"><div class="hd"><table class="meta"><tr><td>発行日</td><td>${fmtDate(p.confirmedAt || Date.now())}</td></tr><tr><td>番号</td><td>R-${esc(String(p.id).slice(-10).toUpperCase())}</td></tr></table></div>
+    <h1>領収書</h1><div class="parties"><div class="to">${esc(p.coName)} 御中</div><div class="from"><b>${esc(o.opName)}</b>${o.opInvoiceNumber ? `<br>登録番号 ${esc(o.opInvoiceNumber)}` : ""}</div></div>
+    <div class="total"><span>金額（税込）</span><strong>${yenFull(p.fee)}</strong></div>
+    <table class="t"><tr><th>但し書き</th><td>運営手数料として（${esc(p.jobTitle)}${p.jobNo ? `　工事番号 ${esc(p.jobNo)}` : ""}）</td></tr>
+      <tr><th>内訳</th><td>工事代金（税込）${yenFull(p.amount)} × ${Math.round(opFee() * 100)}%</td></tr>
+      <tr><th>お預かりした工事代金</th><td>${yenFull(p.amount)}（職人さんへの支払いに充てます）</td></tr></table>
+    <p style="margin:12px 0 0">上記正に領収いたしました。</p><div class="foot">この領収書は GENPUKU Pro 協力業者ポータルから発行しています。</div></div>`;
+}
+// 工務店の「請求書」画面の上：締め日と、先払いの一覧
+async function coInvoiceHead(){
+  const c = S.company || {}, pays = (await api().listPayments({companyId:S.cid}).catch(() => [])).sort((a, b) => b.createdAt - a.createdAt);
+  return `<section class="panel"><h2>締め日 <small>既存業者のみの案件の請求</small></h2>
+    <div class="row"><label class="field" style="min-width:200px;margin:0"><span>職人さんからの請求の締め日</span><select data-coclose ${coAdmin() ? "" : "disabled"}>${CLOSE_DAYS.map(([d, l]) => `<option value="${d}" ${d === Number(c.closeDay || 0) ? "selected" : ""}>毎月${l}</option>`).join("")}</select></label>
+    <span class="small">締め日までに完了を確認した案件が、その月の請求書にまとまります。下の月は「締め日の月」です。</span></div></section>
+    <section class="panel"><h2>先払い（ポータル案件） <small>工事代金＋運営手数料をReforeへ</small></h2>
+    ${pays.length ? pays.map(p => `<div class="doc-row"><span class="row-main"><b>${esc(p.jobTitle)}</b><span class="small">${esc(p.craftsmanName)}　${yenFull(p.total)}（うち手数料 ${yenFull(p.fee)}）　${fmtTime(p.createdAt)}</span></span>
+      <span class="row"><span class="pill ${["held", "billed", "sent", "refunded"].includes(p.status) ? "approved" : "pending"}">${esc(PAY_STATUS[p.status] || p.status)}</span>${p.confirmedAt ? `<button class="btn sub" data-act="pp-receipt" data-id="${esc(p.id)}">手数料の領収書</button>` : `<a class="btn sub" href="#/admin/job/${esc(p.jobId)}">案件を開く</a>`}</span></div>`).join("") : `<p class="small" style="margin:0">まだありません。全体に公開した案件で発注先を選ぶと、ここに並びます。</p>`}
+    <p class="small" style="margin:8px 0 0">ポータル案件の職人さんへの支払いはReforeが行います（職人さんはReforeに請求します）。</p></section>`;
+}
+async function coSetPriority(uid, on){
+  const list = new Set(S.company?.priority || []); on ? list.add(uid) : list.delete(uid);
+  const priority = [...list];
+  await api().updateCompany(S.cid, {priority}); S.company.priority = priority;
+}
+function coInfoPanel(){
+  const c = S.company || {}, i = c.info || {};
+  return `<section class="panel"><h2>会社の情報 <small>見積書・発注書・御請求書に載ります</small></h2>
+    <form data-form="coinfo" class="stack">
+      <label class="field"><span>会社名</span><input name="name" value="${esc(c.name)}" required></label>
+      <div class="two"><label class="field"><span>郵便番号</span><input name="zip" value="${esc(i.zip)}"></label><label class="field"><span>電話番号</span><input name="tel" value="${esc(i.tel)}"></label></div>
+      <label class="field"><span>住所</span><input name="address" value="${esc(i.address)}"></label>
+      <label class="field"><span>住所（建物名など）</span><input name="address2" value="${esc(i.address2)}"></label>
+      <div class="two"><label class="field"><span>FAX</span><input name="fax" value="${esc(i.fax)}"></label><label class="field"><span>書類に載せるメール</span><input name="email" type="email" value="${esc(i.email)}"></label></div>
+      <div class="two"><label class="field"><span>インボイス登録番号</span><input name="invoiceNumber" value="${esc(i.invoiceNumber)}" placeholder="例：T1234567890123"></label>
+        <label class="field"><span>お知らせメールの送り先 <small>職人さんの応募・報告などが届きます</small></span><input name="notifyEmail" type="email" value="${esc(c.notifyEmail || c.ownerEmail || "")}"></label></div>
+      <button class="btn sub" style="align-self:flex-start">会社の情報を保存</button></form></section>`;
+}
+
+/* ---------- 工務店：メンバー ---------- */
+async function viewCoMembers(){
+  const [mem, inv] = await Promise.all([api().listMembers(S.cid), api().listInvites({companyId:S.cid}).catch(() => [])]);
+  const c = S.company, active = mem.filter(m => m.status !== "suspended"), paid = active.filter(m => !m.owner).length;
+  return `<h1>メンバー</h1><p class="lead">管理画面にログインする人を招待します。招待した人が参加すると、1人につき月額 ${yenFull(opCfg().memberFee)} です（最初の管理者は無料）。</p>
+    <div class="cols"><section class="panel"><h2>メンバー <small>${active.length}人</small></h2>
+      ${active.map(m => `<div class="doc-row"><span class="row-main"><b>${esc(m.name || m.email)}${m.uid === S.user.uid ? "（あなた）" : ""}${m.owner ? `　<span class="small">代表</span>` : ""}</b><span class="small">${esc(m.email)}</span></span>
+        <span class="row">${m.owner ? `<span class="pill approved">管理者</span>` : `<select data-memrole="${esc(m.uid)}" aria-label="役割">${["管理者", "担当者"].map(r => `<option ${r === m.coRole ? "selected" : ""}>${r}</option>`).join("")}</select>${m.uid !== S.user.uid ? `<button class="btn sub danger-text" data-act="mem-remove" data-uid="${esc(m.uid)}">外す</button>` : ""}`}</span></div>`).join("")}
+      <p class="small" style="margin:10px 0 0"><b>管理者</b>はすべての画面と契約を扱えます。<b>担当者</b>は見積・案件・予定表・チャット・請求書を扱えます（収支・設定・契約は見えません）。メンバーの月額は今 ${paid}人 × ${yenFull(opCfg().memberFee)} です。</p></section>
+    <div class="stack"><form class="panel" data-form="coinvite"><h2>招待する</h2>
+      <label class="field"><span>名前</span><input name="name" required placeholder="例：佐々木"></label>
+      <label class="field"><span>メールアドレス</span><input name="email" type="email" required placeholder="例：sasaki@example.jp"></label>
+      <label class="field"><span>役割</span><select name="coRole"><option>担当者</option><option>管理者</option></select></label>
+      <button class="btn">招待メールを送る</button>
+      <p class="small" style="margin:8px 0 0">招待された人は、メールのリンクから自分のアカウントを作ります。リンクは7日間有効で、招待したメールアドレスでしか参加できません。</p></form>
+      ${inv.length ? `<section class="panel"><h2>招待中 <small>${inv.length}人</small></h2>${inv.map(x => inviteRow(x)).join("")}</section>` : ""}</div></div>`;
+}
+const inviteUrl = id => location.href.split("#")[0] + "#/join/" + id;
+function inviteRow(x){
+  const old = x.expiresAt < Date.now();
+  return `<div class="doc-row"><span class="row-main"><b>${esc(x.name || x.email)}</b><span class="small">${esc(x.email)}　${esc(x.coRole || "")}　${old ? `<span class="warn">期限切れ</span>` : `${fmtDate(x.expiresAt)}まで有効`}</span></span>
+    <span class="row"><button class="btn sub" data-act="inv-copy" data-id="${esc(x.id)}">リンクをコピー</button><button class="btn sub danger-text" data-act="inv-del" data-id="${esc(x.id)}">取り消す</button></span></div>`;
+}
+async function sendInviteMail(id){
+  if(api()?.mode !== "firebase" || !PHOTO_UPLOAD_URL) return false;
+  try {
+    const r = await fetch(PHOTO_UPLOAD_URL, {method:"POST", body:JSON.stringify({action:"invite", idToken:await api().getIdToken(), inviteId:id, url:inviteUrl(id)})}).then(r => r.json());
+    if(!r.ok) toast("招待メールを送れませんでした：" + (r.error || "") + "。リンクをコピーして送ってください");
+    return !!r.ok;
+  } catch(e) { toast("招待メールを送れませんでした。リンクをコピーして送ってください"); return false; }
+}
+
+/* ---------- 工務店：契約・料金 ---------- */
+function coMonthly(c, memberCount, ym = curMonth()){
+  const o = opCfg(), p = planOf(c), ex = Number((c.extra || {})[ym] || 0);
+  const r = {plan:p.price, planName:p.name, money:c.money ? o.moneyFee : 0, members:memberCount * o.memberFee, memberCount, extra:ex * o.extraFee, extraCount:ex};
+  r.total = r.plan + r.money + r.members + r.extra; return r;
+}
+async function viewCoPlan(){
+  const c = S.company, ym = curMonth(), o = opCfg();
+  const [mem, used, bills] = await Promise.all([api().listMembers(S.cid), api().countPosted(S.cid, ym), api().listCoBills({companyId:S.cid}).catch(() => [])]);
+  const nMem = mem.filter(m => m.status !== "suspended" && !m.owner).length, mo = coMonthly(c, nMem), p = planOf(c), cap = p.limit + mo.extraCount;
+  return `<h1>契約・料金</h1><p class="lead">プランは公開できる案件の数で選びます。全体に公開した案件は、発注するときに工事代金の${Math.round(opFee() * 100)}%が運営手数料として上乗せされます（既存業者のみの案件はかかりません）。</p>
+    <div class="cols"><section class="panel"><h2>${esc(p.name)} <small>${esc(CO_STATUS[c.status] || c.status)}</small></h2>
+      <div class="meter" aria-hidden="true"><i style="width:${Math.min(100, used / Math.max(1, cap) * 100)}%"></i></div>
+      <div class="row between"><span class="small">今月 ${used}/${cap}件公開${mo.extraCount ? `（追加枠 ${mo.extraCount}件を含む）` : ""}</span><button class="btn sub" data-act="co-extra">追加枠を買う（1件 ${yenFull(o.extraFee)}・今月のみ）</button></div></section>
+    <section class="panel"><h2>今月のご請求（税別）</h2><div class="inv-lines">
+      <div class="inv-line"><span class="row-main"><b>${esc(p.name)}</b></span><b class="inv-money">${yenFull(mo.plan)}</b></div>
+      <div class="inv-line"><span class="row-main"><b>収支オプション</b><span class="small">${c.money ? "使っています" : "使っていません"}</span></span><b class="inv-money">${yenFull(mo.money)}</b></div>
+      <div class="inv-line"><span class="row-main"><b>メンバー ${nMem}人 × ${yenFull(o.memberFee)}</b></span><b class="inv-money">${yenFull(mo.members)}</b></div>
+      <div class="inv-line"><span class="row-main"><b>追加枠 ${mo.extraCount}件 × ${yenFull(o.extraFee)}</b></span><b class="inv-money">${yenFull(mo.extra)}</b></div></div>
+      <div class="inv-sum"><span>合計 <b>${yenFull(mo.total)}</b>（税別）</span></div>
+      <p class="small" style="margin:8px 0 0">月額は、月末に運営（Refore）から請求書をお送りします。運営手数料は、発注するときの先払いに含まれます。</p></section></div>
+    <h2 class="day-head"><b>プラン</b></h2>
+    <div class="plans">${Object.entries(o.plans).map(([k, x]) => `<div class="plan ${k === c.plan ? "cur" : ""}"><b>${esc(x.name)}</b><span class="pr num">${yenFull(x.price)}</span><span class="small">月額・税別</span><span>月 ${x.limit}件まで公開</span>${k === c.plan ? `<span class="pill approved" style="align-self:flex-start">利用中</span>` : `<button class="btn sub" data-act="co-plan" data-id="${k}" style="align-self:flex-start">このプランに変更</button>`}</div>`).join("")}
+      <div class="plan"><b>収支オプション</b><span class="pr num">${yenFull(o.moneyFee)}</span><span class="small">月額・税別</span><span>完了した案件の売上・外注費・利益が自動で入る収支一覧</span>${c.money ? `<button class="btn sub" data-act="co-money" data-on="0" style="align-self:flex-start">やめる（データは残ります）</button>` : `<button class="btn" data-act="co-money" data-on="1" style="align-self:flex-start">使う</button>`}</div></div>
+    <h2 class="day-head"><b>これまでのご請求</b>${bills.length}件</h2>
+    ${bills.length ? `<div class="list">${bills.sort((a, b) => b.month.localeCompare(a.month)).map(b => `<div class="doc-row"><span class="row-main"><b>${fmtMonth(b.month)}分</b><span class="small">${yenFull(b.total)}（税込）　${fmtDate(b.issuedAt)} 発行</span></span><span class="row"><span class="pill ${b.status === "paid" ? "approved" : "pending"}">${b.status === "paid" ? "お支払い済み" : "お支払い待ち"}</span><button class="btn sub" data-act="cobill-pdf" data-id="${esc(b.id)}">PDF</button></span></div>`).join("")}</div>` : `<p class="small">まだありません。</p>`}`;
+}
+function coBillHtml(b){
+  const o = opCfg();
+  return `<div class="pdfdoc"><div class="hd"><table class="meta"><tr><td>請求番号</td><td>${esc(b.number || b.id)}</td></tr><tr><td>請求日</td><td>${fmtDate(b.issuedAt)}</td></tr></table></div>
+    <h1>御請求書</h1><div class="parties"><div class="to">${esc(b.coName)} 御中</div><div class="from"><b>${esc(o.opName)}</b>${o.opInvoiceNumber ? `<br>登録番号 ${esc(o.opInvoiceNumber)}` : ""}</div></div>
+    <p style="margin:0 0 6px">GENPUKU Pro ${fmtMonth(b.month)}分のご利用料金をご請求申し上げます。</p>
+    <div class="total"><span>ご請求金額（税込）</span><strong>${yenFull(b.total)}</strong></div>
+    <table class="t items"><tr><th>品目</th><th>数量</th><th>金額（税抜）</th></tr>
+      <tr><td>${esc(b.planName)}</td><td class="r">1</td><td class="r">${yenFull(b.plan)}</td></tr>
+      ${b.money ? `<tr><td>収支オプション</td><td class="r">1</td><td class="r">${yenFull(b.money)}</td></tr>` : ""}
+      ${b.members ? `<tr><td>メンバー追加</td><td class="r">${b.memberCount}人</td><td class="r">${yenFull(b.members)}</td></tr>` : ""}
+      ${b.extra ? `<tr><td>追加枠</td><td class="r">${b.extraCount}件</td><td class="r">${yenFull(b.extra)}</td></tr>` : ""}</table>
+    <table class="t sum"><tr><th>小計（税抜）</th><td class="r">${yenFull(b.base)}</td></tr><tr><th>消費税（10%）</th><td class="r">${yenFull(b.tax)}</td></tr><tr><th>合計（税込）</th><td class="r"><b>${yenFull(b.total)}</b></td></tr></table>
+    <table class="t"><tr><th>お振込先</th><td>${esc(o.bank) || "（運営の設定で登録）"}</td></tr><tr><th>お支払期限</th><td>${fmtDate(lastDayIso(shiftMonth(b.month, 1)))}</td></tr></table>
+    <div class="foot">この請求書は GENPUKU Pro 協力業者ポータルから発行しています。</div></div>`;
+}
+
+/* ---------- 職人：工務店あての請求書 ---------- */
+// 締め日で区切った「月」（締め日が20日なら、6/21〜7/20 が7月分）
+function periodOf(ms, closeDay){ const d = new Date(ms || Date.now()), cd = Number(closeDay || 0); if(cd && d.getDate() > cd) d.setMonth(d.getMonth() + 1, 1); return isoOf(d.getTime()).slice(0, 7); }
+const periodLabel = (p, cd) => { const [y, m] = p.split("-").map(Number); cd = Number(cd || 0); return `${y}年${m}月分（${cd ? `${m - 1 || 12}/${cd + 1}〜${m}/${cd}` : `${m}/1〜${m}/末日`}）`; };
+async function craftCoInvoices(jobs){
+  const mine = jobs.filter(j => !isRefJob(j) && ["completed", "paid"].includes(j.status));
+  if(!mine.length) return "";
+  const uid = S.user.uid, invs = await api().listInvoices({craftsmanId:uid}).catch(() => []), byId = new Map(invs.map(v => [v.id, v]));
+  const each = mine.filter(j => j.pay).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  const groups = {}; mine.filter(j => !j.pay).forEach(j => { const k = `${j.companyId}|${periodOf(j.completedAt, j.coClose)}`; (groups[k] ||= []).push(j); });
+  const st = v => v?.status === "paid" ? `<span class="pill approved">支払済み</span>` : v ? `<span class="pill pending">発行済み・支払待ち</span>` : `<span class="pill withdrawn">未発行</span>`;
+  return `<h2 class="day-head"><b>工務店の案件</b></h2>
+    ${each.length ? `<section class="panel"><h2>ポータル案件 <small>案件ごとに株式会社Refore宛て（代金は先払い済み）</small></h2>
+      ${each.map(j => { const v = byId.get(`${uid}_j_${j.id}`), a = calcAmount(j.price, taxModeOf(j)); return `<div class="doc-row"><span class="row-main"><b>${esc(j.title)}</b><span class="small">掲載元：${esc(coNameOf(j))}　完了確認 ${fmtDay(isoOf(j.completedAt || Date.now()))}　${yenFull(a.total)}（税込）</span></span>
+        <span class="row">${st(v)}${v ? `<button class="btn sub" data-act="inv-pdf" data-id="${esc(v.id)}">PDF</button>` : `<button class="btn" data-act="civ-job" data-job="${esc(j.id)}">請求書を発行</button>`}</span></div>`; }).join("")}</section>` : ""}
+    ${Object.keys(groups).length ? `<section class="panel"><h2>既存業者として受けた案件 <small>工務店の締め日でまとめて工務店宛て</small></h2>
+      ${Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0])).map(([k, js]) => { const [cid, p] = k.split("|"), v = byId.get(`${uid}_${cid}_${p}`), base = js.reduce((s, j) => s + (Number(j.price) || 0), 0);
+        return `<div class="doc-row"><span class="row-main"><b>${esc(coNameOf(js[0]))} 宛て　${periodLabel(p, js[0].coClose)}</b><span class="small">締め日：毎月${coCloseLabel(js[0].coClose)}　${js.length}件　${yenFull(base + Math.floor(base * TAX_RATE))}（税込）</span></span>
+          <span class="row">${st(v)}${v ? `<button class="btn sub" data-act="inv-pdf" data-id="${esc(v.id)}">PDF</button>` : ""}${v?.status !== "paid" ? `<button class="btn ${v ? "sub" : ""}" data-act="civ-co" data-key="${esc(k)}">${v ? "再発行" : "この内容で請求書を発行"}</button>` : ""}</span></div>`; }).join("")}</section>` : ""}`;
+}
+async function issueCraftInvoice(id, extra, jobs, toName, label){
+  const p = S.profile, uid = S.user.uid;
+  if(!p.bank?.number) throw new Error("先に登録情報で振込先を入力してください");
+  const lines = jobs.filter(j => Number(j.price) > 0).map(j => ({jobId:j.id, title:j.title, place:(j.pref || "") + (j.city || ""), date:fmtDate(j.completedAt || j.finishedAt || j.endDate), amount:Number(j.price)}));
+  if(!lines.length) throw new Error("金額が設定された案件がありません");
+  const prev = await api().getInvoice(id), base = lines.reduce((a, l) => a + l.amount, 0), tax = Math.floor(base * TAX_RATE);
+  if(prev?.status === "paid") throw new Error("この請求書はすでに支払済みです");
+  if(!await ask({title:`${toName}宛ての請求書を${prev ? "再" : ""}発行しますか？`, body:`${label}\n${lines.length}件　合計 ${yenFull(base + tax)}（税込）`, ok:"発行する"})) return false;
+  await api().saveInvoice({id, craftsmanId:uid, ...extra, toName, number:prev?.number || `INV-${extra.month.replace("-", "")}-${uid.slice(-4).toUpperCase()}${String(Date.now()).slice(-3)}`,
+    status:"issued", issuedAt:Date.now(), lines, base, tax, total:base + tax, note:"",
+    from:{name:p.name || "", tradeName:p.tradeName || "", address:p.address || "", phone:p.phone || "", email:p.email || "", invoiceNumber:p.invoiceNumber || ""}, bank:{...p.bank}});
+  return {lines, total:base + tax, prev};
+}
+
+/* ---------- 職人：メンバー（従業員） ---------- */
+async function crewPanel(){
+  if(S.me || S.profile?.employee || api()?.mode !== "firebase" && api()?.mode !== "demo") return "";
+  const [crew, inv] = await Promise.all([api().listCrew(S.user.uid).catch(() => []), api().listInvites({ownerUid:S.user.uid}).catch(() => [])]);
+  const act = crew.filter(m => m.status !== "suspended");
+  return `<div class="cols" style="margin-top:16px"><section class="panel"><h2>メンバー <small>従業員</small></h2>
+      <p class="small" style="margin:0 0 10px">従業員は、あなたが受けた案件の現場情報・予定・チャットを見られ、作業開始・完了と完了報告を送れます。お金・請求書・応募はあなただけが扱います。追加は無料です。</p>
+      ${act.length ? act.map(m => `<div class="doc-row"><span class="row-main"><b>${esc(m.name)}</b><span class="small">${esc(m.email)}</span></span><button class="btn sub danger-text" data-act="crew-remove" data-uid="${esc(m.uid)}">外す</button></div>`).join("") : `<p class="small" style="margin:0">まだいません。</p>`}
+      ${inv.length ? `<h3 style="margin:12px 0 6px">招待中</h3>${inv.map(x => inviteRow(x)).join("")}` : ""}</section>
+    <form class="panel" data-form="crewinvite"><h2>従業員を招待する</h2>
+      <label class="field"><span>名前</span><input name="name" required placeholder="例：鈴木"></label>
+      <label class="field"><span>メールアドレス</span><input name="email" type="email" required></label>
+      <button class="btn">招待メールを送る</button></form></div>`;
+}
+function viewCrewProfile(){
+  return `<h1>登録情報</h1><section class="panel"><dl class="kv"><dt>名前</dt><dd>${esc(S.me.name)}</dd><dt>メール</dt><dd>${esc(S.me.email)}</dd><dt>所属</dt><dd>${esc(S.profile.tradeName || S.profile.name)}（親方：${esc(S.profile.name)}さん）</dd></dl>
+    <p class="small" style="margin:10px 0 0">親方が受けた案件の現場情報・予定・チャットを見られ、作業開始・完了と完了報告を送れます。</p></section>`;
+}
+
+/* ---------- 招待から参加する ---------- */
+async function viewJoin(token){
+  const inv = token ? await api().getInvite(token).catch(() => null) : null;
+  const wrap = h => `<div class="auth-wrap">${authHead()}${h}</div>`;
+  if(!inv) return wrap(`<div class="panel"><h2>招待が見つかりません</h2><p>リンクが正しいか、招待した人に確認してください。</p><a class="btn sub" href="#/">ログイン画面へ</a></div>`);
+  if(inv.usedAt) return wrap(`<div class="panel"><h2>この招待はすでに使われています</h2><p>登録したメールアドレスでログインしてください。</p><a class="btn" href="#/">ログイン画面へ</a></div>`);
+  if(inv.expiresAt < Date.now()) return wrap(`<div class="panel"><h2>招待の期限が切れています</h2><p>招待した人に、もう一度招待してもらってください。</p></div>`);
+  const who = inv.kind === "crew" ? `${esc(inv.ownerName || "協力業者")}さんの従業員` : `${esc(inv.companyName || "工務店")}の${esc(inv.coRole || "担当者")}`;
+  if(S.user && S.profile) return wrap(`<div class="panel"><h2>${who}への招待</h2><p>いま別のアカウント（${esc(S.user.email)}）でログインしています。ログアウトしてから、もう一度このリンクを開いてください。</p><button class="btn sub" data-act="logout">ログアウト</button></div>`);
+  if(S.user && !S.profile){
+    if(String(S.user.email || "").toLowerCase() !== String(inv.email || "").toLowerCase()) return wrap(`<div class="panel"><h2>メールアドレスが違います</h2><p>招待されたメールアドレス（${esc(inv.email)}）でアカウントを作ってください。</p><button class="btn sub" data-act="logout">ログアウト</button></div>`);
+    return wrap(`<form class="panel" data-form="joinaccept" data-id="${esc(inv.id)}"><h2>${who}として参加する</h2>
+      <label class="field"><span>名前</span><input name="name" required value="${esc(inv.name || "")}"></label>
+      ${inv.kind === "co" ? `<label class="field"><span>電話番号 <small>任意</small></span><input name="phone" type="tel"></label>` : ""}
+      <button class="btn block">参加する</button></form>`);
+  }
+  return wrap(`<form class="panel" data-form="joinsignup" data-id="${esc(inv.id)}"><h2>${who}への招待</h2>
+    <p class="small" style="margin:0 0 10px">招待されたメールアドレスでアカウントを作ります。すでにこのメールでアカウントがある場合は、パスワードを入れて「ログインして参加」にチェックしてください。</p>
+    <label class="field"><span>メールアドレス</span><input name="email" type="email" value="${esc(inv.email)}" readonly></label>
+    <label class="field"><span>パスワード <small>6文字以上</small></span><input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+    <label class="toggle"><input type="checkbox" name="existing">このメールのアカウントを持っているので、ログインして参加する</label>
+    <button class="btn block" style="margin-top:10px">次へ</button></form>`);
+}
+
+/* ---------- 運営 ---------- */
+function paintOp(content){
+  const h = location.hash, tabs = [["home", "収入"], ["cos", "工務店"], ["pays", "入金"], ["invs", "職人の請求"], ["bills", "月額の請求"], ["crafts", "協力業者"], ["jobs", "全案件"], ["settings", "設定"]];
+  const cur = (h.split("/")[2] || "home");
+  $("#app").innerHTML = demoBar() + `<header class="top"><div class="top-in"><a class="brand" href="#/op"><span class="brand-mark gp" aria-hidden="true"></span><span><b><span class="nw">GENPUKU Pro</span> <span class="nw">運営画面</span></b><small>${esc(S.profile.name || "運営")}</small></span></a>
+    <button class="link" data-act="logout">ログアウト</button></div><nav class="admin-nav" aria-label="運営メニュー">${tabs.map(([k, l]) => `<a href="#/op/${k}" ${cur === k ? 'aria-current="page"' : ""}>${l}${k === "pays" && S.opWait ? `<span class="badge">${S.opWait}</span>` : k === "crafts" && S.opPend ? `<span class="badge">${S.opPend}</span>` : ""}</a>`).join("")}</nav></header><main class="main">${content}</main>`;
+}
+async function routeOp(parts){
+  if(parts[0] !== "op"){ location.replace("#/op"); return ""; }
+  const [cos, pays, users] = await Promise.all([api().listCompanies(), api().listPayments({}), api().opListUsers()]);
+  S.opCos = new Map(cos.map(c => [c.id, c])); S.opUsers = users;
+  S.opWait = pays.filter(p => ["waiting", "reported"].includes(p.status)).length; S.opPend = users.filter(u => u.role === "craftsman" && u.status === "pending" && !u.employee).length;
+  const t = parts[1] || "home";
+  if(t === "cos") return parts[2] ? viewOpCompany(parts[2]) : viewOpCos(cos);
+  if(t === "pays") return viewOpPays(pays);
+  if(t === "invs") return viewOpInvs();
+  if(t === "bills") return viewOpBills(parts[2]);
+  if(t === "crafts") return viewOpCrafts(users);
+  if(t === "jobs") return viewOpJobs();
+  if(t === "settings") return viewOpSettings();
+  return viewOpHome(cos, pays);
+}
+async function viewOpHome(cos, pays){
+  const ym = curMonth(), act = cos.filter(c => c.status === "active");
+  const mem = S.opUsers.filter(u => u.role === "co" && u.status !== "suspended");
+  const monthly = act.map(c => coMonthly(c, mem.filter(m => m.companyId === c.id && !m.owner).length, ym));
+  const sum = k => monthly.reduce((a, m) => a + m[k], 0);
+  const feeNow = pays.filter(p => p.confirmedAt && isoOf(p.confirmedAt).slice(0, 7) === ym && !["refund", "refunded"].includes(p.status)).reduce((a, p) => a + p.fee, 0);
+  const held = pays.filter(p => ["held", "billed"].includes(p.status)).reduce((a, p) => a + p.amount, 0);
+  const wait = pays.filter(p => ["waiting", "reported"].includes(p.status)), refund = pays.filter(p => p.status === "refund");
+  return `<div class="page-head"><div><h1>今月の収入</h1><p class="lead">運営の画面です。全工務店の契約・入金・手数料が見えます。各社の見積や収支の中身は運営にも見えません。</p></div></div>
+    <div class="kpis"><div class="panel kpi"><span class="l">運営手数料（${Math.round(opFee() * 100)}%）</span><span class="v num">${yenFull(feeNow)}</span><span class="s">今月入金を確認した先払いの分</span></div>
+      <div class="panel kpi"><span class="l">プラン料金</span><span class="v num">${yenFull(sum("plan"))}</span><span class="s">利用中 ${act.length}社</span></div>
+      <div class="panel kpi"><span class="l">オプション・メンバー・追加枠</span><span class="v num">${yenFull(sum("money") + sum("members") + sum("extra"))}</span><span class="s">収支 ${yenFull(sum("money"))}・メンバー ${yenFull(sum("members"))}・追加枠 ${yenFull(sum("extra"))}</span></div>
+      <div class="panel kpi"><span class="l">お預かり中の工事代金</span><span class="v num">${yenFull(held)}</span><span class="s">職人さんへの支払い前</span></div></div>
+    ${wait.length ? `<section class="panel"><h2>入金の確認待ち <small>${wait.length}件</small></h2>${wait.map(opPayRow).join("")}</section>` : ""}
+    ${refund.length ? `<section class="panel"><h2>返金が必要 <small>発注が取り消された先払い</small></h2>${refund.map(opPayRow).join("")}</section>` : ""}`;
+}
+function opPayRow(p){
+  const btn = ["waiting", "reported"].includes(p.status) ? `<button class="btn" data-act="op-confirm" data-id="${esc(p.id)}">入金を確認して発注を確定</button>`
+    : p.status === "refund" ? `<button class="btn sub" data-act="op-refunded" data-id="${esc(p.id)}">返金した</button>` : "";
+  return `<div class="doc-row"><span class="row-main"><b>${esc(p.coName)}　${yenFull(p.total)}</b><span class="small">${esc(p.jobTitle)}　職人：${esc(p.craftsmanName)}　工事代金 ${yenFull(p.amount)}＋手数料 ${yenFull(p.fee)}</span><span class="small">${fmtTime(p.createdAt)} 選定${p.reportedAt ? `　${fmtTime(p.reportedAt)} 振込の連絡` : ""}${p.confirmedAt ? `　${fmtTime(p.confirmedAt)} 入金確認` : ""}</span></span>
+    <span class="row"><span class="pill ${["held", "billed", "sent", "refunded"].includes(p.status) ? "approved" : "pending"}">${esc(PAY_STATUS[p.status] || p.status)}</span>${btn}</span></div>`;
+}
+function viewOpCos(cos){
+  const ym = curMonth(), mem = S.opUsers.filter(u => u.role === "co" && u.status !== "suspended");
+  return `<div class="page-head"><div><h1>工務店</h1><p class="lead">工務店は運営が招待した会社だけが使えます。招待すると、代表者にメールで参加のリンクが届きます。</p></div></div>
+    <div class="cols"><section class="panel"><h2>会社 <small>${cos.length}社</small></h2>
+      ${cos.length ? cos.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).map(c => { const m = mem.filter(u => u.companyId === c.id), mo = coMonthly(c, m.filter(u => !u.owner).length, ym);
+        return `<a class="row-item" href="#/op/cos/${esc(c.id)}"><span class="row-main"><b>${esc(c.name)}</b><span class="small">${esc(planOf(c).name)}　メンバー ${m.length}人${c.money ? "　収支オプション" : ""}　月額 ${yenFull(mo.total)}（税別）</span></span><span class="pill ${c.status === "active" ? "approved" : "suspended"}">${esc(CO_STATUS[c.status] || c.status)}</span></a>`; }).join("") : `<p class="small">まだありません。</p>`}</section>
+    <form class="panel" data-form="opcompany"><h2>工務店を招待する</h2>
+      <label class="field"><span>会社名</span><input name="name" required placeholder="例：みどり建装株式会社"></label>
+      <div class="two"><label class="field"><span>代表者の名前</span><input name="ownerName" required></label><label class="field"><span>代表者のメール</span><input name="ownerEmail" type="email" required></label></div>
+      <div class="two"><label class="field"><span>プラン</span><select name="plan">${Object.entries(opCfg().plans).map(([k, x]) => `<option value="${k}">${esc(x.name)}（${yenFull(x.price)}）</option>`).join("")}</select></label>
+        <label class="field"><span>工事番号の頭 <small>英字2〜3文字</small></span><input name="prefix" maxlength="3" placeholder="例：MD" style="text-transform:uppercase"></label></div>
+      <label class="field"><span>締め日 <small>既存業者からの請求</small></span><select name="closeDay">${CLOSE_DAYS.map(([d, l]) => `<option value="${d}" ${d === 0 ? "selected" : ""}>毎月${l}</option>`).join("")}</select></label>
+      <button class="btn">招待する</button></form></div>`;
+}
+async function viewOpCompany(cid){
+  const c = S.opCos.get(cid); if(!c) return `${back("#/op/cos", "工務店")}<div class="empty">見つかりません。</div>`;
+  const mem = S.opUsers.filter(u => u.companyId === cid), inv = await api().listInvites({companyId:cid}).catch(() => []);
+  return `${back("#/op/cos", "工務店")}<div class="page-head"><div><h1>${esc(c.name)}</h1><p class="lead"><span class="pill ${c.status === "active" ? "approved" : "suspended"}">${esc(CO_STATUS[c.status] || c.status)}</span>　${esc(planOf(c).name)}　締め日 毎月${coCloseLabel(c.closeDay)}</p></div>
+    <div class="row">${c.status === "active" ? `<button class="btn danger" data-act="op-co-status" data-id="${esc(cid)}" data-st="stopped">利用を停止する</button>` : `<button class="btn" data-act="op-co-status" data-id="${esc(cid)}" data-st="active">利用を再開する</button>`}</div></div>
+    <div class="cols"><section class="panel"><h2>メンバー</h2>${mem.length ? mem.map(m => `<div class="doc-row"><span class="row-main"><b>${esc(m.name || m.email)}${m.owner ? "（代表）" : ""}</b><span class="small">${esc(m.email)}　${esc(m.coRole || "")}</span></span><span class="pill ${m.status === "suspended" ? "suspended" : "approved"}">${m.status === "suspended" ? "外れた" : "参加中"}</span></div>`).join("") : `<p class="small">まだ誰も参加していません。</p>`}
+      ${inv.length ? `<h3 style="margin:12px 0 6px">招待中</h3>${inv.map(x => inviteRow(x)).join("")}` : ""}
+      <form class="row" data-form="opreinvite" data-id="${esc(cid)}" style="margin-top:10px"><input name="email" type="email" placeholder="代表者のメール（招待し直す）" required style="flex:1;min-width:0"><button class="btn sub">管理者として招待</button></form></section>
+    <section class="panel"><h2>契約</h2><dl class="kv"><dt>プラン</dt><dd>${esc(planOf(c).name)}</dd><dt>収支オプション</dt><dd>${c.money ? "使用中" : "—"}</dd><dt>今月の追加枠</dt><dd>${Number((c.extra || {})[curMonth()] || 0)}件</dd><dt>工事番号の頭</dt><dd>${esc(c.prefix || "—")}</dd><dt>お知らせメール</dt><dd>${esc(c.notifyEmail || c.ownerEmail || "")}</dd></dl></section></div>`;
+}
+function viewOpPays(pays){
+  const g = s => pays.filter(p => s.includes(p.status)).sort((a, b) => b.createdAt - a.createdAt);
+  const sec = (t, l) => l.length ? `<section class="panel"><h2>${t} <small>${l.length}件</small></h2>${l.map(opPayRow).join("")}</section>` : "";
+  return `<h1>入金</h1><p class="lead">工務店が「全体に公開」した案件の先払いです。振込を確認したら「入金を確認して発注を確定」を押すと、職人さんに発注書と現場情報が届きます。振込先は「設定」で登録します。</p>
+    ${sec("入金の確認待ち", g(["waiting", "reported"]))}${sec("返金が必要", g(["refund"]))}${sec("お預かり中・職人の請求あり", g(["held", "billed"]))}${sec("職人に支払済み・返金済み", g(["sent", "refunded"]))}
+    ${pays.length ? "" : `<div class="empty">まだありません。</div>`}`;
+}
+async function viewOpInvs(){
+  const invs = (await api().opListInvoices()).sort((a, b) => b.issuedAt - a.issuedAt);
+  return `<h1>職人からの請求書</h1><p class="lead">ポータル案件（工務店が全体に公開した案件）は、職人さんが案件ごとにReforeへ請求します。振り込んだら「支払済みにする」を押してください。既存業者のみの案件は、職人さんと工務店のあいだで請求します（Reforeは入りません）。</p>
+    ${invs.length ? `<div class="list">${invs.map(v => `<div class="doc-row"><span class="row-main"><b>${esc(v.from?.tradeName || v.from?.name)}　${yenFull(v.total)}</b><span class="small">${esc(v.lines?.[0]?.title || "")}　掲載元：${esc(v.coName || "")}　${fmtTime(v.issuedAt)} 受け取り</span><span class="small">振込先：${esc(bankText(v.bank)) || "未登録"}</span></span>
+      <span class="row"><span class="pill ${v.status === "paid" ? "approved" : "pending"}">${v.status === "paid" ? "支払済み" : "支払待ち"}</span><button class="btn sub" data-act="inv-pdf" data-id="${esc(v.id)}">PDF</button>${v.status === "paid" ? "" : `<button class="btn" data-act="op-inv-paid" data-id="${esc(v.id)}">支払済みにする</button>`}</span></div>`).join("")}</div>` : `<div class="empty">まだ届いていません。</div>`}`;
+}
+async function viewOpBills(ym){
+  if(!/^\d{4}-\d{2}$/.test(ym || "")) ym = shiftMonth(curMonth(), -1);
+  const cos = [...S.opCos.values()].filter(c => c.status === "active" || c.status === "stopped"), bills = await api().listCoBills({month:ym});
+  const byC = new Map(bills.map(b => [b.companyId, b])), mem = S.opUsers.filter(u => u.role === "co" && u.status !== "suspended");
+  return `<h1>月額の請求</h1><p class="lead">月ごとに、各工務店のプラン・オプション・メンバー・追加枠の請求書を作ります。作った請求書は工務店の「契約・料金」に届きます。</p>${monthNav("#/op/bills", ym)}
+    <section class="panel">${cos.length ? cos.map(c => { const b = byC.get(c.id), mo = coMonthly(c, mem.filter(m => m.companyId === c.id && !m.owner).length, ym);
+      return `<div class="doc-row"><span class="row-main"><b>${esc(c.name)}</b><span class="small">${b ? `${yenFull(b.total)}（税込）　${fmtDate(b.issuedAt)} 発行` : `今の内容なら ${yenFull(mo.total)}（税別）`}</span></span>
+        <span class="row">${b ? `<span class="pill ${b.status === "paid" ? "approved" : "pending"}">${b.status === "paid" ? "入金済み" : "入金待ち"}</span><button class="btn sub" data-act="cobill-pdf" data-id="${esc(b.id)}">PDF</button>${b.status === "paid" ? "" : `<button class="btn sub" data-act="op-bill-paid" data-id="${esc(b.id)}">入金済みにする</button>`}` : `<button class="btn" data-act="op-bill-make" data-cid="${esc(c.id)}" data-month="${ym}">請求書を作る</button>`}</span></div>`; }).join("") : `<p class="small">工務店がまだありません。</p>`}</section>`;
+}
+function viewOpCrafts(users){
+  const list = users.filter(u => u.role === "craftsman" && !u.employee).sort((a, b) => ((a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)) || (b.createdAt || 0) - (a.createdAt || 0));
+  return `<h1>協力業者</h1><p class="lead">登録の審査を行います。承認された業者だけが、全工務店の案件に応募できます（Refore の管理画面の「協力業者」からも審査できます）。</p>
+    <div class="list">${list.map(c => `<div class="doc-row"><span class="row-main"><b>${esc(c.name)} <span class="small">${esc(c.tradeName || "")}</span></b><span class="small">${esc((c.trades || []).join("、"))}　${esc((c.prefs || []).join("、"))}　経験${esc(c.years || "—")}年　保険：${esc(c.insurance || "不明")}　インボイス：${esc(c.invoiceNumber || "なし")}</span><span class="small">${esc(c.email || "")}　${esc(c.phone || "")}　登録 ${fmtTime(c.createdAt)}</span></span>
+      <span class="row"><span class="pill ${c.status}">${CRAFT_STATUS[c.status] || c.status}</span>${c.status === "pending" ? `<button class="btn" data-act="op-craft" data-uid="${esc(c.uid)}" data-st="approved">承認する</button><button class="btn sub danger-text" data-act="op-craft" data-uid="${esc(c.uid)}" data-st="suspended">見送る</button>` : c.status === "approved" ? `<button class="btn sub danger-text" data-act="op-craft" data-uid="${esc(c.uid)}" data-st="suspended">停止する</button>` : `<button class="btn sub" data-act="op-craft" data-uid="${esc(c.uid)}" data-st="approved">再開する</button>`}</span></div>`).join("") || `<div class="empty">まだいません。</div>`}</div>`;
+}
+async function viewOpJobs(){
+  const jobs = (await api().opListJobs()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 300);
+  const name = uid => { const u = S.opUsers.find(x => x.uid === uid); return u ? (u.tradeName || u.name) : ""; };
+  return `<h1>全案件</h1><p class="lead">すべての工務店の案件です（新しい順・300件まで）。</p>
+    <div class="tw"><table class="t"><thead><tr><th>掲載元</th><th>案件</th><th>職人</th><th class="r">発注額（税抜）</th><th>公開範囲</th><th>状態</th></tr></thead><tbody>
+    ${jobs.map(j => `<tr><td>${esc(coNameOf(j))}</td><td>${esc(j.title)}</td><td>${esc(name(j.assignedTo || j.selectedTo) || "—")}</td><td class="r">${yenFull(j.price)}</td><td>${j.audience === "priority" ? "既存業者のみ" : "全体"}${!isRefJob(j) && j.pay ? "（先払い）" : ""}</td><td><span class="pill ${j.status}">${esc(JOB_STATUS[j.status] || j.status)}</span></td></tr>`).join("")}</tbody></table></div>`;
+}
+function viewOpSettings(){
+  const o = opCfg();
+  return `<h1>設定</h1><form class="panel stack" data-form="opsettings"><h2>料金</h2>
+    ${Object.entries(o.plans).map(([k, x]) => `<div class="two"><label class="field"><span>${esc(k)}　プラン名</span><input name="pn_${k}" value="${esc(x.name)}"></label><div class="two"><label class="field"><span>月額（税別）</span><input name="pp_${k}" type="number" min="0" value="${x.price}"></label><label class="field"><span>月の公開件数</span><input name="pl_${k}" type="number" min="1" value="${x.limit}"></label></div></div>`).join("")}
+    <div class="two"><label class="field"><span>運営手数料（%）</span><input name="fee" type="number" min="0" max="50" step="0.1" value="${Math.round(o.fee * 1000) / 10}"></label><label class="field"><span>メンバー1人の月額</span><input name="memberFee" type="number" min="0" value="${o.memberFee}"></label></div>
+    <div class="two"><label class="field"><span>収支オプションの月額</span><input name="moneyFee" type="number" min="0" value="${o.moneyFee}"></label><label class="field"><span>追加枠1件</span><input name="extraFee" type="number" min="0" value="${o.extraFee}"></label></div>
+    <h2>振込先・書類</h2>
+    <label class="field"><span>振込先 <small>先払いと月額の請求書に載ります</small></span><input name="bank" value="${esc(o.bank)}" placeholder="例：○○銀行 ○○支店（普通）1234567 カ）リフォア"></label>
+    <div class="two"><label class="field"><span>運営の名前（領収書・請求書）</span><input name="opName" value="${esc(o.opName)}"></label><label class="field"><span>運営のインボイス登録番号</span><input name="opInvoiceNumber" value="${esc(o.opInvoiceNumber)}"></label></div>
+    <button class="btn" style="align-self:flex-start">保存</button></form>`;
+}
+
+/* ---------- 操作 ---------- */
+Object.assign(ACTIONS, {
+  async "pp-reported"(el){
+    if(!await ask({title:"振り込みましたか？", body:"運営に知らせます。入金を確認すると発注が確定します。", ok:"振り込んだので知らせる"})) return;
+    await api().updatePayment(el.dataset.id, {status:"reported", reportedAt:Date.now()});
+    const p = await api().getPayment(el.dataset.id); if(p) notifyMail(p.jobId, "先払いの振込の連絡がありました", `${p.coName}　${yenFull(p.total)}`, {kind:"op"});
+    toast("運営に知らせました"); route();
+  },
+  async "pp-cancel"(el){
+    if(!await ask({title:"発注先を選び直しますか？", body:"先払いの案内を取り消して、案件を「募集中」に戻します。すでに振り込んでいる場合は、運営（Refore）に連絡してください。", ok:"選び直す", danger:true})) return;
+    await api().cancelPrepay(el.dataset.id); toast("募集中に戻しました"); route();
+  },
+  async "pp-receipt"(el){ const p = await api().getPayment(el.dataset.id); if(!p) return; toast("PDFを作成しています…"); await downloadPdf(feeReceiptHtml(p), `${todayIso().replace(/-/g, "")}・運営手数料領収書.pdf`); },
+  async "inv-copy"(el){ const u = inviteUrl(el.dataset.id); try { await navigator.clipboard.writeText(u); toast("招待のリンクをコピーしました"); } catch(e) { await ask({title:"招待のリンク", body:u, ok:"閉じる"}); } },
+  async "inv-del"(el){ if(!await ask({title:"招待を取り消しますか？", ok:"取り消す", danger:true})) return; await api().deleteInvite(el.dataset.id); toast("取り消しました"); route(); },
+  async "mem-remove"(el){ if(!await ask({title:"このメンバーを外しますか？", body:"管理画面にログインできなくなります。", ok:"外す", danger:true})) return; await api().removeMember(el.dataset.uid); toast("外しました"); route(); },
+  async "crew-remove"(el){ if(!await ask({title:"この従業員を外しますか？", ok:"外す", danger:true})) return; await api().removeMember(el.dataset.uid); toast("外しました"); route(); },
+  async "co-plan"(el){
+    const p = opCfg().plans[el.dataset.id];
+    if(!await ask({title:`${p.name}に変更しますか？`, body:`月額 ${yenFull(p.price)}（税別）・月 ${p.limit}件まで公開。今月の請求から新しいプランになります。`, ok:"変更する"})) return;
+    await api().updateCompany(S.cid, {plan:el.dataset.id}); S.company.plan = el.dataset.id; toast("プランを変更しました"); route();
+  },
+  async "co-extra"(){
+    const ym = curMonth(), o = opCfg();
+    if(!await ask({title:"追加枠を1件買いますか？", body:`今月だけ公開できる件数が1件増えます。${yenFull(o.extraFee)}（税別）を今月の請求に足します。`, ok:"買う"})) return;
+    const extra = {...(S.company.extra || {})}; extra[ym] = Number(extra[ym] || 0) + 1;
+    await api().updateCompany(S.cid, {extra}); S.company.extra = extra; toast("追加枠を1件買いました"); route();
+  },
+  async "co-money"(el){
+    const on = el.dataset.on === "1";
+    if(!await ask({title:on ? "収支オプションを使いますか？" : "収支オプションをやめますか？", body:on ? `月額 ${yenFull(opCfg().moneyFee)}（税別）が足されます。` : "データは残ります。あとから再開できます。", ok:on ? "使う" : "やめる"})) return;
+    await api().updateCompany(S.cid, {money:on}); S.company.money = on; toast(on ? "収支オプションを始めました" : "収支オプションをやめました"); route();
+  },
+  async "cobill-pdf"(el){ const b = (await api().listCoBills(tenant() ? {companyId:S.cid} : {})).find(x => x.id === el.dataset.id); if(!b) return; toast("PDFを作成しています…"); await downloadPdf(coBillHtml(b), `${b.month.replace("-", "")}・GENPUKU Pro 御請求書.pdf`); },
+  async "civ-job"(el){
+    const j = await api().getJob(el.dataset.job); if(!j) return;
+    const r = await issueCraftInvoice(`${S.user.uid}_j_${j.id}`, {type:"job", companyId:j.companyId, coName:j.coName || "", jobId:j.id, month:curMonth()}, [j], "株式会社Refore", `${j.title}（掲載元：${coNameOf(j)}）`);
+    if(!r) return;
+    if(j.payId) api().updatePayment(j.payId, {status:"billed", billedAt:Date.now()}).catch(e => console.warn(e));
+    notifyMail(j.id, "ポータル案件の請求書が届きました", `${S.profile.name || ""}さん　${yenFull(r.total)}（税込）`, {kind:"op"});
+    toast("Refore宛ての請求書を発行しました"); route();
+  },
+  async "civ-co"(el){
+    const [cid, p] = el.dataset.key.split("|"), jobs = (await api().listJobs({assignedTo:S.user.uid})).filter(j => j.companyId === cid && !j.pay && ["completed", "paid"].includes(j.status) && periodOf(j.completedAt, j.coClose) === p);
+    if(!jobs.length) return;
+    const r = await issueCraftInvoice(`${S.user.uid}_${cid}_${p}`, {type:"co", companyId:cid, coName:jobs[0].coName || "", month:p}, jobs, jobs[0].coName || "工務店", periodLabel(p, jobs[0].coClose));
+    if(!r) return;
+    notifyMail(jobs[0].id, `${periodLabel(p, jobs[0].coClose)}の請求書が届きました`, `${S.profile.name || ""}さんから請求書が${r.prev ? "再" : ""}発行されました。\n${r.lines.length}件　合計 ${yenFull(r.total)}（税込）`);
+    toast("請求書を発行しました"); route();
+  },
+  // 運営
+  async "op-confirm"(el){
+    const p = await api().getPayment(el.dataset.id);
+    if(!await ask({title:"入金を確認しましたか？", body:`${p.coName}　${yenFull(p.total)}\n「${p.jobTitle}」の発注を確定し、${p.craftsmanName}さんに発注書と現場情報を届けます。`, ok:"入金を確認した"})) return;
+    await api().confirmPrepay(p.id);
+    notifyMail(p.jobId, "発注されました", `「${p.jobTitle}」（${p.coName}）をあなたに発注しました。代金は先払い済みです。ポータルで発注内容と金額を確認して、「承諾する」を押してください。`, {to:p.craftsmanId, kind:"op"});
+    toast("発注を確定しました"); route();
+  },
+  async "op-refunded"(el){ if(!await ask({title:"返金しましたか？", ok:"返金した"})) return; await api().updatePayment(el.dataset.id, {status:"refunded", refundedAt:Date.now()}); toast("返金済みにしました"); route(); },
+  async "op-inv-paid"(el){
+    const v = await api().getInvoice(el.dataset.id);
+    if(!await ask({title:`${v.from?.name || "職人"}さんの請求を支払済みにしますか？`, body:`${yenFull(v.total)}（税込）。案件は「支払済み」になります。`, ok:"支払済みにする"})) return;
+    await api().updateInvoice(v.id, {status:"paid", paidAt:Date.now()});
+    for(const l of v.lines || []){ await api().setJobStatus(l.jobId, "paid").catch(e => console.warn(e)); const j = await api().getJob(l.jobId).catch(() => null); if(j?.payId) await api().updatePayment(j.payId, {status:"sent", sentAt:Date.now()}).catch(e => console.warn(e)); }
+    if(v.lines?.[0]) notifyMail(v.lines[0].jobId, "請求書を支払済みにしました", `お支払い金額：${yenFull(v.total)}`, {to:v.craftsmanId, kind:"op"});
+    toast("支払済みにしました"); route();
+  },
+  async "op-bill-make"(el){
+    const c = S.opCos.get(el.dataset.cid), ym = el.dataset.month, mem = S.opUsers.filter(u => u.role === "co" && u.companyId === c.id && u.status !== "suspended" && !u.owner).length;
+    const mo = coMonthly(c, mem, ym), tax = Math.floor(mo.total * TAX_RATE);
+    if(!await ask({title:`${c.name}　${fmtMonth(ym)}分の請求書を作りますか？`, body:`${mo.planName} ${yenFull(mo.plan)}／収支 ${yenFull(mo.money)}／メンバー ${mo.memberCount}人 ${yenFull(mo.members)}／追加枠 ${mo.extraCount}件 ${yenFull(mo.extra)}\n合計 ${yenFull(mo.total + tax)}（税込）`, ok:"作る"})) return;
+    await api().saveCoBill({id:`${c.id}_${ym}`, companyId:c.id, coName:c.name, month:ym, number:`GP-${ym.replace("-", "")}-${(c.prefix || c.id.slice(-4)).toUpperCase()}`, ...mo, base:mo.total, tax, total:mo.total + tax, status:"issued", issuedAt:Date.now()});
+    toast("請求書を作りました"); route();
+  },
+  async "op-bill-paid"(el){ const b = (await api().listCoBills({})).find(x => x.id === el.dataset.id); if(!b || !await ask({title:`${b.coName}の入金を確認しましたか？`, ok:"入金済みにする"})) return; await api().saveCoBill({...b, status:"paid", paidAt:Date.now()}); toast("入金済みにしました"); route(); },
+  async "op-co-status"(el){
+    const st = el.dataset.st;
+    if(st === "stopped" && !await ask({title:"この工務店の利用を止めますか？", body:"メンバーは管理画面を使えなくなります。公開中の案件はそのまま残ります。", ok:"止める", danger:true})) return;
+    await api().updateCompany(el.dataset.id, {status:st}); toast(st === "active" ? "利用を再開しました" : "利用を止めました"); route();
+  },
+  async "op-craft"(el){
+    const {uid, st} = el.dataset;
+    if(st !== "approved" && !await ask({title:"この業者を止めますか？", body:"案件の閲覧と応募ができなくなります。", ok:"止める", danger:true})) return;
+    await api().setCraftsmanStatus(uid, st);
+    const u = S.opUsers.find(x => x.uid === uid); if(u) await api().upsertPubCraft(uid, {...u, status:st}).catch(e => console.warn(e));
+    toast(st === "approved" ? "承認しました" : "止めました"); route();
+  }
+});
+Object.assign(FORMS, {
+  async coinfo(form){
+    const g = k => String(form.elements[k]?.value || "").trim();
+    const info = {zip:g("zip"), address:g("address"), address2:g("address2"), tel:g("tel"), fax:g("fax"), email:g("email"), invoiceNumber:g("invoiceNumber")};
+    await api().updateCompany(S.cid, {name:g("name"), info, notifyEmail:g("notifyEmail")});
+    Object.assign(S.company, {name:g("name"), info, notifyEmail:g("notifyEmail")}); toast("会社の情報を保存しました"); route();
+  },
+  async coinvite(form){
+    const g = k => String(form.elements[k]?.value || "").trim(), email = g("email").toLowerCase();
+    const mem = await api().listMembers(S.cid);
+    if(mem.some(m => (m.email || "").toLowerCase() === email && m.status !== "suspended")) throw new Error("このメールアドレスの人は、すでにメンバーです");
+    const id = await api().createInvite({kind:"co", companyId:S.cid, companyName:S.company?.name || "", coRole:g("coRole") === "管理者" ? "管理者" : "担当者", email, name:g("name"), invitedBy:S.user.uid});
+    const sent = await sendInviteMail(id);
+    toast(sent ? `${g("name")}さんに招待メールを送りました` : "招待を作りました。「リンクをコピー」で送ってください"); route();
+  },
+  async crewinvite(form){
+    const g = k => String(form.elements[k]?.value || "").trim();
+    const id = await api().createInvite({kind:"crew", ownerUid:S.user.uid, ownerName:S.profile.tradeName || S.profile.name || "", email:g("email").toLowerCase(), name:g("name")});
+    const sent = await sendInviteMail(id);
+    toast(sent ? `${g("name")}さんに招待メールを送りました` : "招待を作りました。「リンクをコピー」で送ってください"); route();
+  },
+  async joinsignup(form){
+    const pw = form.elements.password.value, email = form.elements.email.value;
+    if(form.elements.existing.checked) await api().signIn(email, pw); else await api().signUp(email, pw);
+  },
+  async joinaccept(form){
+    const inv = await api().getInvite(form.dataset.id), name = form.elements.name.value.trim();
+    if(!inv || inv.usedAt || inv.expiresAt < Date.now()) throw new Error("この招待は使えません");
+    const base = {name, email:S.user.email, status:"approved", inviteId:inv.id, createdAt:Date.now()};
+    const prof = inv.kind === "crew" ? {...base, role:"crew", ownerUid:inv.ownerUid}
+      : {...base, role:"co", companyId:inv.companyId, coRole:inv.coRole === "管理者" ? "管理者" : "担当者", owner:!!inv.owner, phone:form.elements.phone?.value.trim() || ""};
+    await api().acceptInvite(inv, S.user.uid, prof);
+    S.profile = await api().getProfile(S.user.uid); await afterLogin();
+    toast("参加しました"); location.hash = inv.kind === "crew" ? "#/work" : "#/admin";
+  },
+  async opcompany(form){
+    const g = k => String(form.elements[k]?.value || "").trim();
+    const ownerEmail = g("ownerEmail").toLowerCase();
+    const cid = await api().createCompany({name:g("name"), status:"active", plan:g("plan") || "p10", money:false, extra:{}, priority:[], closeDay:Number(g("closeDay")) || 0, prefix:g("prefix").toUpperCase(), ownerEmail, notifyEmail:ownerEmail, info:{}});
+    const id = await api().createInvite({kind:"co", companyId:cid, companyName:g("name"), coRole:"管理者", owner:true, email:ownerEmail, name:g("ownerName"), invitedBy:S.user.uid});
+    const sent = await sendInviteMail(id);
+    await ask({title:"工務店を招待しました", body:`${sent ? "代表者に招待メールを送りました。" : "招待メールは送れていません。"}下のリンクを代表者に送ることもできます。\n${inviteUrl(id)}`, ok:"閉じる"});
+    location.hash = `#/op/cos/${cid}`;
+  },
+  async opreinvite(form){
+    const c = S.opCos.get(form.dataset.id), email = form.elements.email.value.trim().toLowerCase();
+    const id = await api().createInvite({kind:"co", companyId:c.id, companyName:c.name, coRole:"管理者", owner:true, email, name:"", invitedBy:S.user.uid});
+    const sent = await sendInviteMail(id); toast(sent ? "招待メールを送りました" : "招待を作りました。リンクをコピーして送ってください"); route();
+  },
+  async opsettings(form){
+    const f = form.elements, o = opCfg(), plans = {};
+    Object.keys(o.plans).forEach(k => { plans[k] = {name:f["pn_" + k].value.trim() || o.plans[k].name, price:Number(f["pp_" + k].value) || 0, limit:Number(f["pl_" + k].value) || 1}; });
+    const d = {plans, fee:(Number(f.fee.value) || 0) / 100, memberFee:Number(f.memberFee.value) || 0, moneyFee:Number(f.moneyFee.value) || 0, extraFee:Number(f.extraFee.value) || 0, bank:f.bank.value.trim(), opName:f.opName.value.trim(), opInvoiceNumber:f.opInvoiceNumber.value.trim()};
+    await api().saveOpSettings(d); S.opCfg = d; toast("保存しました"); route();
+  }
+});
+document.addEventListener("change", e => {
+  const t = e.target;
+  if(t.matches?.("[data-coclose]")){ const d = Number(t.value) || 0; api().updateCompany(S.cid, {closeDay:d}).then(() => { S.company.closeDay = d; toast(`締め日を毎月${coCloseLabel(d)}にしました`); }).catch(err => toast(err.message)); }
+  if(t.matches?.("[data-memrole]")){ api().updateMember(t.dataset.memrole, {coRole:t.value}).then(() => toast("役割を変えました")).catch(err => toast(err.message)); }
+});
+
 /* ---------- 起動 ---------- */
 function loadScript(src){
   return new Promise((res, rej) => {
@@ -6288,7 +7126,8 @@ async function boot(){
     stopNotifier(); stopBadges();
     S.user = u;
     try { S.profile = u ? await S.api.getProfile(u.uid) : null; } catch(e) { console.error(e); S.profile = null; }
-    route(); if(S.profile) startPushListener();
+    try { await afterLogin(); } catch(e) { console.error(e); }
+    route(); if(S.profile && !S.me) startPushListener();
   });
   window.addEventListener("hashchange", route);
 }
