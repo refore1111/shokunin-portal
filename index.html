@@ -2701,7 +2701,9 @@ function nextStep(r){
 // 工事一覧（各シートの「表 1」と同じ列）
 function ledgerTable(list, fee){
   const nv = Math.max(3, ...list.map(r => (r.vendors || []).length));
-  const sorted = [...list].sort((a, b) => (a.month ? 1 : 0) - (b.month ? 1 : 0) || (a.month || "").localeCompare(b.month || "") || (a.jobNo || "").localeCompare(b.jobNo || ""));
+  // 新しい案件が上：未完了 → 完了月の新しい順。同じ月の中は工事番号の新しい順（大きい番号が上）
+  const noNum = r => { const m = String(r.jobNo || "").match(/(\d{4})-(\d+)$/); return m ? Number(m[1]) * 100000 + Number(m[2]) : 0; };
+  const sorted = [...list].sort((a, b) => (b.month ? 0 : 1) - (a.month ? 0 : 1) || (b.month || "").localeCompare(a.month || "") || noNum(b) - noNum(a) || (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
   const y = v => v ? yenFull(v) : "";
   const head = `<tr><th>完了月</th><th>工事番号</th><th>物件名称</th><th>状態</th><th class="r">請負金額</th>${fee ? `<th class="r">-${fee}%</th>` : ""}<th class="r">利益</th><th class="r">利益率</th><th>工事種類</th><th>立会担当</th><th class="r">作業金額</th><th>完了･雑工事</th><th class="r">作業金額</th>${Array.from({length:nv}, (_, k) => `<th>発注業者${k + 1}</th><th class="r">発注金額${k + 1}</th>`).join("")}<th>備考</th></tr>`;
   const row = r => `<tr><td>${r.month ? Number(r.month.slice(5)) : ""}</td><td>${esc(r.jobNo)}</td><td class="name">${(n => `<a href="${n.href}" title="${esc(n.label)}">${esc(r.name)}</a> <a class="edit-l" href="#/admin/money/edit/${esc(r.id)}" aria-label="収支を編集">✎</a>`)(nextStep(r))}</td>
@@ -2825,7 +2827,9 @@ function ledgerFromCsv(text, company, ki){
     for(let k = 1; k <= 10; k++){ const vn = g("発注業者" + k), va = yenNum(g("発注金額" + k)); if(vn || va) vendors.push({name:vn || "発注先", amount:va}); }
     const m = Math.round(Number(g("完了月"))), month = m >= 1 && m <= 12 ? months.find(x => Number(x.slice(5)) === m) : "";
     const cancel = /キャンセル/.test(g("請負金額"));
-    out.push({id:"l_" + newId(), manual:true, billedOutside:true, ki, month:month || "", jobNo:g("工事番号"), name, company, contract:cancel ? 0 : yenNum(g("請負金額")), kind:g("工事種類"), staff:g("立会担当"),
+    // 完了月がある行（Numbersで完了済み）は請求済みとして扱う。完了月が空の行は進行中の案件
+    const contract0 = cancel ? 0 : yenNum(g("請負金額"));
+    out.push({id:"l_" + newId(), manual:true, billedOutside:!!month, stage:month ? "" : (cancel ? "lost" : contract0 ? "won" : ""), ki, month:month || "", jobNo:g("工事番号"), name, company, contract:cancel ? 0 : yenNum(g("請負金額")), kind:g("工事種類"), staff:g("立会担当"),
       staff2:sCol >= 0 ? String(r[sCol] || "").replace(/　/g, " ").trim() : "", vendors, note:[cancel ? "キャンセル" : "", g("備考")].filter(Boolean).join(" "),
       arranged:/☑|✓|TRUE/i.test(g("手配")), done:/☑|✓|TRUE/i.test(g("完了")),
       ...(netCol >= 0 && num(r[netCol]) !== undefined ? {netOv:num(r[netCol])} : {}),
@@ -5170,9 +5174,12 @@ const ACTIONS = {
         }
         const n = sets.reduce((a, x) => a + x.rows.length, 0);
         if(!n) throw new Error("取り込める行がありませんでした");
-        if(!await ask({title:`${n}行を取り込みますか？`, body:sets.map(x => `・${x.ki}期 ${x.co}：${x.rows.length}行`).join("\n") + "\n\n同じ期・管理会社・工事番号・物件名の行は上書きします。", ok:"取り込む"})) return;
+        if(!await ask({title:`${n}行を取り込みますか？`, body:sets.map(x => `・${x.ki}期 ${x.co}：${x.rows.length}行`).join("\n") + "\n\n前に取り込んだ同じ行（同じ期・管理会社・物件名・工事番号）は、新しい内容で上書きします。", ok:"取り込む"})) return;
         const old = (await api().listLedger()).filter(r => !r.jobId);
-        const all = sets.flatMap(x => x.rows.map(r => { const o = old.find(y => y.ki === r.ki && coKey(y.company) === coKey(r.company) && y.name === r.name && y.jobNo === r.jobNo); return o ? {...r, id:o.id} : r; }));
+        // 同じ期・管理会社・物件名で、工事番号が同じもの（または以前の取り込みで数字だけになった番号：「118.0」と「E-2425-118」）は同じ行として上書き
+        const sameNo = (a, b) => a === b || (/^\d+(\.0+)?$/.test(String(a || "")) && String(b || "").endsWith("-" + Number(a))) || (/^\d+(\.0+)?$/.test(String(b || "")) && String(a || "").endsWith("-" + Number(b)));
+        const used = new Set();
+        const all = sets.flatMap(x => x.rows.map(r => { const o = old.find(y => !used.has(y.id) && y.ki === r.ki && coKey(y.company) === coKey(r.company) && y.name === r.name && sameNo(y.jobNo, r.jobNo)); if(o){ used.add(o.id); return {...o, ...r, id:o.id}; } return r; }));
         await api().saveLedgerMany(all); toast(`${all.length}行を取り込みました`); route();
       } catch(e) { toast(e.message || String(e)); }
     };
