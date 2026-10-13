@@ -4267,7 +4267,7 @@ const chatBadge = () => { const n = unreadCount(); return `<span class="badge" d
 function updateChatBadges(){
   const n = unreadCount();
   document.querySelectorAll("[data-badge=chat]").forEach(el => { el.textContent = n; el.hidden = !n; });
-  document.title = (n ? `(${n}) ` : "") + BASE_TITLE;
+  document.title = BASE_TITLE;   // タブの名前に未読の数は出さない（チャットのタブにだけ出す）
 }
 /* ---------- タブのバッジ（案件の進行） ---------- */
 S.badges = {}; S.bw = {}; S.badgeUnsubs = [];
