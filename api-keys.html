@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>APIキー｜職人マッチング</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@700&display=swap">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{--bg:#F2F4F7;--surface:#fff;--ink:#18212C;--muted:#5A6573;--line:#D6DCE4;--brand:#1F3A5F;--link:#2F5487;--accent:#E8B21C;--good:#2C7A4B;--good-soft:#E3F2E9;--bad:#B03A3A;--bad-soft:#F8E4E4;--tint:#E9EEF5}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:'BIZ UDPGothic','Hiragino Sans',Meiryo,sans-serif;font-size:14px;line-height:1.6}
+header{background:var(--brand);color:#F4F6F8;padding:16px clamp(16px,4vw,40px);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+header b{font-family:'Zen Kaku Gothic New',sans-serif;font-size:18px}header b i{display:inline-block;width:6px;height:18px;background:var(--accent);border-radius:2px;margin-right:10px;vertical-align:-3px}
+header a{color:#A9BBD1;margin-left:12px}
+main{max-width:980px;margin:0 auto;padding:24px 16px 64px;display:flex;flex-direction:column;gap:16px}
+h1{font-family:'Zen Kaku Gothic New',sans-serif;font-size:22px;margin:0}h2{font-size:16px;margin:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.note{color:var(--muted);font-size:13px;margin:0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 200px}.f label{font-size:12px;color:var(--muted);font-weight:700}
+input,select{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff;min-width:0}
+.btn{font:inherit;font-weight:700;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;cursor:pointer}.btn.primary{background:var(--link);color:#fff;border-color:var(--link)}.btn.danger{color:var(--bad)}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}th{text-align:left;color:var(--muted);font-size:12px;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:99px;padding:1px 9px}.on{background:var(--good-soft);color:var(--good)}.off{background:var(--bad-soft);color:var(--bad)}
+.keybox{background:#FDF3D6;border:2px solid var(--accent);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.keybox code{font-size:15px;word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px;user-select:all}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+</style></head><body>
+<header><b><i></i>職人マッチング　APIキー</b><span><a href="./#/admin">管理画面へ戻る</a><a href="#" id="out">ログアウト</a></span></header>
+<main id="main"><div class="panel"><p class="note">読み込んでいます…</p></div></main>
+<script>
+const FIREBASE_CONFIG={apiKey:"AIzaSyA7V4lfZQrxV2LZTnW6UbAB-CTmmeAISGE",authDomain:"shokunin-portal.firebaseapp.com",projectId:"shokunin-portal",storageBucket:"shokunin-portal.firebasestorage.app",messagingSenderId:"871865092461",appId:"1:871865092461:web:f79a18646f7ac36f1af264"};
+firebase.initializeApp(FIREBASE_CONFIG);const auth=firebase.auth(),db=firebase.firestore();
+const $=s=>document.querySelector(s);const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=ms=>ms?new Date(ms).toLocaleString("ja-JP",{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+let keys=[],companies=[{id:"refore",name:"株式会社Refore（自社の案件）"}],fresh=null,confirmId=null,me=null;
+async function sha256hex(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+function newKey(){const a="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";const r=crypto.getRandomValues(new Uint8Array(40));return "rk_"+[...r].map(x=>a[x%62]).join("")}
+function render(){
+  $("#main").innerHTML=`<div><h1>業務クラウドとの連携キー</h1><p class="note">業務クラウドの「設定 → 職人マッチングと連携」に貼り付けるキーです。キーを持つ業務クラウドは、その会社が発注した案件・完了した案件と金額を読めます。「住所・鍵の情報も渡す」にしたキーは、物件の住所・鍵・オートロックなども読めます。</p></div>
+  ${fresh?`<div class="keybox" role="status"><b>キーを発行しました。この画面を閉じると二度と表示できません。</b><code id="freshKey">${esc(fresh.key)}</code><div class="row"><button class="btn primary" id="copy">コピーする</button><button class="btn" id="hide">コピーしたので閉じる</button></div><p class="note">業務クラウドには、このキーと受け口のURL（Cloudflare Workers）の2つを入れます。</p></div>`:""}
+  <div class="panel"><h2>新しいキーを発行</h2><form id="mk" class="row">
+    <div class="f"><label for="co">対象の会社</label><select id="co">${companies.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")}</select></div>
+    <div class="f"><label for="lb">メモ（どこで使うか）</label><input id="lb" placeholder="例：Refore 業務クラウド" required></div>
+    <label style="display:flex;gap:6px;align-items:center;padding-bottom:8px"><input type="checkbox" id="site" checked>住所・鍵の情報も渡す</label>
+    <button class="btn primary">発行する</button></form></div>
+  <div class="panel"><h2>発行済みのキー</h2>${keys.length?`<div class="tw"><table><tr><th>状態</th><th>会社</th><th>メモ</th><th>渡す内容</th><th>キーの末尾</th><th>発行日</th><th>最後に使った日時</th><th></th></tr>
+  ${keys.map(k=>`<tr><td><span class="pill ${k.revoked?"off":"on"}">${k.revoked?"停止中":"使用中"}</span></td><td>${esc(k.companyName||k.companyId)}</td><td>${esc(k.label)}</td><td>${(k.scopes||[]).includes("site:read")?"案件・金額・住所と鍵":"案件・金額"}</td><td>…${esc(k.last4)}</td><td>${fmt(k.createdAt)}</td><td>${fmt(k.lastUsedAt)}</td>
+    <td>${k.revoked?"":confirmId===k.id?`<button class="btn danger" data-revoke="${k.id}">停止する（元に戻せません）</button> <button class="btn" data-cancel>やめる</button>`:`<button class="btn danger" data-ask="${k.id}">停止</button>`}</td></tr>`).join("")}</table></div>`:`<p class="note">まだキーはありません。上の「発行する」で作れます。</p>`}
+  <p class="note">キーが漏れたかもしれないときは「停止」を押してください。停止したキーは、すぐに使えなくなります。</p></div>`;
+}
+document.addEventListener("submit",async e=>{if(e.target.id!=="mk")return;e.preventDefault();
+  const cid=$("#co").value,co=companies.find(c=>c.id===cid),key=newKey(),h=await sha256hex(key);
+  try{await db.collection("apiKeys").doc(h).set({companyId:cid,companyName:co.name.replace(/（自社の案件）$/,""),label:$("#lb").value.trim(),scopes:$("#site").checked?["orders:read","site:read"]:["orders:read"],last4:key.slice(-4),revoked:false,createdAt:Date.now(),createdBy:me.uid});fresh={key};render()}
+  catch(x){alert("発行できませんでした："+x.message)}});
+document.addEventListener("click",async e=>{const b=e.target.closest("button,a");if(!b)return;
+  if(b.id==="out"){e.preventDefault();auth.signOut();return}
+  if(b.id==="copy"){try{await navigator.clipboard.writeText(fresh.key);b.textContent="コピーしました"}catch(x){const r=document.createRange();r.selectNodeContents($("#freshKey"));getSelection().removeAllRanges();getSelection().addRange(r)}return}
+  if(b.id==="hide"){fresh=null;render();return}
+  if(b.dataset.ask){confirmId=b.dataset.ask;render();return}
+  if(b.dataset.cancel!==undefined){confirmId=null;render();return}
+  if(b.dataset.revoke){await db.collection("apiKeys").doc(b.dataset.revoke).update({revoked:true,revokedAt:Date.now()});confirmId=null;return}});
+auth.onAuthStateChanged(async u=>{me=u;
+  if(!u){$("#main").innerHTML=`<div class="panel"><h2>ログインしてください</h2><form id="lg" class="row"><div class="f"><label for="em">メールアドレス</label><input id="em" type="email" autocomplete="username" required></div><div class="f"><label for="pw">パスワード</label><input id="pw" type="password" autocomplete="current-password" required></div><button class="btn primary">ログイン</button></form><p class="note" id="lerr"></p></div>`;
+    $("#lg").onsubmit=async e=>{e.preventDefault();try{await auth.signInWithEmailAndPassword($("#em").value.trim(),$("#pw").value)}catch(x){$("#lerr").textContent="ログインできませんでした（"+x.code+"）"}};return}
+  const p=await db.collection("users").doc(u.uid).get().catch(()=>null);
+  if(!p||!p.exists||p.data().role!=="admin"){$("#main").innerHTML=`<div class="panel"><p>${esc(u.email)} は管理者ではないため、APIキーを扱えません。</p></div>`;return}
+  db.collection("companies").get().then(s=>{s.docs.forEach(d=>{if(d.id!=="refore")companies.push({id:d.id,name:d.data().name||d.id})});render()}).catch(()=>{});
+  db.collection("apiKeys").onSnapshot(s=>{keys=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));render()},x=>{$("#main").innerHTML=`<div class="panel"><p>キーを読めませんでした（${esc(x.code)}）。Firestoreのルールに apiKeys を追加してください。</p></div>`});
+});
+</script></body></html>
