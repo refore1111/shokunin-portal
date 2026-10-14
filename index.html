@@ -664,6 +664,13 @@ body{font-size:17px}
 .stg-est{border-color:#1F78C1;color:#1F78C1}.stg-wait{background:#FFF4D6;border-color:#C99A1C;color:#8A5F00}.stg-won{background:#E6F4EC;border-color:#2C7A4B;color:#2C7A4B}
 .stg-tachiai{background:#EEF0F4;color:#3a4252}.stg-self{background:#EAF2FB;border-color:#2F6DB5;color:#2F6DB5}.stg-lost{color:#999;border-color:#ddd}
 .mtbl td.stgc{white-space:nowrap}
+.sflow{display:inline-flex;gap:2px;vertical-align:middle;margin-right:6px}.sflow i{width:9px;height:6px;border-radius:2px;background:#DDE2EA}
+.sflow.sf1 i.on{background:#9AA3B0}.sflow.sf2 i.on{background:#1F78C1}.sflow.sf3 i.on{background:#C99A1C}.sflow.sf4 i.on{background:#5BA374}.sflow.sf5 i.on{background:#2A8C7A}.sflow.sf6 i.on{background:#2C7A4B}
+.stg-arr{background:#E3F4F0;border-color:#2A8C7A;color:#1F6E60}
+.sfc{display:inline-flex;align-items:center;flex-direction:column;gap:3px}.sfc .sflow{margin:0}.sfc .stg{margin:0}
+.flow-chips{align-items:center}.flow-chips a{display:inline-flex;align-items:center;gap:6px}.flow-chips a .sflow{margin:0}.flow-chips b{font-weight:700}
+.flow-chips .fl-arr{color:var(--sub);font-style:normal;font-size:18px}.fl-odd{display:inline-flex;gap:6px;margin-left:14px;padding-left:14px;border-left:1px solid var(--line);opacity:.75}.fl-odd a{font-size:12.5px}
+.jflow{display:inline-flex;flex-direction:column;align-items:flex-end;gap:4px}.jflow .sflow{margin:0}.jflow-key .sflow{margin-right:4px}
 .flowbar{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
 .flowbar .fb{flex:1;min-width:110px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--surface);display:grid}
 .flowbar .fb b{font-size:26px;font-family:"Barlow Condensed",var(--font);line-height:1}
@@ -895,6 +902,13 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .md-acc{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12.5px;color:#B4235A}
 .btn.sm{padding:5px 10px;font-size:12.5px;min-height:0}
 .mn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled{background:#EEF1F5;color:var(--sub);cursor:not-allowed}
+.memo-price{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:12px;color:var(--sub);margin:-2px 0 4px}
+.memo-price label{display:flex;align-items:center;gap:4px}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}
+.memo-sum{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px 18px;margin:6px 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 -2px 8px rgba(0,0,0,.06);font-size:13px}
+.memo-sum b{font-family:var(--num);font-size:16px;margin-left:4px}
+.mq-g{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px}.mq-g b{width:100%;font-size:12px;color:var(--sub)}
+.mq-b{padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:inherit;font:inherit;font-size:13px;cursor:pointer}.mq-b:hover{border-color:var(--sub)}
 .mn-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--sub)}
 .mn-grid small{font-size:11px}
 .mn-save{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;cursor:pointer}
@@ -902,8 +916,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .memo-wq .memo-wac{top:calc(100% + 2px);margin:0}
 .er input.is-acc{background:#FDEBF1;color:#B4235A;font-weight:600}
 @media (max-width:560px){
-  .memo-row{grid-template-areas:"w w w x" "l q u u" "d d d d" "n n n n"}
-  .memo-row .memo-dims{grid-area:d}.memo-row .memo-new{grid-area:n}
+  .memo-row{grid-template-areas:"w w w x" "l q u u" "p p p p" "d d d d" "n n n n"}
+  .memo-row .memo-dims{grid-area:d}.memo-row .memo-new{grid-area:n}.memo-row .memo-price{grid-area:p}
   .mn-grid{grid-template-columns:1fr 1fr}
   .md-row{grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 56px 30px;grid-template-areas:"h x l a r" "c c c c c"}
   .md-row [name=d_h]{grid-area:h}.md-row i{grid-area:x}.md-row [name=d_l]{grid-area:l}.md-row .md-a{grid-area:a}.md-row .i-x{grid-area:r}.md-row .md-ck{grid-area:c}
@@ -2557,9 +2571,19 @@ function doneCalUrl(root, priv, fam){
 /* ---------- 見積（Reforeの雛形の書式：見積書・発注請書・御請求書。単価は雛形の見積単価と実行単価） ---------- */
 const EST_STATUS = {draft:"下書き", sent:"提出済み（受注待ち）", ordered:"受注（請書を作成中）", won:"受注（業者に公開済み）", self:"完了（自社施工）", tachiai:"立会のみ", lost:"失注", revised:"訂正済み"};
 // 収支の行の状態（見積の状態と連動）
-const LEDGER_STAGE = {"":"見積前", est:"見積中", wait:"受注待ち", won:"受注", done:"完了", tachiai:"立会のみ", lost:"失注"};
+const LEDGER_STAGE = {"":"見積前", est:"見積中", wait:"受注待ち", won:"受注", arr:"完了待ち", done:"完了", tachiai:"立会のみ", lost:"失注"};
 const EST_TO_STAGE = {draft:"est", sent:"wait", ordered:"won", won:"won", self:"done", tachiai:"tachiai", lost:"lost"};
 const stageTag = st => `<span class="stg stg-${st || "none"}">${LEDGER_STAGE[st || ""] || "見積前"}</span>`;
+// 状態の流れ：見積前 → 見積中 → 受注待ち（見積を提出） → 受注 → 完了。立会のみ・失注はイレギュラーなので流れに入れない
+const STAGE_FLOW = ["", "est", "wait", "won", "arr", "done"];
+// 見た目の状態：受注のあと業者を手配したら「完了待ち」（案件は業者に発注したとき、手入力の行は「完了待ち」にするか発注業者を入れたとき）
+const dispStage = r => (r.billedOutside && !r.stage) || (r.done && r.stage !== "tachiai") ? "done"
+  : ["won", "arr"].includes(r.stage) && (r.stage === "arr" || (r.jobId ? r.arranged : (r.vendors || []).some(v => v.name || v.amount))) ? "arr" : (r.stage || "");
+const flowBar = (k, n = 6) => `<span class="sflow sf${n === 6 ? k + 1 : [1, 2, 4, 5, 6][k] || 0}" aria-hidden="true">${Array.from({length:n}, (_, i) => `<i class="${i <= k ? "on" : ""}"></i>`).join("")}</span>`;
+const stageCell = st => { const k = STAGE_FLOW.indexOf(st || ""); return k < 0 ? stageTag(st) : `<span class="sfc">${flowBar(k)}${stageTag(st)}</span>`; };
+// 案件の流れ：募集 → 発注（承諾待ち） → 承諾 → 作業中 → 完了
+const jobBar = j => flowBar(jobStep(j), 5);
+const jobStep = j => ["working"].includes(j.status) ? 3 : ["finished", "completed", "paid"].includes(j.status) ? 4 : j.status === "assigned" ? (j.acceptedAt && !j.declinedAt ? 2 : 1) : 0;
 const EST_KINDS = ["退去工事", "原状回復工事", "修繕工事", "フルリノベーション工事", "リフォーム工事", "入居前工事"];
 const BILLING_DEFAULT = {validity:"発行日より1ヶ月", terms:"工事完了月末締、翌月末日支払", invoiceNumber:"", bank:""};
 // 見積で選べる工事：単価表（実行単価）に見積単価を合わせたもの＋見積だけの項目（諸経費・和室など）
@@ -2748,10 +2772,10 @@ async function viewEstEdit(id){
         <div class="two"><label class="field"><span>物件名 <small>物件マスタから選べます</small></span><input type="text" name="building" value="${esc(e.building)}" list="est-props" placeholder="例：サンプルハイツ" required></label>
           <div class="two"><label class="field"><span>号室</span><input type="text" name="room" value="${esc(e.room)}" placeholder="例：406号室"></label>
             <label class="field"><span>工事種類</span><input type="text" name="kind" value="${esc(e.kind)}" list="est-kinds"></label></div></div>
-        <label class="field"><span>物件所在地</span><input type="text" name="address" value="${esc(e.address)}"></label>
         <div class="two"><label class="field"><span>宛先（管理会社）</span><input type="text" name="company" value="${esc(e.company)}" list="est-cos" placeholder="例：アイレントホーム株式会社"></label>
-          <div class="two"><label class="field"><span>敬称</span><select name="honor">${opt(["御中", "様"], e.honor || "御中")}</select></label>
-            <label class="field"><span>先方のご担当 <small>様</small></span><input type="text" name="person" value="${esc(e.person)}"></label></div></div>
+          <label class="field"><span>敬称</span><select name="honor">${opt(["御中", "様"], e.honor || "御中")}</select></label></div>
+        <label class="field"><span>先方のご担当 <small>様</small></span><input type="text" name="person" value="${esc(e.person)}"></label>
+        <label class="field"><span>物件所在地</span><input type="text" name="address" value="${esc(e.address)}"></label>
         <label class="field"><span>提出先のメール <small>「見積を提出」でメールの宛先に入ります。同じ管理会社なら前回のメールが入ります</small></span><input type="email" name="toEmail" value="${esc(e.toEmail || (ests.find(x => x.id !== e.id && x.company && x.company === e.company && x.toEmail) || {}).toEmail || "")}" placeholder="例：genjyo@kanri.co.jp"></label>
         <div class="two"><label class="field"><span>NO（工事番号）</span><input type="text" name="no" value="${esc(e.no)}" placeholder="例：A-2627-12"><small class="small" id="estno-hint"></small></label>
           <div class="two"><label class="field"><span>発行日</span><input type="date" name="issuedAt" value="${esc(e.issuedAt)}"></label>
@@ -2877,7 +2901,8 @@ async function syncLedgerFromEst(e){
   const row = (await api().listLedger()).find(x => x.id === e.ledgerId); if(!row) return;
   // 受注（請書）からは、請書の金額が収支の請負金額
   const ordered = ["ordered", "won", "self"].includes(e.status), estSub = estTotals(e.estRows?.length ? {rows:e.estRows} : e).sub;
-  await api().saveLedger({...row, estimateId:e.id, stage:EST_TO_STAGE[e.status] || "est", estAmount:estSub, ...(EST_LEDGER_KIND[e.kind] ? {kind:EST_LEDGER_KIND[e.kind]} : {}), ...(ordered ? {contract:estTotals(e).sub} : {}), updatedAt:Date.now()});
+  const stg = EST_TO_STAGE[e.status] || "est";
+  await api().saveLedger({...row, estimateId:e.id, stage:stg === "won" && row.stage === "arr" ? "arr" : stg, estAmount:estSub, ...(EST_LEDGER_KIND[e.kind] ? {kind:EST_LEDGER_KIND[e.kind]} : {}), ...(ordered ? {contract:estTotals(e).sub} : {}), updatedAt:Date.now()});
 }
 // 見積を保存（新しい見積は、ここで番号を付ける）
 async function saveEst(e, quiet = false){
@@ -2934,7 +2959,7 @@ async function viewBills(ymArg){
   const cards = companies.map(co => {
     const k = coKey(co), day = cfg.close?.[k] ?? 0, fmts = cfg.billFmt?.[k] || ["sum"], {from, to} = closePeriod(ym, day), id = `${k}_${ym}`, bill = billBy.get(id);
     const due = to <= todayIso();
-    const list = bill ? rows.filter(r => bill.ledgerIds.includes(r.id)) : rows.filter(r => r.coKey === k && r.done && !r.billedOutside && !(r.billId && r.billId !== id) && ["won", "tachiai", "done", undefined, ""].includes(r.stage) && (d => d && d >= from && d <= to)(doneDateOf(r)));
+    const list = bill ? rows.filter(r => bill.ledgerIds.includes(r.id)) : rows.filter(r => r.coKey === k && r.done && !r.billedOutside && !(r.billId && r.billId !== id) && ["won", "arr", "tachiai", "done", undefined, ""].includes(r.stage) && (d => d && d >= from && d <= to)(doneDateOf(r)));
     if(!list.length && !bill) return "";
     S.bills.cards[id] = {co, k, from, to, list, fmts};
     const sub = list.reduce((a, r) => a + billAmt(r), 0), noAmt = list.filter(r => !Number(r.contract)).length, feeN = list.filter(r => r.fee).length;
@@ -3068,10 +3093,10 @@ async function ledgerDataLoad(){
   S.ledgerCoNames = [...names.values()];
   return {rows, cfg, names};
 }
-// 管理会社の候補は収支を基準にする（取引終了の会社と「その他」は出さない。収支が読めないときだけ物件マスタの会社）
+// 管理会社の候補は収支を基準にする（取引終了の会社は出さない。収支が読めないときだけ物件マスタの会社）
 function ledgerCos(keep = []){
   const seen = new Set(), base = S.ledgerCoNames?.length ? S.ledgerCoNames : (S.props || []).map(p => p.company);
-  const out = base.map(c => String(c || "").trim()).filter(c => c && c !== "その他" && !coEnded(c)).filter(c => { const k = managerKey(c); if(seen.has(k)) return false; seen.add(k); return true; });
+  const out = base.map(c => String(c || "").trim()).filter(c => c && !coEnded(c)).filter(c => { const k = managerKey(c); if(seen.has(k)) return false; seen.add(k); return true; });
   keep.map(c => String(c || "").trim()).filter(c => c && !seen.has(managerKey(c))).forEach(c => { seen.add(managerKey(c)); out.push(c); });
   return out.sort((a, b) => a.localeCompare(b, "ja"));
 }
@@ -3105,7 +3130,7 @@ function nextStep(r){
     return {href:`#/admin/job/${r.jobId}`, label:"案件を見る"};
   }
   if((r.stage === "tachiai" || (r.stage === "done" && r.self)) && r.done && !r.billId && !r.billedOutside) return {href:`#/admin/bills/${(doneDateOf(r) || curMonth()).slice(0, 7)}`, label:"請求する"};
-  if(r.estimateId) return {href:`#/admin/est/edit/${r.estimateId}`, label:{est:"見積を仕上げる", wait:"返事を入れる", won:"請書・公開"}[r.stage] || "見積を見る"};
+  if(r.estimateId) return {href:`#/admin/est/edit/${r.estimateId}`, label:{est:"見積を仕上げる", wait:"返事を入れる", won:"請書・公開", arr:"請書を見る"}[r.stage] || "見積を見る"};
   if(r.manual && !r.billedOutside && !["tachiai", "lost"].includes(r.stage) && !r.done) return {href:`#/admin/est/from/${r.id}`, label:"見積を作る"};
   return {href:`#/admin/money/edit/${r.id}`, label:"編集"};
 }
@@ -3143,10 +3168,10 @@ function ledgerTable(list, fee){
   const y = v => v ? yenFull(v) : "";
   const head = `<tr><th>完了月</th><th>工事番号</th><th>物件名称</th><th>状態</th><th class="r">請負金額</th>${fee ? `<th class="r">-${fee}%</th>` : ""}<th class="r">利益</th><th class="r">利益率</th>
     <th class="s">工事種類</th><th class="s">立会担当</th><th class="r s">作業金額</th><th class="s">完了･雑工事</th><th class="r s">作業金額</th>${Array.from({length:nv}, (_, k) => `<th class="s">発注業者${k + 1}</th><th class="r s">発注金額${k + 1}</th>`).join("")}<th class="s">備考</th></tr>`;
-  const row = r => { const st = r.billedOutside && !r.stage ? "" : r.done && r.stage !== "tachiai" ? "done" : r.stage;
+  const row = r => { const st = dispStage(r);
     return `<tr class="${r.lost ? "is-lost" : !r.month ? "is-open" : ""}"><td class="mo">${r.month && !r.lost ? `${Number(r.month.slice(5))}<small>月</small>` : ""}</td><td class="no">${esc(r.jobNo)}</td>
     <td class="name"><a href="${openOf(r)}">${esc(r.name)}</a><a class="edit-l" href="#/admin/money/edit/${esc(r.id)}" aria-label="収支を編集" title="収支を編集">✎</a></td>
-    <td class="stgc">${r.billedOutside && !r.stage ? `<span class="stg stg-done">済</span>` : stageTag(st)}${r.billId ? `<span class="stg stg-billed">請求済</span>` : ""}${r.estAmount && ["est", "wait"].includes(r.stage) ? `<span class="est-amt">見積 ${yenFull(r.estAmount)}</span>` : ""}</td>
+    <td class="stgc">${stageCell(st)}${r.billId ? `<span class="stg stg-billed">請求済</span>` : ""}${r.estAmount && ["est", "wait"].includes(r.stage) ? `<span class="est-amt">見積 ${yenFull(r.estAmount)}</span>` : ""}</td>
     <td class="r amt">${r.lost ? yenFull(0) : r.contract ? yenFull(r.contract) : `<span class="dash">—</span>`}</td>${fee ? `<td class="r amt">${y(r.contract && r.net)}</td>` : ""}
     <td class="r profit ${r.profit < 0 ? "neg" : ""}">${r.contract || r.cost ? yenSign(r.profit) : ""}</td>
     <td class="r">${r.net ? `<span class="rate rate-${rateTier(r.rate, r.net)}">${pct(r.rate)}</span>` : ""}</td>
@@ -3182,8 +3207,8 @@ async function viewMoney(kiArg, sheetArg, subArg){
   const url = (k, s = sheet, x = "") => `#/admin/money/${k}/${encodeURIComponent(s)}${x ? "/" + encodeURIComponent(x) : ""}`;
   let body, list = cur;
   if(sheet === "全体"){
-    const stOf2 = r => r.billedOutside && !r.stage ? "old" : r.done && r.stage !== "tachiai" ? (r.billId ? "billed" : "done") : (r.stage || "");
-    const flow = [["", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注・工事中"], ["done", "完了・請求待ち"]];
+    const stOf2 = r => r.billedOutside && !r.stage ? "old" : r.done && r.stage !== "tachiai" ? (r.billId ? "billed" : "done") : dispStage(r);
+    const flow = [["", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注（手配前）"], ["arr", "完了待ち"], ["done", "完了・請求待ち"]];
     body = `<section class="panel"><h2>工程（${ki}期）</h2><div class="flowbar">${flow.map(([k2, l]) => { const rs = cur.filter(r => stOf2(r) === k2); return `<div class="fb"><b>${rs.length}</b><span>${l}</span><small>${yenFull(rs.reduce((a, r) => a + (Number(r.contract) || Number(r.estAmount) || 0), 0))}</small></div>`; }).join('<i aria-hidden="true">›</i>')}</div>
         <p class="small" style="margin:8px 0 0">管理会社の名前（上のタブ）を押すと、工事一覧から次にやることへ進めます。完了・請求待ちは「請求書 → 管理会社への請求」で請求します。</p></section>
       <section class="panel"><h2>月次（全社）</h2>${monthlyTable(cur, prev, ki, 0)}</section>
@@ -3197,7 +3222,7 @@ async function viewMoney(kiArg, sheetArg, subArg){
     const hits = toks.length ? rows.filter(r => { const h = hay(r); return toks.every(t => h.includes(t)); }) : [];
     const kiOf = r => r.month ? kiOfMonth(r.month) : (r.ki ?? kiNow());
     hits.sort((a, b) => kiOf(b) - kiOf(a) || (b.createdAt || 0) - (a.createdAt || 0));
-    const st = r => r.lost || r.stage === "lost" ? stageTag("lost") : r.billedOutside && !r.stage ? `<span class="stg stg-done">完了</span>` : r.done && r.stage !== "tachiai" ? `<span class="stg stg-done">完了</span>` : stageTag(r.stage);
+    const st = r => r.lost || r.stage === "lost" ? stageTag("lost") : stageTag(dispStage(r));
     list = hits.filter(r => inKi(r, ki));
     body = `<section class="panel"><h2>検索 <small>${q ? `「${esc(q)}」　${hits.length}件（全部の期・全部の管理会社）` : "物件名・工事番号などを入れてください"}</small></h2>
       ${hits.length ? `<div class="tbl-wrap"><table class="mtbl nb lsr"><thead><tr><th>期</th><th>管理会社</th><th>工事番号</th><th>物件名称</th><th>状態</th><th class="r">請負金額</th><th class="r">利益</th><th>完了月</th><th>担当</th><th></th></tr></thead><tbody>
@@ -3215,9 +3240,16 @@ async function viewMoney(kiArg, sheetArg, subArg){
     list = cur.filter(r => staffCanon(r.staff) === who);
   } else {
     const k = coKey(sheet), fee = coFee(sheet, cfg);
-    const all0 = cur.filter(r => r.coKey === k), stOf = r => r.billedOutside && !r.stage ? "old" : r.done && r.stage !== "tachiai" ? "done" : (r.stage || "");
+    const all0 = cur.filter(r => r.coKey === k), stOf = dispStage;
     list = sub ? all0.filter(r => stOf(r) === (sub === "none" ? "" : sub)) : all0;
-    const chips = `<nav class="chips" aria-label="状態で絞り込む"><a href="${url(ki, sheet)}" ${sub ? "" : 'aria-current="true"'}>すべて ${all0.length}</a>${[["none", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注"], ["done", "完了"], ["tachiai", "立会のみ"], ["lost", "失注"]].map(([s2, l]) => { const n = all0.filter(r => stOf(r) === (s2 === "none" ? "" : s2)).length; return n ? `<a href="${url(ki, sheet, s2)}" ${sub === s2 ? 'aria-current="true"' : ""}>${l} ${n}</a>` : ""; }).join("")}</nav>`;
+    // 状態の流れ（見積前 → 見積中 → 受注待ち → 受注 → 完了）はいつも出す。立会のみ・失注はあるときだけ、うしろに小さく
+    const cnt = s2 => all0.filter(r => stOf(r) === (s2 === "none" ? "" : s2)).length;
+    const chip = (s2, l, k) => `<a class="fl-${s2}" href="${url(ki, sheet, s2)}" ${sub === s2 ? 'aria-current="true"' : ""}>${k != null ? flowBar(k) : ""}${l} <b>${cnt(s2)}</b></a>`;
+    const odd = [["tachiai", "立会のみ"], ["lost", "失注"]].filter(([s2]) => cnt(s2));
+    const chips = `<nav class="chips flow-chips" aria-label="状態で絞り込む"><a href="${url(ki, sheet)}" ${sub ? "" : 'aria-current="true"'}>すべて <b>${all0.length}</b></a>
+      ${[["none", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注"], ["arr", "完了待ち"], ["done", "完了"]].map(([s2, l], k) => chip(s2, l, k)).join(`<i class="fl-arr" aria-hidden="true">›</i>`)}
+      ${odd.length ? `<span class="fl-odd">${odd.map(([s2, l]) => chip(s2, l)).join("")}</span>` : ""}</nav>
+      <p class="small" style="margin:-4px 0 10px">見積を先方に提出すると「受注待ち」、先方から発注があったら見積の画面で「受注」、業者を手配したら「完了待ち」、工事が終わると「完了」です。</p>`;
     const wait = list.filter(r => r.stage === "wait").length, before = list.filter(r => ["", "est"].includes(r.stage || "") && !r.jobId).length;
     body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${fee ? `<p class="small fee-note">孫受け：元請手数料 <b>${esc(fee)}%</b> を請負金額から引いた金額（-${esc(fee)}%の列）で利益を出しています。<span>変えるときは下の「元請手数料（孫受け）・作業金額の設定」</span></p>` : ""}${chips}${ledgerTable(list, fee)}</section>
       <section class="panel"><h2>月次</h2>${monthlyTable(list, prev.filter(r => r.coKey === k), ki, fee)}</section>`;
@@ -3244,7 +3276,7 @@ async function viewMoneyEdit(id){
   const r = id === "new" ? {id:"", manual:true, vendors:[], ki:Number(S.ledger?.ki) || kiNow(), company:S.ledger && !["全体", "個人成績"].includes(S.ledger.sheet) ? S.ledger.sheet : ""} : rows.find(x => x.id === id);
   if(!r) return `${back("#/admin/money", "収支")}<div class="empty">行が見つかりません。</div>`;
   S.staff ||= await api().getStaff().catch(() => []);
-  const companies = [...ledgerCos(), "その他"];
+  const companies = ledgerCos(["その他"]);
   const auto = !!r.jobId, extra = auto ? (r.extraVendors || []) : (r.vendors || []);
   const staffOpts = cur => `<option value="">なし</option>${[...new Set([...(S.staff || []).map(p => p.name), cur].filter(Boolean))].map(n => `<option ${n === cur ? "selected" : ""}>${esc(n)}</option>`).join("")}`;
   const vrow = (v = {}) => `<div class="vend-row"><input type="text" name="v_name" value="${esc(v.name)}" placeholder="発注業者" aria-label="発注業者"><input type="number" name="v_amount" value="${esc(v.amount ?? "")}" placeholder="発注金額" aria-label="発注金額"><button type="button" class="i-x" data-act="rm-vend" aria-label="この行を削除">×</button></div>`;
@@ -4969,12 +5001,13 @@ async function viewHome(){
   if(S.pending && !mineOnly) add("協力業者の登録", `審査待ちが${S.pending}件あります`, "#/admin/craftsmen");
   const today = todayIso(), wk = addDays(today, 6);
   const week = jobs.filter(j => !["draft", "completed", "paid"].includes(j.status)).map(j => ({j, s:j.craftStart || j.startDate, e:j.craftEnd || j.craftStart || j.endDate || j.startDate})).filter(x => x.s && x.s <= wk && x.e >= today).sort((a, b) => a.s.localeCompare(b.s));
-  return `<div class="page-head"><div><h1>ホーム</h1><p class="lead">今やることと、今週の現場です。押すとその画面に移ります。</p></div><a class="btn" href="#/admin/memo">＋ 工事メモを書く</a></div>
+  return `<div class="page-head"><div><h1>ホーム</h1><p class="lead">今やることと、今週の現場です。押すとその画面に移ります。</p></div><a class="btn" href="#/admin/memo">＋ 工事メモ・見積を作る</a></div>
     <div class="cols"><section class="panel"><h2>やること <small>${todo.length}件</small></h2>
       ${me ? `<p class="small home-scope">${mineOnly ? `担当が<b>${esc(staffCanon(me) || me)}</b>の案件だけ出しています。` : "全員の案件を出しています。"}<button type="button" class="textlink" data-act="home-scope">${mineOnly ? "全部を見る" : "自分の担当だけにする"}</button></p>` : ""}
       ${todo.length ? `<div class="list">${todo.map(x => `<a class="row-item" href="${x.href}"><span class="row-main"><b>${esc(x.t)}</b><span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span><span class="small">開く ›</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今やることはありません。</p>`}</section>
     <details class="panel home-week" ${(() => { try { return localStorage.getItem("refore_home_week") === "0" ? "" : "open"; } catch(e) { return "open"; } })()}><summary><h2>今週の現場 <small>業者が入る日・${week.length}件</small></h2></summary>
-      ${week.length ? `<div class="list">${week.map(x => `<a class="row-item" href="#/admin/job/${esc(x.j.id)}"><span class="row-main"><b>${esc(x.j.title)}</b><span class="small">${fmtRange(x.s, x.e)}　${esc(S.crafts.get(x.j.assignedTo)?.name || "未発注")}</span></span><span class="pill ${pillClass(x.j)}">${esc(statusLabel(x.j))}</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今週の現場はありません。</p>`}
+      <p class="small jflow-key" style="margin:0 0 8px">${flowBar(-1, 5)} 募集 › 発注 › 承諾 › 作業中 › 完了</p>
+      ${week.length ? `<div class="list">${week.map(x => `<a class="row-item" href="#/admin/job/${esc(x.j.id)}"><span class="row-main"><b>${esc(x.j.title)}</b><span class="small">${fmtRange(x.s, x.e)}　${esc(S.crafts.get(x.j.assignedTo)?.name || "未発注")}</span></span><span class="jflow">${jobBar(x.j)}<span class="pill ${pillClass(x.j)}">${esc(statusLabel(x.j))}</span></span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今週の現場はありません。</p>`}
       <p style="margin:10px 0 0"><a class="textlink" href="#/admin/calendar">予定表を開く ›</a></p></details></div>`;
 }
 
@@ -4985,6 +5018,7 @@ function memoRowHtml(){
     <input type="number" name="m_qty" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
     <input type="text" name="m_unit" list="est-units" placeholder="単位" aria-label="単位">
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
+    <div class="memo-price"><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span></div>
     <div class="memo-dims" hidden>
       <div class="md-head"><b>寸法をメモ（m）</b><span>入れた面積がそのまま数量に入ります</span></div>
       <div class="md-list">${memoDimHtml()}</div>
@@ -4992,10 +5026,8 @@ function memoRowHtml(){
       <label class="md-acc" hidden><span>アクセントクロスの品番・色</span><input type="text" name="m_accCode" placeholder="例：サンゲツ RE-51234（グレー）"></label>
     </div>
     <div class="memo-new" hidden>
-      <div class="md-head"><b>新しい工事</b><span>単価表にない工事です。業者に払う金額を入れてください</span></div>
+      <div class="md-head"><b>新しい工事</b><span>単価表にない工事です。上の「見積単価」「業者単価」を入れてください</span></div>
       <div class="mn-grid">
-        <label><span>業者の単価（円）</span><input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="例：1200"></label>
-        <label><span>見積の単価（円）<small>空なら見積で入れる</small></span><input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="例：1800"></label>
         <label><span>分類</span><input type="text" name="m_cat" list="memo-cats" placeholder="例：表装工事"></label>
       </div>
       <label class="mn-save"><input type="checkbox" name="m_save" checked> 単価表に入れる（次から候補に出ます）</label>
@@ -5035,20 +5067,90 @@ document.addEventListener("input", e => {
   const t = e.target, row = t.closest?.(".memo-row"); if(!row) return;
   if(t.matches("[data-memo-w]")) memoRowState(row);
   else if(t.closest(".md-row")) memoDimCalc(row);
+  else if(t.matches("[name=m_sell],[name=m_cost]")) delete row.dataset.auto;   // 手で直した単価は、会社を変えても書き換えない
 });
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("[name=d_acc]")) memoDimCalc(t.closest(".memo-row")); });
-async function viewMemo(){
+// 工事メモの金額：行ごとの見積・業者の金額と、全体の見積金額・業者金額・利益・利益率（元請手数料がある会社は引いたあと）
+function memoCalc(){
+  const f = document.querySelector("form[data-form=memo]"); if(!f) return;
+  let sell = 0, cost = 0;
+  f.querySelectorAll(".memo-row").forEach(r => {
+    const v = n => Number(r.querySelector(`[name=${n}]`)?.value) || 0, name = r.querySelector("[name=m_name]").value.trim();
+    const acc = isCloth(name) ? memoDims(r).filter(d => d.acc).reduce((a, d) => a + d.a, 0) : 0, q = v("m_qty") + acc;
+    const a = Math.round(q * v("m_sell")), b = Math.round(q * v("m_cost")); sell += a; cost += b;
+    r.querySelector(".mp-amt").innerHTML = name && q ? `見積 <b>${yenFull(a)}</b>　業者 ${yenFull(b)}` : "";
+  });
+  const fee = coFee(S.estCo, S.ledgerCfg || {}), net = Math.round(sell * (1 - fee / 100)), profit = net - cost;
+  $("#memo-sum").innerHTML = `<span>見積金額（税抜）<b>${yenFull(sell)}</b></span>${fee ? `<span>手数料${fee}%引き後 <b>${yenFull(net)}</b></span>` : ""}<span>業者金額 <b>${yenFull(cost)}</b></span>
+    <span>利益 <b class="${profit < 0 ? "danger-text" : ""}">${yenFull(profit)}</b></span><span>利益率 <b>${net ? (profit / net * 100).toFixed(1) : "0.0"}%</b></span>`;
+}
+// 管理会社が変わったら、単価表から選んだ行の単価をその会社の単価にする
+function memoReprice(f){
+  S.estCo = f.elements.company.value === "__new" ? f.elements.companyNew.value.trim() : f.elements.company.value;
+  const ps = estPrices();
+  f.querySelectorAll(".memo-row[data-auto]").forEach(r => { const p = ps.find(x => x.id === r.querySelector("[name=m_pid]").value); if(!p) return;
+    r.querySelector("[name=m_sell]").value = p.sell || ""; r.querySelector("[name=m_cost]").value = p.cost || ""; });
+  const h = $("#memo-no"), L = f.dataset.lid ? S.memoRow : null;
+  if(h) h.textContent = L?.jobNo ? `工事番号は ${L.jobNo}（収支の案件の番号）です` : S.estCo ? `工事番号は ${memoNextNo(S.estCo)} になります（収支の続きの番号）` : "";
+  const dl = $("#memo-persons"); if(dl) dl.innerHTML = [...new Set((S.memoEsts || []).filter(e => e.person && coSame(e.company, S.estCo)).map(e => e.person))].map(n => `<option value="${esc(n)}">`).join("");
+  memoCalc();
+}
+function memoFromLedger(f, L){
+  const name = String(L.name || "").trim(), prop = [...(S.props || [])].filter(p => p.name && name.startsWith(p.name) && (!L.company || coSame(p.company, L.company))).sort((a, b) => b.name.length - a.name.length)[0];
+  const sel = f.elements.company, co = L.company || prop?.company || "";
+  const opt = [...sel.options].find(o => o.value && o.value !== "__new" && coSame(o.value, co));
+  if(opt) sel.value = opt.value; else if(co){ sel.add(new Option(co, co), sel.options.length - 1); sel.value = co; }
+  if(prop){ memoPick(f, prop); f.elements.room.value = name.slice(prop.name.length).trim(); }
+  else f.elements.propName.value = name;
+  if(L.staff && [...f.elements.staff.options].some(o => o.value === L.staff)) f.elements.staff.value = L.staff;
+  if(L.kind && [...f.elements.kind.options].some(o => o.value === L.kind)) f.elements.kind.value = L.kind;
+  memoReprice(f);
+}
+function memoNextNo(co){
+  const head = `${jobNoPrefix(co)}-${jobNoPeriod()}-`;
+  return head + (Math.max(0, ...(S.memoNos || []).map(normJobNo).filter(n => n.startsWith(head)).map(n => Number(n.slice(head.length)) || 0)) + 1);
+}
+document.addEventListener("input", e => { if(e.target.closest?.("form[data-form=memo]")) memoCalc(); });
+document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) memoReprice(t.form); else if(t.closest?.("form[data-form=memo]")) memoCalc(); });
+// よくある工事（原状回復）：押すと工事の行が入る。単価表に同じ名前が1つだけならそのまま選び、いくつかあれば候補を出す
+const MEMO_QUICK = [["クリーニング", ["ハウスクリーニング", "エアコン内部洗浄", "WAX", "クロスクリーニング", "鏡水垢洗浄"]],
+  ["クロス・床", ["クロス貼替(壁)", "クロス貼替(天井)", "クロス部分貼替", "クッションフロア貼替", "ソフト巾木貼替", "フロアタイル上貼"]],
+  ["リペア", ["フローリング簡易補修", "リペア補修", "建付調整", "コーキング打替"]],
+  ["その他", ["網戸貼替", "電球交換", "退去立会費", "諸経費"]]];
+function memoQuick(k){
+  const box = $("#memo-rows");
+  let row = [...box.querySelectorAll(".memo-row")].find(r => !r.querySelector("[name=m_name]").value.trim());
+  if(!row){ box.insertAdjacentHTML("beforeend", memoRowHtml()); row = box.lastElementChild; }
+  const ps = estPrices().filter(p => !p.noteRow && p.name), nk = normKey(k), same = ps.filter(p => normKey(p.name) === nk);
+  const hits = same.length ? same : ps.filter(p => normKey(p.name).includes(nk)), inp = row.querySelector("[name=m_name]");
+  if(hits.length === 1) memoWorkPick(inp, hits[0]);
+  else { inp.value = k; row.querySelector("[name=m_pid]").value = ""; memoRowState(row); inp.focus(); if(hits.length) memoWork(inp); }
+  memoCalc();
+}
+async function viewMemo(lid = ""){
   S.estCo = "";   // 前に開いた見積の管理会社の単価が残らないように
   [S.prices, S.props, S.staff] = await Promise.all([api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getProperties().catch(() => []), api().getStaff().catch(() => [])]);
   const cos = await ledgerCosLoad();
-  return `${back("#/admin/home", "ホーム")}<div class="page-head"><div><h1>工事メモ</h1><p class="lead">現場でスマホから入れます。工事は単価表から選ぶので、そのまま見積の下書きになります。</p></div></div>
-    <form class="panel memo" data-form="memo">
+  // 工事番号の見本（収支・見積で使った番号の続き）と、先方のご担当者様の候補
+  const [{rows: lrows}, ests] = await Promise.all([ledgerData().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
+  S.memoEsts = ests; S.memoNos = [...lrows.map(r => r.jobNo), ...ests.map(e => e.no)].filter(Boolean);
+  // 収支の案件から開いたとき：その案件の管理会社・物件・担当・工事種類・工事番号を入れておき、保存すると同じ案件の見積になる
+  const L = lid ? lrows.find(r => r.id === lid && !r.jobId) : null;
+  if(lid && !L) return `${back("#/admin/money", "収支")}<div class="empty">収支の案件が見つかりません。</div>`;
+  S.memoRow = L || null;
+  setTimeout(() => { const f = document.querySelector("form[data-form=memo]"); if(f && L) memoFromLedger(f, L); memoCalc(); }, 0);
+  return `${back("#/admin/home", "ホーム")}<div class="page-head"><div><h1>工事メモ・見積</h1><p class="lead">現場でスマホから入れます。工事は単価表から選び、見積の金額・業者の金額・利益もここで見られます。そのまま見積になります。</p></div></div>
+    ${L ? `<p class="panel small" style="margin:0 0 12px">収支の案件「<b>${esc(L.name)}</b>」（${esc(L.jobNo || "工事番号なし")}）の見積を作ります。</p>` : ""}
+    <form class="panel memo" data-form="memo" data-lid="${esc(L?.id || "")}">
       <label class="field"><span>管理会社 <small>見積の宛先になります</small></span><select name="company" data-memo-co required>
         <option value="">${cos.length ? `選んでください（${cos.length}社）` : "会社がまだありません"}</option>${cos.sort((a, b) => a.localeCompare(b, "ja")).map(c => `<option>${esc(c)}</option>`).join("")}<option value="__new">一覧にない会社（手で入れる）</option></select></label>
+      <p class="small" id="memo-no" style="margin:-6px 0 10px"></p>
       <label class="field" id="memo-co-new" hidden><span>管理会社の名前</span><input type="text" name="companyNew" placeholder="例：FLEX TOKYO"></label>
+      <label class="field"><span>先方のご担当者様 <small>見積の宛名に「様」をつけて入ります</small></span><input type="text" name="person" list="memo-persons" autocomplete="off" placeholder="例：山田"><datalist id="memo-persons"></datalist></label>
       <div class="field memo-q"><span>物件名 <small>打ち込むと物件マスタから候補が出ます。ない物件はそのまま入れれば物件マスタに覚えます</small></span>
         <input type="text" name="propName" data-memo-q required autocomplete="off" placeholder="例：サンプルハイツ" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="memo-ac">
         <input type="hidden" name="propId"><ul class="memo-ac" id="memo-ac" role="listbox" hidden></ul></div>
+      <p class="small" id="memo-locked" hidden style="margin:-6px 0 10px">住所・オートロック・設備・備考は物件マスタの内容です（ここでは変えられません。直すときは「設定」の物件マスタで）</p>
       <label class="field"><span>号室</span><input type="text" name="room" placeholder="例：203号室"></label>
       <label class="field"><span>住所 <small>物件を選ぶと自動で入ります</small></span><input type="text" name="address" placeholder="例：東京都足立区〇〇1-2-3"></label>
       <div class="field al-pick" data-alpick><span>オートロック <small>物件マスタに覚えます</small></span>
@@ -5061,12 +5163,13 @@ async function viewMemo(){
       ${keyPicker("")}
       <label class="field"><span>その他メモ <small>項目にないことは何でもここに。見積のメモ（Reforeだけ・書類には出ません）に入ります</small></span><textarea name="mFree" rows="2" placeholder="例：洗面台の下に水漏れ跡あり。次回、管理会社に確認"></textarea></label>
       <label class="field"><span>工事種類 <small>収支・見積に入ります</small></span><select name="kind">${LEDGER_KINDS.map(k => `<option ${k === "原状回復" ? "selected" : ""}>${k}</option>`).join("")}</select></label>
-      <div class="field"><span>工事（箇所・工事・数量） <small>工事内容は文字を入れると単価表から候補が出ます。単価表にない工事もそのまま入れられます</small></span>
+      <div class="field"><span>よくある工事 <small>押すと下に工事の行が入ります</small></span><div class="memo-quick">${MEMO_QUICK.map(([g, ks]) => `<div class="mq-g"><b>${g}</b>${ks.map(k => `<button type="button" class="mq-b" data-act="memo-quick" data-k="${esc(k)}">${esc(k)}</button>`).join("")}</div>`).join("")}</div></div>
+      <div class="field"><span>工事（箇所・工事・数量・単価） <small>工事内容は文字を入れると単価表から候補が出ます。単価は管理会社ごとの単価が入り、直すこともできます</small></span>
         <div class="memo-rhead" aria-hidden="true"><span>箇所</span><span>工事内容</span><span>数量</span><span>単位</span><span></span></div><div id="memo-rows">${memoRowHtml()}</div>
         <datalist id="memo-cats">${[...new Set(estPrices().map(x => x.cat).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist><datalist id="memo-locs">${EST_LOCS.map(l => `<option value="${esc(l)}">`).join("")}</datalist><datalist id="est-units">${UNITS.map(u => `<option value="${u}">`).join("")}<option value="ヶ所"></datalist>
         <button type="button" class="btn sub" data-act="memo-add" style="justify-self:start">＋ 行を足す</button></div>
-      <button class="btn block big-action">見積の下書きを作る</button>
-      <p class="small" style="margin:8px 0 0">収支一覧にも案件が入り、見積の画面が開きます。続けて単価や数量を直せます。</p></form>`;
+      <div class="memo-sum" id="memo-sum" aria-live="polite"></div>
+      <button class="btn block big-action">見積にする（収支にも入ります）</button></form>`;
 }
 
 /* ---------- 管理：予定表 ---------- */
@@ -5573,11 +5676,13 @@ async function route(){
       else if(a === "job") html = await viewAdminJob(b);
       else if(a === "craftsmen") html = await viewCraftsmen();
       else if(a === "home") html = await viewHome();
-      else if(a === "memo") html = await viewMemo();
+      else if(a === "memo") html = await viewMemo(b || "");
       else if(a === "calendar") html = await viewCalendar(b, parts[3] || "");
       else if(a === "invoices") html = await viewAdminInvoices(b);
       else if(a === "bills") html = await viewBills(b);
-      else if(a === "est" && b === "from"){ const id = await estFromLedger(c); location.replace(`#/admin/est/edit/${id}`); return; }
+      else if(a === "est" && b === "from"){   // 収支の案件から見積を作るときも、工事メモの画面で作る（見積がもうあれば、それを開く）
+        const row = (await api().listLedger()).find(x => x.id === c);
+        location.replace(row?.estimateId && await api().getEstimate(row.estimateId).catch(() => null) ? `#/admin/est/edit/${row.estimateId}` : `#/admin/memo/${c}`); return; }
       else if(a === "est" && coAdmin() && (!b || EST_STATUS[b] || (b === "edit" && c === "new"))){ location.replace(b === "edit" ? "#/admin/memo" : "#/admin/money"); return; }
       else if(a === "est"){ if(b === "edit"){ html = await viewEstEdit(c); after = () => { estZoom(); const f = $("#est-form"); if(f){ const prev = S.est; estSync(f); S.est = prev; } return null; }; } else html = await viewEstimates(b); }
       else if(a === "money") html = b === "edit" ? await viewMoneyEdit(c) : await viewMoney(b, c, parts[4]);
@@ -5807,6 +5912,7 @@ const ACTIONS = {
   },
   // 協力業者を「既存業者（優先）」にする／外す
   async "memo-add"(){ $("#memo-rows").insertAdjacentHTML("beforeend", memoRowHtml()); },
+  async "memo-quick"(el){ memoQuick(el.dataset.k); },
   // 管理会社を丸ごと消す：収支の行・物件マスタ・見積・管理会社への請求・手数料の設定。ポータルの案件は残し、管理会社の欄を空にする
   async "ledger-purge"(el){
     const name = el.dataset.co, k = coKey(name);
@@ -5834,7 +5940,7 @@ const ACTIONS = {
   async "md-rm"(el){ const row = el.closest(".memo-row"), list = row.querySelector(".md-list");
     if(list.children.length > 1) el.closest(".md-row").remove(); else el.closest(".md-row").querySelectorAll("input").forEach(i => { i.type === "checkbox" ? i.checked = false : i.value = ""; });
     memoDimCalc(row); },
-  async "memo-rm"(el){ const box = $("#memo-rows"); if(box.children.length > 1) el.closest(".memo-row").remove(); },
+  async "memo-rm"(el){ const box = $("#memo-rows"); if(box.children.length > 1) el.closest(".memo-row").remove(); memoCalc(); },
   async "craft-priority"(el){
     const on = el.dataset.on === "1";
     if(tenant()){ await coSetPriority(el.dataset.uid, on); const c0 = S.crafts.get(el.dataset.uid); if(c0) c0.priority = on; toast(on ? "既存業者にしました" : "既存業者から外しました"); return route(); }
@@ -6512,8 +6618,9 @@ const FORMS = {
     const ps = estPrices();
     // 単価表の工事は単価・原価つき。単価表にない工事は名前と数量だけ（単価は見積で入れる）
     const rows = [...form.querySelectorAll(".memo-row")].map(r => { const v = n => (r.querySelector(`[name=${n}]`)?.value || "").trim(), name = v("m_name"), q = v("m_qty");
-      const pp = ps.find(x => x.id === v("m_pid") && x.name === name) || ps.find(x => x.name === name);
       const num = n => v(n) === "" ? "" : Math.max(0, Math.round(Number(v(n)) || 0));
+      const p0 = ps.find(x => x.id === v("m_pid") && x.name === name) || ps.find(x => x.name === name);
+      const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
       const dims = isCloth(name) ? memoDims(r) : [], acc = r2(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
         save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode")}; }).filter(x => x.p.name);
@@ -6550,16 +6657,20 @@ const FORMS = {
       await api().saveProperties(list); S.props = list;
     }
     const billing = {...BILLING_DEFAULT, ...(await api().getBilling().catch(() => ({})))};
-    const lid = "l_" + newId(), eid = "est_" + newId(), now = Date.now(), jobNo = await nextJobNo(company);
-    await api().saveLedger({id:lid, manual:true, ki:kiNow(), month:"", jobNo, name, company, contract:0, kind:g("kind") || "原状回復", staff, staff2:"", vendors:[], note:"工事メモから", arranged:false, done:false, stage:"est", estimateId:eid, createdAt:now, updatedAt:now});
-    await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:"", building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", master.note || ""].filter(Boolean).join("\n"), kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
+    const eid = "est_" + newId(), now = Date.now();
+    // 収支の案件から開いたときは、その案件に見積をつなぐ（新しい行は作らない）
+    const L0 = form.dataset.lid ? (await api().listLedger()).find(x => x.id === form.dataset.lid) : null;
+    const lid = L0 ? L0.id : "l_" + newId(), jobNo = L0?.jobNo || await nextJobNo(company);
+    if(L0) await api().saveLedger({...L0, jobNo, estimateId:eid, stage:"est", staff:L0.staff || staff, kind:L0.kind || g("kind") || "原状回復", updatedAt:now});
+    else await api().saveLedger({id:lid, manual:true, ki:kiNow(), month:"", jobNo, name, company, contract:0, kind:g("kind") || "原状回復", staff, staff2:"", vendors:[], note:"工事メモから", arranged:false, done:false, stage:"est", estimateId:eid, createdAt:now, updatedAt:now});
+    await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:g("person"), building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", master.note || ""].filter(Boolean).join("\n"), kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"), photoUrls:g("photoUrl") ? [g("photoUrl")] : [],
       issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, staff:staff ? {name:staff, phone:st?.phone || ""} : null,
       rows:rows.flatMap(x => { const one = (spec, qty) => ({id:"r_" + newId(), loc:x.loc, name:x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id || ""});
         if(!x.acc) return [one("", x.qty)];
         return [...(Number(x.qty) > 0 ? [one("", x.qty)] : []), one(`アクセントクロス${x.accCode ? " " + x.accCode : ""}`, x.acc)]; }),
       note:[g("mFree"), dimNote].filter(Boolean).join("\n"), createdAt:now, updatedAt:now});
-    S.ldCache = null; toast(`見積の下書きを作り、収支に入れました（工事番号 ${jobNo}）`); go(`#/admin/est/edit/${eid}`);
+    S.ldCache = null; toast(L0 ? `見積の下書きを作り、収支の案件につなぎました（工事番号 ${jobNo}）` : `見積の下書きを作り、収支に入れました（工事番号 ${jobNo}）`); go(`#/admin/est/edit/${eid}`);
   },
   async money(form){
     const f = form.elements, id = form.dataset.id, jobId = form.dataset.job;
@@ -6575,7 +6686,7 @@ const FORMS = {
       const stage = f.stage?.value ?? (old?.stage || ""), done = !!base.month || stage === "done";
       if(done && !old?.doneAt) base.doneAt = Date.now(); else if(!done) base.doneAt = 0;
       if(stage === "lost" && old?.stage !== "lost") base.lostAt = Date.now();
-      row = {...(old || {}), id:id || "l_" + newId(), manual:true, ...base, stage, jobNo:f.jobNo.value.trim(), name:f.name.value.trim(), vendors:vend, arranged:["won", "done"].includes(stage) || done || !!old?.arranged, done, ki:Number(f.ki.value) || kiNow()};
+      row = {...(old || {}), id:id || "l_" + newId(), manual:true, ...base, stage, jobNo:f.jobNo.value.trim(), name:f.name.value.trim(), vendors:vend, arranged:["won", "arr", "done"].includes(stage) || done || !!old?.arranged, done, ki:Number(f.ki.value) || kiNow()};
     }
     await api().saveLedger(row); toast("保存しました");
     if(!id && !jobId) return go(`#/admin/money/edit/${row.id}`);   // 新しく入れた案件は、続けて見積を作れるように
@@ -7651,7 +7762,7 @@ document.addEventListener("change", e => {
     const cur = (S.props || []).find(x => x.id === f.elements.propId.value);
     if(cur && !coSame(cur.company, co)){ f.elements.propName.value = ""; f.elements.propId.value = ""; }
     else if(cur) return;
-    f.elements.address.value = ""; alSet(f, ""); evSet(f, ""); f.elements.mPk.checked = false; f.elements.mNote.value = "";
+    memoLock(f, null); f.elements.address.value = ""; alSet(f, ""); evSet(f, ""); f.elements.mPk.checked = false; f.elements.mNote.value = "";
   }
 });
 // 物件名：打ち込むと物件マスタから候補（管理会社を選んでいればその会社の物件だけ）。選ぶと管理会社・住所・AL・EV・備考が入る
@@ -7670,9 +7781,10 @@ function memoPick(f, p){
   // 物件マスタの会社名は、収支一覧の同じ会社の書き方に合わせる
   const co = (opts.find(o => o.value && o.value !== "__new" && coSame(o.value, pc)) || {}).value || pc;
   if(co && !coSame(f.elements.company.value, co)){ if(!opts.some(o => o.value === co)) f.elements.company.add(new Option(co, co), f.elements.company.options.length - 1); f.elements.company.value = co; $("#memo-co-new").hidden = true; }
-  S.estCo = memoCo(f);   // 物件から管理会社が入ったときも、その会社の単価で工事を出す
+  memoReprice(f);   // 物件から管理会社が入ったときも、その会社の単価・工事番号にする
   f.elements.address.value = p.address || "";
   alSet(f, p.al); evSet(f, p.ev); f.elements.mPk.checked = hasFacility(p.pk); f.elements.mNote.value = p.note || "";
+  memoLock(f, p);
   $("#memo-ac").hidden = true; f.elements.propName.setAttribute("aria-expanded", "false");
   f.elements.room.focus();
 }
@@ -7680,7 +7792,7 @@ document.addEventListener("input", e => {
   const t = e.target; if(!t.matches?.("[data-memo-q]")) return;
   const f = t.form, cur = (S.props || []).find(x => x.id === f.elements.propId.value);
   // 選んだ物件から打ち直したら、その物件から入れた住所・設備・備考は空に戻す
-  if(cur && cur.name !== t.value){ f.elements.propId.value = ""; f.elements.address.value = ""; alSet(f, ""); evSet(f, ""); f.elements.mPk.checked = false; f.elements.mNote.value = ""; }
+  if(cur && cur.name !== t.value){ memoLock(f, null); f.elements.propId.value = ""; f.elements.address.value = ""; alSet(f, ""); evSet(f, ""); f.elements.mPk.checked = false; f.elements.mNote.value = ""; }
   memoAc(f);
 });
 document.addEventListener("keydown", e => {
@@ -7711,6 +7823,13 @@ function alParse(v){
   return {t:"yes", n:v.replace(/^有\s*/, "")};
 }
 function alText(t, n){ n = String(n || "").trim(); return {none:"無", key:"鍵対応", yes:n ? `有 ${n}` : "有"}[t] || ""; }
+// 物件マスタから入った住所・オートロック・エレベーター・専用駐車場・備考は、工事メモでは変えられない（物件マスタで直す）。空の項目だけ入れられる
+function memoLock(f, p){
+  const E = f.elements, on = k => !!p && !!String(p[k] || "").trim();
+  E.address.readOnly = on("address"); E.mNote.readOnly = on("note");
+  E.mAlT.disabled = E.mAlN.disabled = on("al"); E.mEv.disabled = on("ev"); E.mPk.disabled = on("pk");
+  const h = $("#memo-locked"); if(h) h.hidden = !p;
+}
 function alSet(f, v){ const a = alParse(v); f.elements.mAlT.value = a.t; f.elements.mAlN.value = a.n || ""; f.elements.mAlT.dataset.orig = v || ""; alUi(f); }
 // 物件マスタの書き方（呼1131など）は、変えていなければそのまま残す
 function alSave(f){
@@ -7894,7 +8013,8 @@ function memoWorkPick(input, p){
   const row = input.closest(".memo-row");
   input.value = p.name; row.querySelector("[name=m_pid]").value = p.id;
   const u = row.querySelector("[name=m_unit]"); if(u) u.value = p.unit || u.value;
-  row.querySelector(".memo-wac").hidden = true; memoRowState(row);
+  row.querySelector("[name=m_sell]").value = p.sell || ""; row.querySelector("[name=m_cost]").value = p.cost || ""; row.dataset.auto = "1";
+  row.querySelector(".memo-wac").hidden = true; memoRowState(row); memoCalc();
   (isCloth(p.name) ? row.querySelector("[name=d_h]") : row.querySelector("[name=m_qty]")).focus();
 }
 document.addEventListener("input", e => {
