@@ -1,73 +1,374 @@
 rules_version = '2';
+// GENPUKU Pro 協力業者ポータル（Refore ＋ 招待した工務店 ＋ 運営）
+// ・Refore（companyId == 'refore'）の今までのデータと動きはそのまま
+// ・工務店（role 'co'）は companyId が自社のものだけ。見積・収支などは companies/{自社ID}/ の中
+// ・運営（role 'op'）は会社・入金・月額・協力業者の審査。各社の見積・収支（companies/{id}/ の中）は見えない
+// ・職人の従業員（role 'crew'）は親方（ownerUid）が受けた案件の現場・チャット・報告だけ
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn()   { return request.auth != null; }
     function myDoc()      { return /databases/$(database)/documents/users/$(request.auth.uid); }
     function hasProfile() { return signedIn() && exists(myDoc()); }
-    function isAdmin()    { return hasProfile() && get(myDoc()).data.role == 'admin'; }
-    function isApproved() { return hasProfile() && get(myDoc()).data.role == 'craftsman' && get(myDoc()).data.status == 'approved'; }
+    function me()         { return get(myDoc()).data; }
+    function isAdmin()    { return hasProfile() && me().role == 'admin'; }
+    function isOp()       { return hasProfile() && me().role == 'op'; }
+    function isApproved() { return hasProfile() && me().role == 'craftsman' && me().status == 'approved'; }
+    function isPriority() { return isApproved() && me().get('priority', false) == true; }
+    function userOf(uid)  { return get(/databases/$(database)/documents/users/$(uid)).data; }
+    // 職人の従業員：親方が承認済みのときだけ、親方の代わりに現場の操作ができる
+    function isCrew()     { return hasProfile() && me().role == 'crew' && me().status == 'approved'
+                              && userOf(me().ownerUid).role == 'craftsman' && userOf(me().ownerUid).status == 'approved'; }
+    // 現場で動く人（職人本人か従業員）と、その「職人としてのUID」
+    function isWorker()   { return isApproved() || isCrew(); }
+    function wuid()       { return me().role == 'crew' ? me().ownerUid : request.auth.uid; }
+    // 工務店のメンバー（会社が利用中で、本人が外されていないとき）
+    function coOf(cid)    { return get(/databases/$(database)/documents/companies/$(cid)).data; }
+    function isCo()       { return hasProfile() && me().role == 'co' && me().get('status', 'approved') != 'suspended'
+                              && coOf(me().companyId).get('status', 'active') == 'active'; }
+    function myCid()      { return me().companyId; }
+    function isCoAdmin()  { return isCo() && me().get('coRole', '') == '管理者'; }
+    function inCo(d)      { return isCo() && d.companyId == myCid(); }
+    function cidOf(d)     { return d.get('companyId', 'refore'); }
     function job(id)      { return get(/databases/$(database)/documents/jobs/$(id)).data; }
+    // 募集中で、自分に見える案件
+    //  Refore：既存業者は全部、ほかは audience == 'all'
+    //  工務店：audience == 'all' か、その工務店の既存業者（priCrafts）
+    function openFor(j)   { return j.status == 'open' && (j.get('audience', 'all') == 'all'
+                              || (cidOf(j) == 'refore' && isPriority())
+                              || (isApproved() && request.auth.uid in j.get('priCrafts', []))); }
+    // 工務店の案件：会社は自社のまま。全体公開（audience 'all'）なら必ず先払い（pay true）
+    function coJobOk()    { return request.resource.data.companyId == myCid()
+                              && request.resource.data.get('pay', false) == (request.resource.data.get('audience', 'all') == 'all'); }
+    function threadOf(id) { return get(/databases/$(database)/documents/threads/$(id)).data; }
+    function invite(id)   { return get(/databases/$(database)/documents/invites/$(id)).data; }
+    function noChange(keys) { return !request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
+    function onlyKeys(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
 
-    // 協力業者・管理者のプロフィール
+    // ---------- プロフィール ----------
     match /users/{uid} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if isAdmin() || isOp() || (signedIn() && request.auth.uid == uid)
+        // 工務店：自社のメンバー
+        || (isCo() && resource.data.companyId == myCid())
+        // 職人：自分の従業員 ／ 従業員：親方
+        || (isApproved() && resource.data.ownerUid == request.auth.uid)
+        || (hasProfile() && me().role == 'crew' && uid == me().ownerUid);
       // 新規登録は「職人・審査中・無料」でしか作れない
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.role == 'craftsman'
         && request.resource.data.status == 'pending'
-        && request.resource.data.plan == 'free';
-      // 本人は審査状態・権限・プランを変えられない
-      allow update: if isAdmin()
+        && request.resource.data.plan == 'free'
+        && !('invoiceVerified' in request.resource.data)
+        && !('priority' in request.resource.data)
+        && !('companyId' in request.resource.data) && !('ownerUid' in request.resource.data);
+      // 招待から参加：招待されたメールアドレスのアカウントだけが、招待どおりの役割で作れる
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.inviteId is string
+        && invite(request.resource.data.inviteId).email == request.auth.token.email.lower()
+        && !('usedAt' in invite(request.resource.data.inviteId))
+        && invite(request.resource.data.inviteId).expiresAt > request.time.toMillis()
+        && request.resource.data.status == 'approved'
+        && request.resource.data.email.lower() == request.auth.token.email.lower()
+        && ((invite(request.resource.data.inviteId).kind == 'co'
+              && request.resource.data.role == 'co'
+              && request.resource.data.companyId == invite(request.resource.data.inviteId).companyId
+              && request.resource.data.coRole == invite(request.resource.data.inviteId).coRole
+              && request.resource.data.get('owner', false) == invite(request.resource.data.inviteId).get('owner', false))
+         || (invite(request.resource.data.inviteId).kind == 'crew'
+              && request.resource.data.role == 'crew'
+              && request.resource.data.ownerUid == invite(request.resource.data.inviteId).ownerUid))
+        && !('priority' in request.resource.data) && !('invoiceVerified' in request.resource.data);
+      allow update: if isAdmin() || isOp()
+        // 本人は審査状態・権限・所属などを変えられない
         || (signedIn() && request.auth.uid == uid
-            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'plan', 'email']));
+            && noChange(['role', 'status', 'plan', 'email', 'invoiceVerified', 'priority', 'companyId', 'coRole', 'owner', 'ownerUid', 'inviteId']))
+        // 工務店の管理者：自社のメンバーの役割の変更と、外すこと（代表者は除く）
+        || (isCoAdmin() && resource.data.role == 'co' && resource.data.companyId == myCid() && resource.data.get('owner', false) != true
+            && onlyKeys(['coRole', 'status', 'removedAt', 'updatedAt'])
+            && request.resource.data.coRole in ['管理者', '担当者'] && request.resource.data.status in ['approved', 'suspended'])
+        // 職人：自分の従業員を外す
+        || (isApproved() && resource.data.role == 'crew' && resource.data.ownerUid == request.auth.uid
+            && onlyKeys(['status', 'removedAt', 'updatedAt']) && request.resource.data.status in ['approved', 'suspended']);
       allow delete: if false;
     }
 
-    match /companies/{cid} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+    // 職人の公開用の登録情報（振込先・住所は入れない）。工務店・運営はこちらを見る
+    match /pubcrafts/{uid} {
+      allow read: if isAdmin() || isOp() || isCo() || (signedIn() && request.auth.uid == uid);
+      allow write: if isAdmin() || isOp()
+        || (isApproved() && request.auth.uid == uid)
+        || (signedIn() && request.auth.uid == uid && userOf(uid).role == 'craftsman'
+            && request.resource.data.get('status', 'pending') == userOf(uid).status);
     }
 
-    // 案件：承認済みの職人は「募集中」か「自分に発注された」案件だけ見られる
-    match /jobs/{jobId} {
-      allow read: if isAdmin()
-        || (isApproved() && (resource.data.status == 'open' || resource.data.assignedTo == request.auth.uid));
-      allow write: if isAdmin();
+    // ---------- 会社 ----------
+    match /companies/{cid} {
+      allow read: if signedIn();
+      allow create, delete: if isAdmin() || isOp();
+      allow update: if isAdmin() || isOp()
+        // 工務店の管理者：自社の設定（利用状態は運営だけ）
+        // お試しの期限は変えられず、お試しプランに戻すこともできない
+        || (isCoAdmin() && cid == myCid() && noChange(['status', 'createdAt', 'id', 'ownerEmail', 'trialEnds'])
+            && (request.resource.data.get('plan', '') != 'trial' || resource.data.get('plan', '') == 'trial'))
+        // 担当者も、既存業者の登録は変えられる
+        || (isCo() && cid == myCid() && onlyKeys(['priority']));
 
-      // 住所・鍵などは発注先だけ
-      match /private/{docId} {
-        allow read: if isAdmin() || (isApproved() && job(jobId).assignedTo == request.auth.uid);
-        allow write: if isAdmin();
+      // 見積・収支・管理会社への請求・評価・単価表・物件マスタなど（自社のメンバーだけ。運営・Reforeも見えない）
+      match /{col}/{docId=**} {
+        allow read, write: if isCo() && cid == myCid();
       }
     }
 
-    // 応募
+    // ---------- 案件 ----------
+    match /jobs/{jobId} {
+      allow read: if isAdmin() || isOp() || inCo(resource.data)
+        || (isApproved() && resource.data.status == 'open' && resource.data.audience == 'all')
+        || (isPriority() && resource.data.status == 'open' && resource.data.companyId == 'refore')
+        || (isApproved() && resource.data.status == 'open' && request.auth.uid in resource.data.priCrafts)
+        || (isWorker() && resource.data.assignedTo == wuid())
+        || (isApproved() && resource.data.selectedTo == request.auth.uid);
+      allow create: if isAdmin() || (isCo() && coJobOk() && request.resource.data.get('assignedTo', null) == null);
+      allow delete: if isAdmin() || inCo(resource.data);
+      allow update: if isAdmin() || isOp();
+      // 工務店：自社の案件。会社は変えられない。全体公開（先払い）の案件は、運営が入金を確認するまで発注先を決められない
+      allow update: if inCo(resource.data) && coJobOk()
+        && (request.resource.data.get('assignedTo', null) == null
+         || request.resource.data.get('assignedTo', null) == resource.data.get('assignedTo', null)
+         // 先払いなしで発注できるのは、自社の既存業者だけ
+         || (request.resource.data.get('pay', false) != true
+             && request.resource.data.assignedTo in coOf(myCid()).get('priority', [])));
+      // 発注先の業者（と従業員）ができるのは「作業開始」「作業完了」の記録（と、それに合わせた工期の更新）だけ
+      allow update: if isWorker() && resource.data.assignedTo == wuid()
+        && onlyKeys(['status', 'startedAt', 'finishedAt', 'updatedAt', 'startDate', 'endDate', 'plannedStart', 'plannedEnd'])
+        && ((resource.data.status == 'assigned' && request.resource.data.status == 'working')
+         || (resource.data.status == 'working' && request.resource.data.status == 'finished'));
+      // 発注先の業者は、発注内容と金額を確認して「承諾」か「辞退」を記録できる（従業員はできない）
+      allow update: if isApproved() && resource.data.assignedTo == request.auth.uid
+        && resource.data.status == 'assigned'
+        && !('acceptedAt' in resource.data) && !('declinedAt' in resource.data)
+        && onlyKeys(['acceptedAt', 'declinedAt', 'declineReason', 'updatedAt']);
+      // 発注先の業者（と従業員）は「入る日」を、作業完了までは変えられる
+      allow update: if isWorker() && resource.data.assignedTo == wuid()
+        && resource.data.status in ['assigned', 'working']
+        && onlyKeys(['craftStart', 'craftEnd', 'updatedAt']);
+
+      // 案件PDFの表示用画像：募集中は見える業者、発注後は発注先
+      match /files/{docId} {
+        allow read: if isAdmin() || isOp() || (isCo() && cidOf(job(jobId)) == myCid())
+          || (isApproved() && openFor(job(jobId)))
+          || (isWorker() && job(jobId).assignedTo == wuid());
+        allow write: if isAdmin() || (isCo() && cidOf(job(jobId)) == myCid());
+      }
+      // 住所・鍵・元のPDF（発注書）などは発注先だけ
+      match /private/{docId} {
+        allow read: if isAdmin() || (isCo() && cidOf(job(jobId)) == myCid())
+          || (isWorker() && job(jobId).assignedTo == wuid());
+        allow write: if isAdmin() || (isCo() && cidOf(job(jobId)) == myCid());
+      }
+      // 管理会社など、業者には見せない情報
+      match /admin/{docId} {
+        allow read, write: if isAdmin() || (isCo() && cidOf(job(jobId)) == myCid());
+      }
+    }
+
+    // ---------- 応募 ----------
     match /applications/{appId} {
-      allow read: if isAdmin() || (signedIn() && resource.data.craftsmanId == request.auth.uid);
+      allow read: if isAdmin() || isOp() || inCo(resource.data)
+        || (signedIn() && resource.data.craftsmanId == request.auth.uid);
       allow create: if isApproved()
         && request.resource.data.craftsmanId == request.auth.uid
         && appId == request.resource.data.jobId + '_' + request.auth.uid
         && request.resource.data.status == 'applied'
-        && job(request.resource.data.jobId).status == 'open';
-      // 本人ができるのは「取り下げ」だけ
-      allow update: if isAdmin()
+        && openFor(job(request.resource.data.jobId))
+        && cidOf(request.resource.data) == cidOf(job(request.resource.data.jobId))
+        && !('reapplyOK' in request.resource.data);
+      allow update: if isAdmin() || isOp()
+        || (inCo(resource.data) && request.resource.data.companyId == myCid())
         || (signedIn() && resource.data.craftsmanId == request.auth.uid
             && resource.data.status == 'applied'
             && request.resource.data.status == 'withdrawn'
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']));
-      allow delete: if false;
+            && onlyKeys(['status', 'updatedAt']))
+        || (isApproved() && resource.data.craftsmanId == request.auth.uid
+            && resource.data.status in ['withdrawn', 'declined']
+            && onlyKeys(['reapplyAsk', 'updatedAt']))
+        || (isApproved() && resource.data.craftsmanId == request.auth.uid
+            && resource.data.status in ['withdrawn', 'declined']
+            && resource.data.get('reapplyOK', false) == true
+            && request.resource.data.status == 'applied'
+            && request.resource.data.reapplyOK == false
+            && onlyKeys(['status', 'itemIds', 'allItems', 'tema', 'message', 'reapplyOK', 'reapplyAsk', 'updatedAt', 'createdAt', 'jobTitle', 'jobArea', 'jobStart', 'jobEnd', 'price'])
+            && openFor(job(resource.data.jobId)));
+      allow delete: if isAdmin() || inCo(resource.data);
     }
 
-    // 完了報告
-    match /reports/{reportId} {
-      allow read: if isAdmin() || (signedIn() && resource.data.craftsmanId == request.auth.uid);
+    // ---------- 発注書・支払明細 ----------
+    match /documents/{docId} {
+      allow read: if isAdmin() || isOp() || inCo(resource.data)
+        || (isWorker() && resource.data.craftsmanId == wuid() && resource.data.status == 'issued');
+      allow create, update: if isAdmin() || isOp()
+        || (isCo() && request.resource.data.companyId == myCid() && cidOf(job(request.resource.data.jobId)) == myCid()
+            && (resource == null || resource.data.get('companyId', '') == myCid())
+            // 先払いの案件は、運営が入金を確認して発注先が決まるまで、発注書を業者に見せない
+            && (request.resource.data.get('status', '') != 'issued'
+             || job(request.resource.data.jobId).get('pay', false) != true
+             || job(request.resource.data.jobId).get('assignedTo', null) == request.resource.data.craftsmanId));
+      allow delete: if isAdmin() || isOp() || (isCo() && (resource == null || resource.data.get('companyId', '') == myCid()));
+    }
+
+    // ---------- 請求書 ----------
+    // Refore宛て（月ごと）：ID「業者UID_YYYY-MM」
+    // Refore宛て（工務店のポータル案件・案件ごと）：ID「業者UID_j_案件ID」 type 'job'
+    // 工務店宛て（既存業者の案件・締め日ごと）：ID「業者UID_工務店ID_YYYY-MM」 type 'co'
+    match /invoices/{invId} {
+      allow read: if isAdmin()
+        || (isOp() && resource.data.type == 'job')
+        || (isCo() && resource.data.companyId == myCid())
+        || (signedIn() && resource.data.craftsmanId == request.auth.uid);
       allow create: if isApproved()
         && request.resource.data.craftsmanId == request.auth.uid
-        && request.resource.data.status == 'submitted'
-        && job(request.resource.data.jobId).assignedTo == request.auth.uid;
-      allow update: if isAdmin();
-      allow delete: if false;
+        && request.resource.data.status == 'issued'
+        && ((!('type' in request.resource.data) && invId == request.auth.uid + '_' + request.resource.data.month)
+         || (request.resource.data.type == 'job' && invId == request.auth.uid + '_j_' + request.resource.data.jobId
+             && job(request.resource.data.jobId).assignedTo == request.auth.uid
+             && job(request.resource.data.jobId).get('pay', false) == true
+             && request.resource.data.companyId == cidOf(job(request.resource.data.jobId)))
+         || (request.resource.data.type == 'co'
+             && invId == request.auth.uid + '_' + request.resource.data.companyId + '_' + request.resource.data.month
+             && exists(/databases/$(database)/documents/companies/$(request.resource.data.companyId))));
+      // 業者は支払前なら再発行できる。支払済みにできるのは、請求先（Refore／運営／その工務店）だけ
+      allow update: if isAdmin()
+        || (isOp() && resource.data.get('type', '') == 'job')
+        || (isCo() && resource.data.get('type', '') == 'co' && resource.data.companyId == myCid()
+            && onlyKeys(['status', 'paidAt', 'updatedAt']) && request.resource.data.status in ['issued', 'paid'])
+        || (isApproved() && resource.data.craftsmanId == request.auth.uid
+            && resource.data.status == 'issued'
+            && request.resource.data.status == 'issued'
+            && request.resource.data.craftsmanId == request.auth.uid
+            && request.resource.data.month == resource.data.month
+            && request.resource.data.get('type', '') == resource.data.get('type', '')
+            && request.resource.data.get('companyId', '') == resource.data.get('companyId', ''));
+      allow delete: if isAdmin();
     }
+
+    // ---------- チャット：案件×業者ごとに1スレッド。ID は「案件ID_業者UID」 ----------
+    match /threads/{tid} {
+      allow read: if isAdmin() || inCo(resource.data)
+        || (isWorker() && resource.data.craftsmanId == wuid())
+        || (signedIn() && resource.data.craftsmanId == request.auth.uid);
+      allow create: if isAdmin()
+        || (isCo() && request.resource.data.companyId == myCid() && cidOf(job(request.resource.data.jobId)) == myCid()
+            && tid == request.resource.data.jobId + '_' + request.resource.data.craftsmanId)
+        || (isWorker()
+            && request.resource.data.craftsmanId == wuid()
+            && tid == request.resource.data.jobId + '_' + wuid()
+            && cidOf(request.resource.data) == cidOf(job(request.resource.data.jobId))
+            && ((isApproved() && openFor(job(request.resource.data.jobId))) || job(request.resource.data.jobId).assignedTo == wuid()));
+      allow update: if isAdmin()
+        || (inCo(resource.data) && onlyKeys(['lastAt', 'lastText', 'lastFrom', 'adminReadAt']))
+        || (isWorker() && resource.data.craftsmanId == wuid()
+            && onlyKeys(['lastAt', 'lastText', 'lastFrom', 'craftsmanReadAt']));
+      allow delete: if isAdmin() || inCo(resource.data);
+
+      match /messages/{mid} {
+        allow read: if isAdmin() || inCo(threadOf(tid))
+          || (isWorker() && threadOf(tid).craftsmanId == wuid());
+        allow create: if (isAdmin() && request.resource.data.from == 'admin')
+          || (inCo(threadOf(tid)) && request.resource.data.from == 'admin' && request.resource.data.uid == request.auth.uid)
+          || (isWorker() && threadOf(tid).craftsmanId == wuid()
+              && request.resource.data.from == 'craftsman' && request.resource.data.uid == request.auth.uid);
+        allow update: if (isAdmin() || inCo(threadOf(tid)) || (isWorker() && threadOf(tid).craftsmanId == wuid()))
+          && onlyKeys(['reactions']);
+        allow delete: if isAdmin() || inCo(threadOf(tid));
+      }
+    }
+
+    // ---------- 完了報告 ----------
+    match /reports/{reportId} {
+      allow read: if isAdmin() || inCo(resource.data)
+        || (isWorker() && resource.data.craftsmanId == wuid());
+      allow create: if isWorker()
+        && request.resource.data.craftsmanId == wuid()
+        && request.resource.data.status == 'submitted'
+        && job(request.resource.data.jobId).assignedTo == wuid()
+        && cidOf(request.resource.data) == cidOf(job(request.resource.data.jobId));
+      allow update: if isAdmin() || inCo(resource.data)
+        || (isWorker() && resource.data.craftsmanId == wuid()
+            && resource.data.status == 'submitted'
+            && onlyKeys(['additions', 'photoCount']));
+      allow delete: if isAdmin() || inCo(resource.data);
+    }
+
+    // ---------- 招待（リンクのIDを知っている人だけが1件読める） ----------
+    match /invites/{id} {
+      allow get: if true;
+      allow list: if isOp()
+        || (isCo() && resource.data.companyId == myCid())
+        || (isApproved() && resource.data.ownerUid == request.auth.uid);
+      allow create: if (isOp() && request.resource.data.kind == 'co')
+        || (isCoAdmin() && request.resource.data.kind == 'co' && request.resource.data.companyId == myCid()
+            && request.resource.data.get('owner', false) == false && request.resource.data.coRole in ['管理者', '担当者'])
+        || (isApproved() && request.resource.data.kind == 'crew' && request.resource.data.ownerUid == request.auth.uid);
+      // 招待されたメールアドレスの人が「使用済み」にする
+      allow update: if signedIn() && resource.data.email == request.auth.token.email.lower()
+        && !('usedAt' in resource.data) && onlyKeys(['usedAt', 'usedBy']) && request.resource.data.usedBy == request.auth.uid;
+      allow delete: if isOp()
+        || (isCoAdmin() && resource.data.get('companyId', '') == myCid())
+        || (isApproved() && resource.data.get('ownerUid', '') == request.auth.uid);
+    }
+
+    // ---------- 先払い（工務店 → Refore） ----------
+    match /payments/{id} {
+      allow read: if isAdmin() || isOp() || inCo(resource.data)
+        || (signedIn() && resource.data.craftsmanId == request.auth.uid);
+      allow create: if isCo() && request.resource.data.companyId == myCid() && request.resource.data.status == 'waiting'
+        && cidOf(job(request.resource.data.jobId)) == myCid()
+        && request.resource.data.fee >= 0 && request.resource.data.total == request.resource.data.amount + request.resource.data.fee;
+      allow update: if isOp() || isAdmin()
+        // 工務店：「振り込みました」と、発注を取り消したときの「返金が必要」
+        || (inCo(resource.data) && resource.data.status == 'waiting' && request.resource.data.status == 'reported' && onlyKeys(['status', 'reportedAt']))
+        || (inCo(resource.data) && resource.data.status == 'held' && request.resource.data.status == 'refund' && onlyKeys(['status', 'refundAt']))
+        // 職人：請求書を出したら「職人の請求あり」
+        || (isApproved() && resource.data.craftsmanId == request.auth.uid && resource.data.status == 'held'
+            && request.resource.data.status == 'billed' && onlyKeys(['status', 'billedAt']));
+      allow delete: if isOp() || (inCo(resource.data) && resource.data.status == 'waiting');
+    }
+
+    // ---------- 運営 ----------
+    match /opdata/{docId} {
+      allow read: if signedIn();
+      allow write: if isOp();
+    }
+    // 月額の請求書（運営 → 工務店）
+    match /cobills/{id} {
+      allow read: if isOp() || inCo(resource.data);
+      allow write: if isOp();
+    }
+
+    // ---------- Reforeだけのデータ（今までどおり） ----------
+    match /bills/{bid}     { allow read, write: if isAdmin(); }
+    match /estimates/{eid} { allow read, write: if isAdmin(); }
+    match /ledger/{lid}    { allow read, write: if isAdmin(); }
+    match /ratings/{rid}   { allow read, write: if isAdmin(); }
+    match /master/{docId}  { allow read, write: if isAdmin(); }
+    match /apiKeys/{id}    { allow read, write: if isAdmin(); }
+
+    // ===== 業務クラウド連携用（ここから・今までどおり） =====
+    function isApiBot() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'apibot';
+    }
+    match /apiKeys/{id} {
+      allow read: if isApiBot();
+      allow update: if isApiBot() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastUsedAt']);
+    }
+    match /jobs/{jobId} {
+      allow read: if isApiBot();
+      match /private/{docId} { allow read: if isApiBot(); }
+      match /admin/{docId}   { allow read: if isApiBot(); }
+    }
+    match /ledger/{id} { allow read: if isApiBot(); }
+    match /users/{uid} { allow read: if isApiBot(); }
+    // ===== 業務クラウド連携用（ここまで） =====
   }
 }
