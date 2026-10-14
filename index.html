@@ -3272,8 +3272,17 @@ function ledgerTable(list, fee){
   return `${summary}<div class="tbl-wrap"><table class="ltbl"><thead>${head}</thead><tbody>${sorted.map(row).join("") || `<tr><td colspan="30" class="small">まだ行はありません。</td></tr>`}</tbody></table></div>`;
 }
 // 個人成績（たく個別などと同じ：担当者ごとの月別の売上・利益・件数・利益率と、工事種類の内訳）
+const staffKey = v => String(v || "").normalize("NFKC").replace(/[\s　]/g, "").replace(/髙/g, "高").replace(/﨑/g, "崎");
+// 苗字だけの名前は、担当者のフルネームのうち、それで始まる人が1人だけならその人にする
+function staffCanon(name){
+  const k = staffKey(name); if(!k) return "";
+  const full = (S.staff || []).map(p => p.name).filter(Boolean);
+  const same = full.find(n => staffKey(n) === k); if(same) return same;
+  const hits = full.filter(n => staffKey(n).startsWith(k));
+  return hits.length === 1 ? hits[0] : String(name).trim();
+}
 function staffTable(rs, ki, name){
-  const months = kiMonths(ki), mine = rs.filter(r => r.month && r.staff === name);
+  const months = kiMonths(ki), mine = rs.filter(r => r.month && staffCanon(r.staff) === name);
   const kinds = ["原状回復", "修繕", "フルリノベ", "リフォーム"];
   const tr = (label, x, cls = "") => { const s = sumLedger(x); return `<tr class="${cls}"><th>${label}</th><td class="r">${yenFull(s.sales)}</td><td class="r">${yenFull(s.profit)}</td><td class="r">${s.n}</td><td class="r">${pct(s.rate)}</td>${kinds.map(k => `<td class="r">${x.filter(r => r.kind === k).length}</td>`).join("")}</tr>`; };
   return `<div class="tbl-wrap"><table class="mtbl nb"><thead><tr><th>月</th><th class="r">売上</th><th class="r">利益</th><th class="r">件数</th><th class="r">利益率</th>${kinds.map(k => `<th class="r">${k}</th>`).join("")}</tr></thead>
@@ -3297,11 +3306,12 @@ async function viewMoney(kiArg, sheetArg, subArg){
         ${companies.map(c => { const s = sumLedger(cur.filter(r => r.coKey === coKey(c) && r.month)); return `<tr><th><a href="${url(ki, c)}">${esc(c)}</a></th><td class="r">${s.n}</td><td class="r">${yenFull(s.sales)}</td><td class="r">${yenFull(s.profit)}</td><td class="r">${yenFull(s.refore)}</td><td class="r">${pct(s.rate)}</td></tr>`; }).join("")}
         ${(s => `<tr class="sum"><th>合計</th><td class="r">${s.n}</td><td class="r">${yenFull(s.sales)}</td><td class="r">${yenFull(s.profit)}</td><td class="r">${yenFull(s.refore)}</td><td class="r">${pct(s.rate)}</td></tr>`)(sumLedger(cur.filter(r => r.month)))}</tbody></table></div></section>`;
   } else if(sheet === "個人成績"){
-    const staffNames = [...new Set([...(S.staff || []).map(p => p.name), ...cur.map(r => r.staff)].filter(Boolean))];
-    const who = sub || staffNames[0] || "";
+    if(!S.staff?.length) S.staff = await api().getStaff().catch(() => []);
+    const staffNames = [...new Set([...(S.staff || []).map(p => p.name), ...cur.map(r => staffCanon(r.staff))].filter(Boolean))];
+    const who = (sub && staffCanon(sub)) || staffNames[0] || "";
     body = `<nav class="chips">${staffNames.map(n => `<a href="${url(ki, "個人成績", n)}" ${n === who ? 'aria-current="true"' : ""}>${esc(n)}</a>`).join("") || `<span class="small">立会担当が入った行がまだありません。</span>`}</nav>
       ${who ? `<section class="panel"><h2>${esc(who)}</h2>${staffTable(cur, ki, who)}</section>` : ""}`;
-    list = cur.filter(r => r.staff === who);
+    list = cur.filter(r => staffCanon(r.staff) === who);
   } else {
     const k = coKey(sheet), fee = Number(Object.entries(cfg.fees || {}).find(([c]) => coKey(c) === k)?.[1]) || 0;
     const all0 = cur.filter(r => r.coKey === k), stOf = r => r.billedOutside && !r.stage ? "old" : r.done && r.stage !== "tachiai" ? "done" : (r.stage || "");
