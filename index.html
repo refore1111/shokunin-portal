@@ -5450,7 +5450,7 @@ async function route(){
       else if(a === "settings"){ html = await viewSettings(b); after = () => { renderPropList(); renderDelList(); return null; }; }
       else if(a === "craftsman") html = await viewCraftsman(b);
       else if(a === "members" && tenant()) html = await viewCoMembers();
-      else if(a === "plan" && tenant()) html = await viewCoPlan();
+      else if(a === "plan" && tenant() && SUBSCRIPTION_ON) html = await viewCoPlan();
       else { location.replace("#/admin"); return; }
       return done(html);
     }
@@ -6825,6 +6825,7 @@ document.addEventListener("change", e => {
    ・「既存業者のみ」の案件は先払いなし。職人さんは工務店の締め日で、その工務店へまとめて請求
    ・月額（プラン・メンバー・収支オプション・追加枠）は、運営が毎月請求書を発行
    ========================================================= */
+const SUBSCRIPTION_ON = false;   // サブスク（プラン・月額の請求・お試し・投稿数の上限）を使うときは true に
 const OP_DEFAULT = {
   plans:{p10:{name:"10件プラン", price:3000, limit:10}, p30:{name:"30件プラン", price:5000, limit:30}, p50:{name:"50件プラン", price:8000, limit:50}},
   trial:{name:"お試しプラン", limit:5, days:30},
@@ -6834,7 +6835,7 @@ const OP_DEFAULT = {
 const opCfg = () => ({...OP_DEFAULT, ...(S.opCfg || {}), plans:{...OP_DEFAULT.plans, ...((S.opCfg || {}).plans || {})}, trial:{...OP_DEFAULT.trial, ...((S.opCfg || {}).trial || {})}});
 const opFee = () => Number(opCfg().fee) || 0.1;
 // お試しプラン：運営が招待するときに選ぶ。期間中は月額が無料（全体公開の案件の運営手数料はかかる）。終わると新しい案件を公開できない
-const isTrial = c => c?.plan === "trial";
+const isTrial = c => SUBSCRIPTION_ON && c?.plan === "trial";
 const planOf = c => isTrial(c) ? {...opCfg().trial, price:0, trial:true} : opCfg().plans[c?.plan] || opCfg().plans.p10;
 const trialLeft = c => isTrial(c) ? Math.ceil(((c.trialEnds || 0) - Date.now()) / 86400000) : null;
 const trialNote = c => { const d = trialLeft(c); return d === null ? "" : d > 0 ? `お試し中：あと${d}日（${fmtDate(c.trialEnds)}まで）` : `お試し期間は${fmtDate(c.trialEnds)}で終わりました`; };
@@ -6876,7 +6877,7 @@ const coTermsOf = j => j.pay ? "代金は工務店からReforeへ先払い済み
 async function coPostGuard(id, x){
   if(!tenant()) return;
   const cur = id ? await api().getJob(id).catch(() => null) : null;
-  if(cur?.countedYm) return;
+  if(cur?.countedYm || !SUBSCRIPTION_ON) return;
   if(isTrial(S.company) && trialLeft(S.company) <= 0) throw new Error("お試し期間が終わりました。「契約・料金」でプランを選ぶと、続けて案件を公開できます");
   const ym = curMonth(), c = S.company || {}, used = await api().countPosted(S.cid, ym), cap = planOf(c).limit + Number((c.extra || {})[ym] || 0);
   if(used >= cap) throw new Error(`今月の投稿数（${cap}件）を使い切りました。「契約・料金」で追加枠を買うか、プランを変えてください`);
@@ -6896,7 +6897,7 @@ async function afterLogin(){
 function coStatusNote(){ return `<div class="alert-box"><b>この会社の利用は停止中です。</b><p>運営（Refore）にお問い合わせください。</p></div>`; }
 function coNavExtra(){
   const h = location.hash;
-  return coAdmin() ? `<a href="#/admin/members" ${h.startsWith("#/admin/members") ? 'aria-current="page"' : ""}>メンバー</a><a href="#/admin/plan" ${h.startsWith("#/admin/plan") ? 'aria-current="page"' : ""}>契約・料金</a>` : "";
+  return coAdmin() ? `<a href="#/admin/members" ${h.startsWith("#/admin/members") ? 'aria-current="page"' : ""}>メンバー</a>${SUBSCRIPTION_ON ? `<a href="#/admin/plan" ${h.startsWith("#/admin/plan") ? 'aria-current="page"' : ""}>契約・料金</a>` : ""}` : "";
 }
 function coPostNote(){
   const c = S.company || {}, p = planOf(c);
@@ -7129,7 +7130,7 @@ async function viewJoin(token){
 
 /* ---------- 運営 ---------- */
 function paintOp(content){
-  const h = location.hash, tabs = [["home", "収入"], ["cos", "工務店"], ["pays", "入金"], ["invs", "職人の請求"], ["bills", "月額の請求"], ["crafts", "協力業者"], ["jobs", "全案件"], ["settings", "設定"]];
+  const h = location.hash, tabs = [["home", "収入"], ["cos", "工務店"], ["pays", "入金"], ["invs", "職人の請求"], ...(SUBSCRIPTION_ON ? [["bills", "月額の請求"]] : []), ["crafts", "協力業者"], ["jobs", "全案件"], ["settings", "設定"]];
   const cur = (h.split("/")[2] || "home");
   $("#app").innerHTML = demoBar() + `<header class="top"><div class="top-in"><a class="brand" href="#/op"><span class="brand-mark gp" aria-hidden="true"></span><span><b><span class="nw">GENPUKU Pro</span> <span class="nw">運営画面</span></b><small>${esc(S.profile.name || "運営")}</small></span></a>
     <button class="link" data-act="logout">ログアウト</button></div><nav class="admin-nav" aria-label="運営メニュー">${tabs.map(([k, l]) => `<a href="#/op/${k}" ${cur === k ? 'aria-current="page"' : ""}>${l}${k === "pays" && S.opWait ? `<span class="badge">${S.opWait}</span>` : k === "crafts" && S.opPend ? `<span class="badge">${S.opPend}</span>` : ""}</a>`).join("")}</nav></header><main class="main">${content}</main>`;
@@ -7143,7 +7144,7 @@ async function routeOp(parts){
   if(t === "cos") return parts[2] ? viewOpCompany(parts[2]) : viewOpCos(cos);
   if(t === "pays") return viewOpPays(pays);
   if(t === "invs") return viewOpInvs();
-  if(t === "bills") return viewOpBills(parts[2]);
+  if(t === "bills" && SUBSCRIPTION_ON) return viewOpBills(parts[2]);
   if(t === "crafts") return viewOpCrafts(users);
   if(t === "jobs") return viewOpJobs();
   if(t === "settings") return viewOpSettings();
@@ -7159,8 +7160,8 @@ async function viewOpHome(cos, pays){
   const wait = pays.filter(p => ["waiting", "reported"].includes(p.status)), refund = pays.filter(p => p.status === "refund");
   return `<div class="page-head"><div><h1>今月の収入</h1><p class="lead">運営の画面です。全工務店の契約・入金・手数料が見えます。各社の見積や収支の中身は運営にも見えません。</p></div></div>
     <div class="kpis"><div class="panel kpi"><span class="l">運営手数料（${Math.round(opFee() * 100)}%）</span><span class="v num">${yenFull(feeNow)}</span><span class="s">今月入金を確認した先払いの分</span></div>
-      <div class="panel kpi"><span class="l">プラン料金</span><span class="v num">${yenFull(sum("plan"))}</span><span class="s">利用中 ${act.length}社（うちお試し ${act.filter(isTrial).length}社）</span></div>
-      <div class="panel kpi"><span class="l">オプション・メンバー・追加枠</span><span class="v num">${yenFull(sum("money") + sum("members") + sum("extra"))}</span><span class="s">収支 ${yenFull(sum("money"))}・メンバー ${yenFull(sum("members"))}・追加枠 ${yenFull(sum("extra"))}</span></div>
+      ${SUBSCRIPTION_ON ? "" : "<!--"}<div class="panel kpi"><span class="l">プラン料金</span><span class="v num">${yenFull(sum("plan"))}</span><span class="s">利用中 ${act.length}社（うちお試し ${act.filter(isTrial).length}社）</span></div>
+      <div class="panel kpi"><span class="l">オプション・メンバー・追加枠</span><span class="v num">${yenFull(sum("money") + sum("members") + sum("extra"))}</span><span class="s">収支 ${yenFull(sum("money"))}・メンバー ${yenFull(sum("members"))}・追加枠 ${yenFull(sum("extra"))}</span></div>${SUBSCRIPTION_ON ? "" : "-->"}
       <div class="panel kpi"><span class="l">お預かり中の工事代金</span><span class="v num">${yenFull(held)}</span><span class="s">職人さんへの支払い前</span></div></div>
     ${wait.length ? `<section class="panel"><h2>入金の確認待ち <small>${wait.length}件</small></h2>${wait.map(opPayRow).join("")}</section>` : ""}
     ${refund.length ? `<section class="panel"><h2>返金が必要 <small>発注が取り消された先払い</small></h2>${refund.map(opPayRow).join("")}</section>` : ""}`;
