@@ -927,6 +927,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .lsearch input{flex:1;max-width:520px}
 .lsr td.nw{white-space:nowrap}
 .lsr mark{background:#FFF1B8;color:inherit}
+.fee-note{margin:-4px 0 10px;padding:6px 10px;background:#FFF7E6;border-left:3px solid #C99A1C;border-radius:4px}
+.fee-note span{color:var(--sub);margin-left:8px}
 </style>
 </head>
 <body>
@@ -2902,6 +2904,7 @@ async function viewEstEdit(id){
   e ||= {id:"", status:"draft", honor:"御中", issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, kind:"退去工事",
     staff:lastStaff ? {name:lastStaff, phone:(S.staff.find(p => p.name === lastStaff) || {}).phone || ""} : null, rows:[{}, {}, {}]};
   S.est = e; S.estCo = e.company || "";
+  S.ledgerCfg = await api().getLedgerCfg().catch(() => ({}));
   const [jobs, ests] = await Promise.all([api().listJobs({}).catch(() => []), api().listEstimates().catch(() => [])]);
   S.jobNos = [...jobs.map(j => j.jobNo), ...ests.filter(x => x.id !== e.id).map(x => x.no)].filter(Boolean);
   const prices = estPrices(), cats = [...new Set(prices.map(p => p.cat))];
@@ -2981,8 +2984,10 @@ function estResultHtml(e){
       <li><b>訂正見積</b>：同じ見積のまま直します（見積は増えません）。直したところは、プレビューと見積書に取消線（見え消し）で出ます。</li>
       <li><b>立会費のみ</b>：工事はなし。収支は立会費だけ、御請求書も立会費だけになります。</li></ul>`;
 }
-const estTotHtml = t => `<div class="est-tot-main"><span>小計</span><b>${yenFull(t.sub)}</b><span>消費税（10%）</span><b>${yenFull(t.tax)}</b><span>お見積金額（税込）</span><b class="big">${yenFull(t.total)}</b></div>
-  <div class="est-tot-cost"><span>原価（実行単価）${yenFull(t.cost)}</span><span>粗利 <b class="${t.profit < 0 ? "neg" : ""}">${yenFull(t.profit)}</b>（${pct(t.rate)}）</span><span class="small">Reforeだけに表示</span></div>`;
+const estFeeOf = () => coFee(S.estCo || S.est?.company || "", S.ledgerCfg || {});
+const estTotHtml = t => { const fee = estFeeOf(); if(fee){ const fa = Math.round(t.sub * fee / 100); t = {...t, feeAmt:fa, fee, profit:t.sub - fa - t.cost, rate:t.sub - fa ? (t.sub - fa - t.cost) / (t.sub - fa) : 0}; } return estTotHtml0(t); };
+const estTotHtml0 = t => `<div class="est-tot-main"><span>小計</span><b>${yenFull(t.sub)}</b><span>消費税（10%）</span><b>${yenFull(t.tax)}</b><span>お見積金額（税込）</span><b class="big">${yenFull(t.total)}</b></div>
+  <div class="est-tot-cost">${t.fee ? `<span>元請手数料 ${esc(t.fee)}% ▲${yenFull(t.feeAmt)}</span>` : ""}<span>原価（実行単価）${yenFull(t.cost)}</span><span>粗利 <b class="${t.profit < 0 ? "neg" : ""}">${yenFull(t.profit)}</b>（${pct(t.rate)}）</span><span class="small">Reforeだけに表示</span></div>`;
 // 入力のたびに金額・合計・プレビューを更新（プレビューは少し待ってから）
 function estSync(form){
   const e = readEst(form); S.est = e;
@@ -3158,8 +3163,17 @@ const craftName = uid => { const c = S.crafts?.get(uid); return c ? (c.tradeName
 // 管理会社名のゆれ（FLEX TOKYO／FLEXTOKYO、Nワークス／nworks）をそろえる
 const coKey = s => String(s || "").replace(/[\s　]/g, "").toLowerCase().replace("nワークス", "nworks");
 // 利益＝請負金額（手数料を引いた額）−発注額。Refore＝利益−立会・完了雑工事の作業金額
+// 孫受けの会社の元請手数料（%）。設定で入れた値（0も含む）を優先、なければ決まりの値
+const DEFAULT_CO_FEE = {"FLEXTOKYO":8};
+function coFee(company, cfg = {}){
+  if(!company) return 0;
+  const set = Object.entries(cfg.fees || {}).find(([k]) => coKey(k) === coKey(company) || coSame(k, company));
+  if(set && set[1] !== "" && set[1] != null) return Number(set[1]) || 0;
+  const d = Object.entries(DEFAULT_CO_FEE).find(([k]) => coSame(k, company));
+  return d ? d[1] : 0;
+}
 function calcLedger(r, cfg){
-  const fee = Number((cfg.fees || {})[r.company]) || Number(Object.entries(cfg.fees || {}).find(([k]) => coKey(k) === coKey(r.company))?.[1]) || 0, staffRate = cfg.staffRate ?? 0.5;
+  const fee = coFee(r.company, cfg), staffRate = cfg.staffRate ?? 0.5;
   // 取り込んだ表の「-8%」「作業金額」は、表の値をそのまま使う（手で直した行があるため）
   const lost = r.stage === "lost";
   const contract = lost ? 0 : Number(r.contract) || 0, net = lost ? 0 : (r.netOv ?? Math.round(contract * (1 - fee / 100)));
@@ -3342,12 +3356,12 @@ async function viewMoney(kiArg, sheetArg, subArg){
       ${who ? `<section class="panel"><h2>${esc(who)}</h2>${staffTable(cur, ki, who)}</section>` : ""}`;
     list = cur.filter(r => staffCanon(r.staff) === who);
   } else {
-    const k = coKey(sheet), fee = Number(Object.entries(cfg.fees || {}).find(([c]) => coKey(c) === k)?.[1]) || 0;
+    const k = coKey(sheet), fee = coFee(sheet, cfg);
     const all0 = cur.filter(r => r.coKey === k), stOf = r => r.billedOutside && !r.stage ? "old" : r.done && r.stage !== "tachiai" ? "done" : (r.stage || "");
     list = sub ? all0.filter(r => stOf(r) === (sub === "none" ? "" : sub)) : all0;
     const chips = `<nav class="chips" aria-label="状態で絞り込む"><a href="${url(ki, sheet)}" ${sub ? "" : 'aria-current="true"'}>すべて ${all0.length}</a>${[["none", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注"], ["done", "完了"], ["tachiai", "立会のみ"], ["lost", "失注"]].map(([s2, l]) => { const n = all0.filter(r => stOf(r) === (s2 === "none" ? "" : s2)).length; return n ? `<a href="${url(ki, sheet, s2)}" ${sub === s2 ? 'aria-current="true"' : ""}>${l} ${n}</a>` : ""; }).join("")}</nav>`;
     const wait = list.filter(r => r.stage === "wait").length, before = list.filter(r => ["", "est"].includes(r.stage || "") && !r.jobId).length;
-    body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${chips}${ledgerTable(list, fee)}</section>
+    body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${fee ? `<p class="small fee-note">孫受け：元請手数料 <b>${esc(fee)}%</b> を請負金額から引いた金額（-${esc(fee)}%の列）で利益を出しています。<span>変えるときは下の「元請手数料（孫受け）・作業金額の設定」</span></p>` : ""}${chips}${ledgerTable(list, fee)}</section>
       <section class="panel"><h2>月次</h2>${monthlyTable(list, prev.filter(r => r.coKey === k), ki, fee)}</section>`;
   }
   S.ledger = {ki, sheet, list, rows};
@@ -3357,9 +3371,9 @@ async function viewMoney(kiArg, sheetArg, subArg){
     <form class="lsearch" data-form="lsearch" data-ki="${esc(ki)}" role="search"><input type="search" name="q" value="${esc(sheet === "検索" ? sub : "")}" placeholder="案件を探す（物件名・工事番号・管理会社・担当・業者）" aria-label="収支の案件を探す" enterkeyhint="search"><button class="btn sub">探す</button>${sheet === "検索" ? `<a class="textlink" href="${url(ki, "全体")}">やめる</a>` : ""}</form>
     <nav class="sheets" aria-label="シート">${["全体", ...companies, "個人成績"].map(s => `<a href="${url(ki, s)}" ${s === sheet ? 'aria-current="true"' : ""}>${esc(s)}</a>`).join("")}</nav>
     ${body}
-    <details class="panel"><summary class="textlink">手数料・作業金額の設定</summary>
+    <details class="panel"><summary class="textlink">元請手数料（孫受け）・作業金額の設定</summary>
       <form data-form="moneycfg" class="stack" style="margin-top:10px">
-        ${companies.map(c => `<label class="field" style="max-width:360px"><span>${esc(c)} の手数料（%）</span><input type="number" step="0.1" min="0" name="fee" data-co="${esc(c)}" value="${esc(Object.entries(cfg.fees || {}).find(([x]) => coKey(x) === coKey(c))?.[1] ?? "")}" placeholder="0"></label>`).join("")}
+        ${companies.map(c => `<label class="field" style="max-width:360px"><span>${esc(c)} の元請手数料（%）<small>孫受けのとき。請負金額からこの%を引いて利益を出します</small></span><input type="number" step="0.1" min="0" name="fee" data-co="${esc(c)}" value="${esc(coFee(c, cfg) || "")}" placeholder="0（手数料なし）"></label>`).join("")}
         <label class="field" style="max-width:360px"><span>立会・完了雑工事の作業金額（請負金額の%）</span><input type="number" step="0.1" min="0" name="staffRate" value="${esc(cfg.staffRate ?? 0.5)}"></label>
         <button class="btn sub" style="align-self:flex-start">設定を保存</button></form></details>
     ${!["全体", "個人成績"].includes(sheet) && companies.includes(sheet) ? `<p style="margin:14px 0 0"><button class="link danger-text" data-act="ledger-purge" data-co="${esc(sheet)}">「${esc(sheet)}」をこのサイトから消す（収支・物件マスタ・見積・請求）</button></p>` : ""}`;
@@ -6788,8 +6802,10 @@ const FORMS = {
     go(`#/admin/money/${row.month ? kiOfMonth(row.month) : (row.ki || kiNow())}/${encodeURIComponent(row.company || "全体")}`);
   },
   async moneycfg(form){
-    const fees = {}; form.querySelectorAll("[name=fee]").forEach(i => { if(i.value !== "" && Number(i.value)) fees[i.dataset.co] = Number(i.value) || 0; });
-    await api().saveLedgerCfg({fees, staffRate:Number(form.elements.staffRate.value) || 0}); toast("設定を保存しました"); route();
+    // 0（手数料なし）も保存する（決まりの8%を止められるように）。締め日・請求書の形などほかの設定は残す
+    const cfg0 = await api().getLedgerCfg().catch(() => ({})), fees = {};
+    form.querySelectorAll("[name=fee]").forEach(i => { const v = Math.max(0, Number(i.value) || 0); if(v || coFee(i.dataset.co, {}) || Object.keys(cfg0.fees || {}).some(k => coKey(k) === coKey(i.dataset.co))) fees[i.dataset.co] = v; });
+    await api().saveLedgerCfg({...cfg0, fees, staffRate:Number(form.elements.staffRate.value) || 0}); toast("設定を保存しました"); route();
   },
   async rating(form){
     const stars = Number(form.elements.stars.value || 0);
