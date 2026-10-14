@@ -923,9 +923,10 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .so-modal{max-width:460px}
 .home-scope{margin:-4px 0 10px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
 .price-row.only-co [name=p_note]{color:#2F6DB5;font-weight:600}
-.mchips{margin-top:-4px}
-.mchips a{padding:4px 11px;font-size:13px}
-.mchips a.zero{opacity:.45}
+.lsearch{display:flex;gap:8px;align-items:center;margin:0 0 12px}
+.lsearch input{flex:1;max-width:520px}
+.lsr td.nw{white-space:nowrap}
+.lsr mark{background:#FFF1B8;color:inherit}
 </style>
 </head>
 <body>
@@ -3318,6 +3319,21 @@ async function viewMoney(kiArg, sheetArg, subArg){
       <section class="panel"><h2>管理会社ごと</h2><div class="tbl-wrap"><table class="mtbl nb"><thead><tr><th>管理会社</th><th class="r">件数</th><th class="r">売上</th><th class="r">利益</th><th class="r">利益(Refore)</th><th class="r">利益率</th></tr></thead><tbody>
         ${companies.map(c => { const s = sumLedger(cur.filter(r => r.coKey === coKey(c) && r.month)); return `<tr><th><a href="${url(ki, c)}">${esc(c)}</a></th><td class="r">${s.n}</td><td class="r">${yenFull(s.sales)}</td><td class="r">${yenFull(s.profit)}</td><td class="r">${yenFull(s.refore)}</td><td class="r">${pct(s.rate)}</td></tr>`; }).join("")}
         ${(s => `<tr class="sum"><th>合計</th><td class="r">${s.n}</td><td class="r">${yenFull(s.sales)}</td><td class="r">${yenFull(s.profit)}</td><td class="r">${yenFull(s.refore)}</td><td class="r">${pct(s.rate)}</td></tr>`)(sumLedger(cur.filter(r => r.month)))}</tbody></table></div></section>`;
+  } else if(sheet === "検索"){
+    const q = sub.trim(), toks = q.split(/[\s　]+/).map(normKey).filter(Boolean);
+    const hay = r => normKey([r.jobNo, r.name, r.coName || r.company, r.staff, r.staff2, r.kind, r.note, ...(r.vendors || []).map(v => v.name)].join(" "));
+    const hits = toks.length ? rows.filter(r => { const h = hay(r); return toks.every(t => h.includes(t)); }) : [];
+    const kiOf = r => r.month ? kiOfMonth(r.month) : (r.ki ?? kiNow());
+    hits.sort((a, b) => kiOf(b) - kiOf(a) || (b.createdAt || 0) - (a.createdAt || 0));
+    const st = r => r.lost || r.stage === "lost" ? stageTag("lost") : r.billedOutside && !r.stage ? `<span class="stg stg-done">完了</span>` : r.done && r.stage !== "tachiai" ? `<span class="stg stg-done">完了</span>` : stageTag(r.stage);
+    list = hits.filter(r => inKi(r, ki));
+    body = `<section class="panel"><h2>検索 <small>${q ? `「${esc(q)}」　${hits.length}件（全部の期・全部の管理会社）` : "物件名・工事番号などを入れてください"}</small></h2>
+      ${hits.length ? `<div class="tbl-wrap"><table class="mtbl nb lsr"><thead><tr><th>期</th><th>管理会社</th><th>工事番号</th><th>物件名称</th><th>状態</th><th class="r">請負金額</th><th class="r">利益</th><th>完了月</th><th>担当</th><th></th></tr></thead><tbody>
+        ${hits.slice(0, 300).map(r => { const ns = nextStep(r); return `<tr><td>${esc(kiOf(r))}期</td><td>${esc(r.coName || r.company || "")}</td><td class="nw">${esc(r.jobNo || "")}</td>
+          <td class="name"><a href="${ns.href}">${highlight(r.name || "（物件名なし）", q.split(/[\s　]+/)[0] || "")}</a></td><td>${st(r)}</td>
+          <td class="r">${r.contract ? yenFull(r.contract) : "—"}</td><td class="r">${r.contract ? yenSign(r.profit) : "—"}</td><td>${r.month ? `${Number(r.month.slice(5))}月` : ""}</td><td>${esc(r.staff || "")}</td>
+          <td><a class="textlink" href="#/admin/money/edit/${esc(r.id)}" aria-label="収支を編集">✎</a></td></tr>`; }).join("")}</tbody></table></div>${hits.length > 300 ? `<p class="small">多いので先頭の300件だけ出しています。言葉を足して絞ってください。</p>` : ""}`
+      : q ? `<p class="small" style="margin:0">見つかりませんでした。物件名の一部（例：ルーブル）や工事番号（例：FT-2627-24）で探せます。</p>` : ""}</section>`;
   } else if(sheet === "個人成績"){
     if(!S.staff?.length) S.staff = await api().getStaff().catch(() => []);
     const staffNames = [...new Set([...(S.staff || []).map(p => p.name), ...cur.map(r => staffCanon(r.staff))].filter(Boolean))];
@@ -3328,18 +3344,17 @@ async function viewMoney(kiArg, sheetArg, subArg){
   } else {
     const k = coKey(sheet), fee = Number(Object.entries(cfg.fees || {}).find(([c]) => coKey(c) === k)?.[1]) || 0;
     const all0 = cur.filter(r => r.coKey === k), stOf = r => r.billedOutside && !r.stage ? "old" : r.done && r.stage !== "tachiai" ? "done" : (r.stage || "");
-    const mSel = /^m\d{4}-\d{2}$/.test(sub) ? sub.slice(1) : "";
-    list = mSel ? all0.filter(r => r.month === mSel) : sub ? all0.filter(r => stOf(r) === (sub === "none" ? "" : sub)) : all0;
-    const mchips = `<nav class="chips mchips" aria-label="月で絞り込む">${kiMonths(ki).map(m => { const n = all0.filter(r => r.month === m).length; return `<a href="${url(ki, sheet, "m" + m)}" ${mSel === m ? 'aria-current="true"' : ""} class="${n ? "" : "zero"}">${Number(m.slice(5))}月 ${n}</a>`; }).join("")}</nav>`;
+    list = sub ? all0.filter(r => stOf(r) === (sub === "none" ? "" : sub)) : all0;
     const chips = `<nav class="chips" aria-label="状態で絞り込む"><a href="${url(ki, sheet)}" ${sub ? "" : 'aria-current="true"'}>すべて ${all0.length}</a>${[["none", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注"], ["done", "完了"], ["tachiai", "立会のみ"], ["lost", "失注"]].map(([s2, l]) => { const n = all0.filter(r => stOf(r) === (s2 === "none" ? "" : s2)).length; return n ? `<a href="${url(ki, sheet, s2)}" ${sub === s2 ? 'aria-current="true"' : ""}>${l} ${n}</a>` : ""; }).join("")}</nav>`;
     const wait = list.filter(r => r.stage === "wait").length, before = list.filter(r => ["", "est"].includes(r.stage || "") && !r.jobId).length;
-    body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${chips}${mchips}${mSel ? `<p class="small" style="margin:-4px 0 10px">${Number(mSel.slice(5))}月に完了した案件です。</p>` : ""}${ledgerTable(list, fee)}</section>
+    body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${chips}${ledgerTable(list, fee)}</section>
       <section class="panel"><h2>月次</h2>${monthlyTable(list, prev.filter(r => r.coKey === k), ki, fee)}</section>`;
   }
   S.ledger = {ki, sheet, list, rows};
   return `<div class="page-head"><div><h1>収支 <small class="small">${esc(kiLabel(ki))}</small></h1></div>
       <div class="row"><a class="btn sub" href="${url(ki - 1)}" aria-label="前の期">‹ ${ki - 1}期</a><a class="btn sub" href="${url(ki + 1)}" aria-label="次の期">${ki + 1}期 ›</a>
         <a class="btn" href="#/admin/money/edit/new">＋ 案件を追加</a><button class="btn sub" data-act="money-import">CSVを取り込む</button><button class="btn sub" data-act="money-order" title="Numbersの表と同じ並び順にします（金額などは変わりません）">並び順を取り込む</button><button class="btn sub" data-act="money-csv">CSVで書き出す</button></div></div>
+    <form class="lsearch" data-form="lsearch" data-ki="${esc(ki)}" role="search"><input type="search" name="q" value="${esc(sheet === "検索" ? sub : "")}" placeholder="案件を探す（物件名・工事番号・管理会社・担当・業者）" aria-label="収支の案件を探す" enterkeyhint="search"><button class="btn sub">探す</button>${sheet === "検索" ? `<a class="textlink" href="${url(ki, "全体")}">やめる</a>` : ""}</form>
     <nav class="sheets" aria-label="シート">${["全体", ...companies, "個人成績"].map(s => `<a href="${url(ki, s)}" ${s === sheet ? 'aria-current="true"' : ""}>${esc(s)}</a>`).join("")}</nav>
     ${body}
     <details class="panel"><summary class="textlink">手数料・作業金額の設定</summary>
@@ -6695,6 +6710,7 @@ const FORMS = {
     S.pressStamp = id; toast("応募しました"); route();
   },
   async est(form){ const e = await saveEst(readEst(form)); toast("保存しました"); if(location.hash !== `#/admin/est/edit/${e.id}`) go(`#/admin/est/edit/${e.id}`); },
+  async lsearch(form){ const q = form.elements.q.value.trim(); go(q ? `#/admin/money/${form.dataset.ki}/${encodeURIComponent("検索")}/${encodeURIComponent(q)}` : `#/admin/money/${form.dataset.ki}`); },
   async billing(form){ const g = k => form.elements[k].value.trim(); await api().saveBilling({invoiceNumber:g("invoiceNumber"), bank:g("bank"), validity:g("validity"), terms:g("terms")}); S.billing = null; toast("保存しました"); },
   async memo(form){
     const f = form.elements, g = k => (f[k]?.value || "").trim();
