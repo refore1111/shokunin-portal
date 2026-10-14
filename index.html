@@ -3481,35 +3481,8 @@ function employeePanel(){
     <p class="small" style="margin:0 0 10px">従業員はログイン画面の「従業員として登録する」から申し込みます。担当者名を結びつけると、その人が担当の案件（応募・承諾・辞退・チャット・完了報告・作業開始の遅れ）の通知だけが届きます。担当者名のない人（会社のアカウント）には全部届きます。</p>
     ${pend ? `<h3 style="margin:6px 0">申し込み（${S.empPending.length}件）</h3>${pend}` : ""}${adm}</section>`;
 }
-// --- プッシュ通知：この端末を登録する／やめる ---
-const PUSH_KEY = "refore_push_token";
 const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-const myPushToken = () => { try { return localStorage.getItem(PUSH_KEY) || ""; } catch(e) { return ""; } };
-function pushPanel(adminMail = null){
-  const demo = api()?.mode === "demo", tok = myPushToken(), on = tok && (S.profile?.pushTokens || []).includes(tok);
-  const can = "Notification" in window && "serviceWorker" in navigator;
-  let body;
-  if(!FCM_VAPID_KEY && !demo) body = `<p class="small" style="margin:0">プッシュ通知は準備中です。</p>`;
-  else if(on) body = `<p style="margin:0 0 10px"><b>この端末に通知が届きます。</b></p><div class="row"><button class="btn sub" data-act="push-test">テスト通知を送る</button><button class="btn sub" data-act="push-off">この端末の通知をやめる</button></div>`;
-  else if(!demo && !can && isIOS() && !isStandalone()) body = `<p style="margin:0">iPhoneは、Safariの共有ボタン →「ホーム画面に追加」で追加した <b>GENPUKU Pro</b> から開くと、通知をオンにできます。</p>`;
-  else if(!demo && !can) body = `<p class="small" style="margin:0">この端末のブラウザは通知に対応していません。</p>`;
-  else if(!demo && Notification.permission === "denied") body = `<p style="margin:0">通知がブロックされています。端末の設定（またはブラウザのサイト設定）で、このサイトの通知を「許可」にしてから、もう一度開いてください。</p>`;
-  else body = `<p class="small" style="margin:0 0 10px">${myRole() === "admin" ? "応募・承諾・辞退・チャット・完了報告・請求書・作業開始の遅れ" : "新着案件・発注・チャット・作業開始の遅れ"}を、この端末の通知でお知らせします。</p><button class="btn" data-act="push-on">この端末に通知を届ける</button>`;
-  return `<section class="panel"><h2>通知</h2>${body}
-    ${adminMail === null ? "" : `<label class="toggle" style="margin:14px 0 0"><input type="checkbox" data-act="admin-mail" ${adminMail === false ? "" : "checked"}>Reforeあてのメール（${esc(REPORT_EMAIL)}）でも受け取る</label>`}</section>`;
-}
-async function pushMessaging(){
-  if(!window.firebase?.messaging) await loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-messaging-compat.js`);
-  const reg = await navigator.serviceWorker.register("firebase-messaging-sw.js");
-  return {m:firebase.messaging(), reg};
-}
-// 画面を開いているあいだに届いた通知は、画面の下に出す
-async function startPushListener(){
-  if(!FCM_VAPID_KEY || api()?.mode === "demo" || !myPushToken() || S.pushListening || !("serviceWorker" in navigator)) return;
-  S.pushListening = true;
-  try { const {m} = await pushMessaging(); m.onMessage(p => toast(`${p.notification?.title || "お知らせ"}${p.notification?.body ? "：" + p.notification.body : ""}`)); } catch(e) { console.warn(e); }
-}
 // 評価（Reforeだけが見る。星5が最高）
 const starsHtml = (v, n = null) => { const r = Math.round(Number(v) || 0); return `<span class="stars" aria-label="星${(Number(v) || 0).toFixed(1)}">${"★".repeat(r)}<span class="off">${"★".repeat(5 - r)}</span><small>${(Number(v) || 0).toFixed(1)}${n !== null ? `（${n}件）` : ""}</small></span>`; };
 const ratingOf = uid => { const l = (S.ratings || []).filter(r => r.craftsmanId === uid && r.stars > 0); return l.length ? {avg:l.reduce((a, r) => a + r.stars, 0) / l.length, n:l.length, list:l} : null; };
@@ -3738,12 +3711,11 @@ function viewProfileForm(p, isNew){
         <label class="field"><span>口座番号</span><input type="text" name="bankNumber" value="${esc(v.bank?.number)}" inputmode="numeric" pattern="[0-9]{4,8}" title="数字4〜8桁"></label>
       </div>
       <label class="field" style="margin:0"><span>口座名義（カナ）</span><input type="text" name="bankHolder" value="${esc(v.bank?.holder)}"></label></fieldset>
-    <label class="toggle" style="margin:0 0 16px"><input type="checkbox" name="emailNotify" ${v.emailNotify === false ? "" : "checked"}>お知らせ（新着案件・発注・差し戻し・Reforeからのチャットなど）をメールでも受け取る<small style="display:block;color:var(--sub);font-weight:400">プッシュ通知だけにしたい場合は、チェックを外してください</small></label>
     <label class="field"><span>自己PR <small>任意</small></span><textarea name="pr" placeholder="得意な作業や、対応できる時間帯など">${esc(v.pr)}</textarea></label>
     <button class="btn block">${isNew ? "審査を申し込む" : "登録情報を保存"}</button>
   </form>`;
   if(isNew) return `<div class="auth-wrap wide"><h1>協力業者の登録</h1><p class="lead">Reforeが内容を確認し、承認後に案件へ応募できるようになります。</p>${form}<p class="center"><button class="textlink" data-act="logout">ログアウト</button></p></div>`;
-  return `<h1>登録情報</h1><p class="lead">${esc(v.email)}　${CRAFT_STATUS[v.status] || ""}</p>${v.status === "approved" ? pushPanel() : ""}${form}`;
+  return `<h1>登録情報</h1><p class="lead">${esc(v.email)}　${CRAFT_STATUS[v.status] || ""}</p>${form}`;
 }
 function viewPending(){
   if(S.profile?.employee) return `<div class="note"><b>申し込みを受け付けました。</b>Reforeの管理者が確認しています。承認されると、次にひらいたときから管理画面が使えます。</div><p class="center"><button class="textlink" data-act="logout">ログアウト</button></p>`;
@@ -3965,44 +3937,10 @@ async function viewWorkDetail(id){
     <div class="stack">${lateTop}${step}${dates}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${craftJobBlock(job, priv, {full:true, showPrice:!(job.status === "assigned" && !job.acceptedAt && !job.declinedAt), itemsHtml:itemsPanelBody(job, priv), itemsLabel:priv.items?.length ? `${itemsWithId(priv.items).length}件` : "", itemsOpen:true})}</div></div>`;
 }
-/* ---------- メール通知（受注後の動き。Apps Script から info@refore.co.jp 名義で送信） ---------- */
-// to：管理者から業者に送るときの業者UID（業者からのときは空＝Reforeに届く）
-async function notifyMail(jobId, event, text = "", {to = "", kind = "event"} = {}){
-  if(!jobId) return;
-  if(api()?.mode === "demo"){ (S.demoMails ||= []).push({jobId, event, text, to, kind}); return; }
-  if(!PHOTO_UPLOAD_URL) return;
-  try {
-    const idToken = await api().getIdToken();
-    fetch(PHOTO_UPLOAD_URL, {method:"POST", body:JSON.stringify({action:"notify", idToken, jobId, event, text:String(text || "").slice(0, 1500), to, kind})})
-      .then(r => r.json()).then(j => { if(!j.ok){ console.warn("メール通知に失敗", j.error); toast("メール通知を送れませんでした：" + (j.error || "原因不明")); } })
-      .catch(e => { console.warn("メール通知に失敗", e); toast("メール通知を送れませんでした（写真の受け口に接続できません）"); });
-  } catch(e) { console.warn("メール通知に失敗", e); }
-}
+/* ---------- メール通知：自動メールはやめた（2026-10-14）。呼び出しは残して何もしない ---------- */
+async function notifyMail(){}
 
-// 新着案件のお知らせ：工種・対応エリアが合う承認済みの協力業者へ（メール通知をオフにしている人は除く）
-function newJobTargets(job, crafts, skipPriority = false){
-  return crafts.filter(c => c.role === "craftsman" && c.status === "approved" && c.emailNotify !== false && c.email
-    && (job.audience === "priority" ? !!c.priority : !(skipPriority && c.priority))
-    && tradeOk(job.trades, c.trades)
-    && (!job.pref || !c.prefs?.length || c.prefs.includes(job.pref)));
-}
-async function notifyNewJob(jobId, job){
-  if(api()?.mode === "demo"){
-    const sentP = (S.demoMails || []).some(m => m.jobId === jobId && m.kind === "newjob" && m.audience === "priority");
-    const n = newJobTargets(job, await api().listCraftsmen(), sentP).length;
-    (S.demoMails ||= []).push({jobId, event:"新着案件", kind:"newjob", count:n, audience:job.audience || "all"});
-    setTimeout(() => toast(n ? `${n}人の協力業者に新着案件のメールを送りました（デモ）` : "条件に合う協力業者がいないため、メールは送っていません"), 1200);
-    return;
-  }
-  if(!PHOTO_UPLOAD_URL) return;
-  try {
-    const idToken = await api().getIdToken();
-    const r = await fetch(PHOTO_UPLOAD_URL, {method:"POST", body:JSON.stringify({action:"newjob", idToken, jobId})}).then(r => r.json());
-    if(!r.ok) toast("新着案件のメールを送れませんでした：" + (r.error || "原因不明"));
-    else if(r.sent) toast(`${r.sent}人の協力業者に新着案件のメールを送りました${r.left ? `（1日の上限のため${r.left}人には送れていません）` : ""}`);
-    else if(r.skipped === "no-target") toast("条件に合う協力業者がいないため、メールは送っていません");
-  } catch(e) { console.warn("新着案件のメールに失敗", e); toast("新着案件のメールを送れませんでした（受け口に接続できません）"); }
-}
+async function notifyNewJob(){}
 
 /* ---------- 完了報告の写真送信 ---------- */
 const photoUploadOn = () => api()?.mode === "demo" || !!PHOTO_UPLOAD_URL;
@@ -4152,7 +4090,7 @@ async function viewJobEdit(id){
   const buttons = isDraft
     ? `<div class="aud-pick" role="radiogroup" aria-label="公開する相手"><label><input type="radio" name="audience" value="priority" ${job.audience !== "all" ? "checked" : ""}>既存業者のみに公開（あとから全体に公開もできます）</label><label><input type="radio" name="audience" value="all" ${job.audience === "all" ? "checked" : ""}>最初から全体に公開${tenant() ? `（発注時に先払い・運営手数料${Math.round(opFee() * 100)}%）` : ""}</label>${tenant() ? coPostNote() : ""}
 </div>
-      <label class="toggle" style="flex-basis:100%;margin-bottom:4px"><input type="checkbox" name="mailNew" checked>公開したら、工種と対応エリアが合う協力業者にメールで知らせる（既存業者に先に公開するときは、既存業者にだけ）</label><button class="btn" name="mode" value="open">公開して募集する</button><button class="btn sub" name="mode" value="draft">下書き保存</button>`
+      <button class="btn" name="mode" value="open">公開して募集する</button><button class="btn sub" name="mode" value="draft">下書き保存</button>`
     : `<button class="btn" name="mode" value="keep">変更を保存</button>`;
   return `${back(id ? `#/admin/job/${id}` : "#/admin", id ? "案件の管理" : "案件")}
     <h1>${id ? "案件を編集" : "新しい案件"}</h1>
@@ -4764,7 +4702,6 @@ async function viewSettings(tab){
     S.priceCos = [...new Set([...used, ...inPrices.filter(c => !used.some(u => coSame(u, c)))])].sort((a, b) => a.localeCompare(b, "ja"));
     if(S.priceCo && !S.priceCos.includes(S.priceCo)) S.priceCo = "";
   }
-  S.notifyCfg = await api().getNotifySettings().catch(() => ({}));
   S.admins = await api().listAdmins().catch(() => []);
   S.billingCfg = await api().getBilling().catch(() => ({}));
   [S.suppliers, S.materials, S.seal] = await Promise.all([api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), api().getMaterials().catch(() => clone(DEFAULT_MATERIALS)), api().getSeal().catch(() => "")]);
@@ -4838,7 +4775,7 @@ async function viewSettings(tab){
         <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-staff">＋ 担当者を追加</button><button class="btn">担当者を保存</button></div>
       </form></section>
 ` : ""}
-    ${tab === "people" ? `    ${pushPanel(S.notifyCfg?.adminMail !== false)}
+    ${tab === "people" ? `    
 
     ${employeePanel()}
 ` : ""}
@@ -6052,36 +5989,6 @@ const ACTIONS = {
       `DTSTART;VALUE=DATE:${d(s)}`, `DTEND;VALUE=DATE:${d(e)}`, `SUMMARY:${x(j.title)}`, `LOCATION:${x(loc)}`, `DESCRIPTION:${x(note)}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
     saveBlob(new Blob([ics], {type:"text/calendar"}), `${(j.title || "予定").slice(0, 30)}.ics`);
   },
-  async "push-on"(){
-    const uid = S.user.uid;
-    if(api().mode === "demo"){ const t = "demo_" + newId(); try { localStorage.setItem(PUSH_KEY, t); } catch(e) {} await api().addPushToken(uid, t); S.profile = await api().getProfile(uid); toast("この端末に通知が届くようにしました（デモ）"); return route(); }
-    const perm = await Notification.requestPermission();
-    if(perm !== "granted") throw new Error("通知が許可されませんでした。端末の設定で、このサイトの通知を許可してください");
-    const {m, reg} = await pushMessaging();
-    const t = await m.getToken({vapidKey:FCM_VAPID_KEY, serviceWorkerRegistration:reg});
-    if(!t) throw new Error("通知の登録に失敗しました。もう一度お試しください");
-    const old = myPushToken(); if(old && old !== t) await api().removePushToken(uid, old).catch(() => {});
-    try { localStorage.setItem(PUSH_KEY, t); } catch(e) {}
-    await api().addPushToken(uid, t); S.profile = await api().getProfile(uid);
-    startPushListener(); toast("この端末に通知が届くようにしました"); route();
-  },
-  async "push-off"(){
-    const t = myPushToken();
-    if(t) await api().removePushToken(S.user.uid, t);
-    try { localStorage.removeItem(PUSH_KEY); } catch(e) {}
-    if(api().mode !== "demo"){ try { const {m} = await pushMessaging(); await m.deleteToken(); } catch(e) { console.warn(e); } }
-    S.profile = await api().getProfile(S.user.uid); toast("この端末の通知をやめました"); route();
-  },
-  async "push-test"(){
-    if(api().mode === "demo") return toast("テスト通知を送りました（デモ）");
-    const r = await fetch(PHOTO_UPLOAD_URL, {method:"POST", body:JSON.stringify({action:"pushtest", idToken:await api().getIdToken()})}).then(r => r.json());
-    if(!r.ok) throw new Error("テスト通知を送れませんでした：" + (r.error || "原因不明"));
-    toast(r.pushed ? "テスト通知を送りました。数秒で届きます" : "送れる端末が見つかりませんでした。「この端末の通知をやめる」→もう一度オンにしてください");
-  },
-  async "admin-mail"(el){
-    const on = el.checked; await api().saveNotifySettings({adminMail:on});
-    toast(on ? "Reforeあてのメールも送ります" : "Reforeあてのメールは止めました（プッシュ通知だけ）");
-  },
   // 元のPDFを開く（ポップアップを止められないよう、先に新しいタブを開いておく）
   async "pdf-open"(el){
     const w = window.open("", "_blank");
@@ -6701,7 +6608,7 @@ const FORMS = {
     inv = inv ? normInvoice(inv) : "";
     if(inv && !invoiceOk(inv)) throw new Error("インボイス登録番号は「T」と13桁の数字で入力してください");
     const g = k => String(fd.get(k) || "").trim();
-    const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr"), address:g("address"), emailNotify:!!form.elements.emailNotify?.checked,
+    const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr"), address:g("address"), 
       bank:{bankName:g("bankName"), branch:g("bankBranch"), type:g("bankType"), number:g("bankNumber"), holder:g("bankHolder")}};
     if(!S.profile){
       await api().createProfile(S.user.uid, {...data, role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now()});
@@ -6957,7 +6864,6 @@ const FORMS = {
       autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), photoUrls, items});
     if(S.editPdfChanged){ toast("PDFを保存しています…"); await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
     toast((mode === "open" ? "公開しました" : "保存しました") + (added ? `（単価表に${added}件追加）` : ""));
-    if(mode === "open" && form.elements.mailNew?.checked) notifyNewJob(jid, {...data, id:jid});
     go(`#/admin/job/${jid}`);
   },
   async chat(form){
@@ -8168,7 +8074,7 @@ async function boot(){
     S.user = u;
     try { S.profile = u ? await S.api.getProfile(u.uid) : null; } catch(e) { console.error(e); S.profile = null; }
     try { await afterLogin(); } catch(e) { console.error(e); }
-    route(); if(S.profile && !S.me) startPushListener();
+    route();
   });
   window.addEventListener("hashchange", route);
 }
