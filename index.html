@@ -2420,7 +2420,10 @@ class FirebaseBackend {
     return s.exists ? (s.data().items || []) : clone(DEFAULT_PRICES);
   }
   async savePrices(list){
-    const items = list.map(p => ({id:p.id, cat:p.cat || "", name:p.name || "", unit:p.unit || "", unitPrice:Number(p.unitPrice) || 0, note:p.note || ""}));
+    // 見積単価（標準・管理会社ごと）・手間請け・見積だけの項目の印も消さずに保存する
+    const items = list.map(p => ({id:p.id, cat:p.cat || "", name:p.name || "", unit:p.unit || "", unitPrice:Number(p.unitPrice) || 0, note:p.note || "",
+      ...(p.sellPrice != null && p.sellPrice !== "" ? {sellPrice:Number(p.sellPrice) || 0} : {}), ...(Number(p.temaPrice) > 0 ? {temaPrice:Number(p.temaPrice)} : {}),
+      ...(p.sellBy && Object.keys(p.sellBy).length ? {sellBy:p.sellBy} : {}), ...(p.estOnly ? {estOnly:true} : {}), ...(p.onlyCo ? {onlyCo:p.onlyCo} : {}), ...(p.off ? {off:true} : {})}));
     await this.smaster("prices").set({items, updatedAt:Date.now()});
   }
   // --- 連絡（チャット）: threads/{案件ID_業者UID} と その下の messages ---
@@ -4135,7 +4138,7 @@ async function viewJobEdit(id){
         <input type="hidden" name="masterId" value="${esc(priv.masterId)}">
         <div class="two">
           <label class="field"><span>部屋番号</span><input type="text" name="room" value="${esc(priv.room)}" placeholder="例：203号室"></label>
-          <label class="field"><span>管理会社</span><input type="text" name="manager" value="${esc(priv.manager)}"></label>
+          <label class="field"><span>管理会社</span><select name="manager">${managerOptions(priv.manager)}</select></label>
         </div>
         <label class="field"><span>住所</span><input type="text" name="address" value="${esc(priv.address)}" autocomplete="off"></label>
         <div class="two">
@@ -4391,9 +4394,26 @@ function fillJobNo(form, force = false){
   const used = (S.jobNos || []).filter(n => n.startsWith(head)).sort((a, b) => Number(a.split("-")[2]) - Number(b.split("-")[2]));
   if(hint) hint.textContent = used.length ? `ポータルで最後に使った番号：${used[used.length - 1]}（収支一覧の番号を確認して入れてください）` : "収支一覧を見て、最後の番号を入れてください";
 }
+// 案件の管理会社のプルダウン：いつもの管理会社＋物件マスタにある会社。同じ会社（工事番号の略号が同じ）は1つにまとめる
+const MANAGERS = ["FLEX TOKYO", "Nワークス", "アイレントホーム", "イデアルシーク", "ジェントリーブルーエージェント", "ベストホームクリエイト", "リアルエステート", "ファミリープロパティー"];
+const managerKey = c => { const x = jobNoPrefix(c); return x !== "O" ? x : coLoose(c); };
+function managerList(){
+  const seen = new Set(), out = [];
+  const extra = [...new Set((S.props || []).map(p => String(p.company || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+  [...MANAGERS, ...extra].forEach(c => { const k = managerKey(c); if(!seen.has(k)){ seen.add(k); out.push(c); } });
+  return out;
+}
+const managerPick = cur => { cur = String(cur || "").trim(); return cur ? managerList().find(c => managerKey(c) === managerKey(cur)) || cur : ""; };
+function managerOptions(cur){
+  const list = managerList(), sel = managerPick(cur);
+  if(sel && !list.includes(sel)) list.push(sel);
+  return `<option value="">選んでください</option>${list.map(c => `<option ${c === sel ? "selected" : ""}>${esc(c)}</option>`).join("")}`;
+}
 function applyProp(form, p){
   const set = (n, v) => { if(form.elements[n]) form.elements[n].value = v || ""; };
-  set("building", p.name); set("address", p.address); set("manager", p.company);
+  const m = form.elements.manager, mc = managerPick(p.company);
+  if(m && mc && ![...m.options].some(o => o.value === mc)) m.add(new Option(mc, mc));
+  set("building", p.name); set("address", p.address); set("manager", mc);
   set("autolock", p.al); set("elevator", p.ev); set("masterId", p.id);
   if(p.note && !form.elements.contact.value.trim()) set("contact", p.note);
   fillJobNo(form, true);
