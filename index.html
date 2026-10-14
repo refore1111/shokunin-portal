@@ -906,6 +906,17 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
   .md-row{grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 56px 30px;grid-template-areas:"h x l a r" "c c c c c"}
   .md-row [name=d_h]{grid-area:h}.md-row i{grid-area:x}.md-row [name=d_l]{grid-area:l}.md-row .md-a{grid-area:a}.md-row .i-x{grid-area:r}.md-row .md-ck{grid-area:c}
 }
+
+.price-co{display:flex;flex-direction:column;gap:4px;padding:10px 12px;margin-bottom:10px;background:#F6F8FB;border:1px solid var(--line);border-radius:8px}
+.price-co label{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-weight:600;font-size:14px}
+.price-co select{min-width:220px}
+.price-co p{margin:0}
+.price-head{display:grid;grid-template-columns:120px 1fr 64px 96px 96px 96px 130px 34px;gap:6px;font-size:11.5px;color:var(--sub);margin:2px 0 4px;line-height:1.3}
+.price-head b{color:#B4235A;font-weight:600}
+.price-row input.co-set{background:#FDEBF1;color:#B4235A;font-weight:600}
+.price-sub{margin:22px 0 6px;font-size:15px}
+.price-sub small{display:block;font-weight:400;font-size:12px;color:var(--sub);margin-top:2px}
+@media (max-width:820px){ .price-head{display:none} }
 </style>
 </head>
 <body>
@@ -1067,7 +1078,8 @@ const DEFAULT_PRICES = [
 ];
 // 単価表の分類（並び順）。この8つのあとに、単価表で新しく付けた分類と「未分類」が続く
 const PRICE_CATS = ["表装工事", "塗装工事", "クリーニング", "雑工事", "設備工事", "電気工事", "大工工事"];
-const priceCats = () => [...new Set([...PRICE_CATS, ...(S.prices || []).map(p => p.cat || "未分類")])];
+const jobPrices = () => (S.prices || []).filter(p => !p.estOnly);
+const priceCats = () => [...new Set([...PRICE_CATS, ...jobPrices().map(p => p.cat || "未分類")])];
 // 作業内訳の「箇所」の候補
 const ITEM_LOCS = ["洋室", "洋室収納", "通路", "通路収納", "トイレ", "洗濯機置場", "洗面所", "和室", "キッチン", "DK", "LD", "LDK", "室内", "洋室①", "洋室②", "洋室③", "汚損箇所", "浴室", "玄関"];
 // 工事番号：収支一覧と同じ「略号-期の年-連番」（例：FT-2627-122）。期は8月始まり（2026年8月〜2027年7月＝2627）
@@ -1342,7 +1354,7 @@ function workListHtml(items, taxMode = "税別", showPrice = true, pick = false)
 function itemsTable(j){ return workListHtml(j.items, taxModeOf(j)); }
 // 2つ目のプルダウン：選んだ分類の工事だけを出す（分類が空ならすべて）
 function pickOptionsHtml(cat, pick){
-  const prices = S.prices || [], list = cat ? prices.filter(p => (p.cat || "未分類") === cat) : prices;
+  const prices = jobPrices(), list = cat ? prices.filter(p => (p.cat || "未分類") === cat) : prices;
   return `${prices.length ? `<option value="pick" ${pick === "pick" ? "selected" : ""} disabled>工事を選ぶ</option>` : ""}
     ${list.map(p => `<option value="${esc(p.id)}" ${pick === p.id ? "selected" : ""}>${esc(p.name)}（${yenFull(p.unitPrice)}／${esc(p.unit)}）</option>`).join("")}
     <option value="" ${pick === "" ? "selected" : ""}>その他（手入力）</option>`;
@@ -1363,7 +1375,7 @@ function applyCat(row){
 // 金額を出さない作業内訳（募集中の案件で業者さんに見せる）
 function itemsTablePublic(items){ return workListHtml(items, "税別", false); }
 function itemRowHtml(i = {qty:1, unit:"式"}){
-  const prices = S.prices || [];
+  const prices = jobPrices();
   const pick = i.priceId && prices.some(p => p.id === i.priceId) ? i.priceId : (i.name ? "" : (prices.length ? "pick" : ""));
   const fixed = pick && pick !== "pick" ? "readonly" : "";
   const cat = pick && pick !== "pick" ? (prices.find(p => p.id === pick).cat || "未分類") : "";
@@ -2642,7 +2654,7 @@ function adminNav(){
     <a href="#/admin/home" ${/^#\/admin\/(home|memo)/.test(location.hash) ? 'aria-current="page"' : ""}>ホーム</a>
     ${coAdmin() ? `<a href="#/admin/money" ${location.hash.startsWith("#/admin/money") ? 'aria-current="page"' : ""}>収支</a>` : ""}
     <a href="#/admin" ${!onC && !onK ? 'aria-current="page"' : ""}>案件${badge("jobs")}</a>
-    <a href="#/admin/est" ${location.hash.startsWith("#/admin/est") ? 'aria-current="page"' : ""}>見積</a>
+    ${coAdmin() ? "" : `<a href="#/admin/est" ${location.hash.startsWith("#/admin/est") ? 'aria-current="page"' : ""}>見積</a>`}
     <a href="#/admin/calendar" ${location.hash.startsWith("#/admin/calendar") ? 'aria-current="page"' : ""}>予定表</a>
     <a href="#/admin/invoices" ${/^#\/admin\/(invoices|bills)/.test(location.hash) ? 'aria-current="page"' : ""}>請求書${badge("invoices")}</a>
     <a href="#/admin/chat" ${location.hash.startsWith("#/admin/chat") ? 'aria-current="page"' : ""}>チャット${chatBadge()}</a>
@@ -2728,10 +2740,14 @@ const stageTag = st => `<span class="stg stg-${st || "none"}">${LEDGER_STAGE[st 
 const EST_KINDS = ["退去工事", "原状回復工事", "修繕工事", "フルリノベーション工事", "リフォーム工事", "入居前工事"];
 const BILLING_DEFAULT = {validity:"発行日より1ヶ月", terms:"工事完了月末締、翌月末日支払", invoiceNumber:"", bank:""};
 // 見積で選べる工事：単価表（実行単価）に見積単価を合わせたもの＋見積だけの項目（諸経費・和室など）
-function estPrices(){
-  const base = (S.prices || DEFAULT_PRICES).map(p => ({id:p.id, cat:p.cat || "その他", name:p.name, unit:p.unit, sell:Number(p.sellPrice ?? DEFAULT_SELL[p.name] ?? 0), cost:Number(p.unitPrice) || 0, note:/材工/.test(p.note || "") ? "" : (p.note || "")}));
+function coSell(p, co){
+  const m = p.sellBy || {}, k = co ? Object.keys(m).find(c => coSame(c, co)) : null;
+  return k != null && m[k] !== "" && m[k] != null ? Number(m[k]) : null;
+}
+function estPrices(co = S.estCo){
+  const base = (S.prices || DEFAULT_PRICES).map(p => ({id:p.id, cat:p.cat || "その他", name:p.name, unit:p.unit, sell:coSell(p, co) ?? Number(p.sellPrice ?? DEFAULT_SELL[p.name] ?? 0), cost:Number(p.unitPrice) || 0, note:/材工/.test(p.note || "") ? "" : (p.note || ""), off:!!p.off}));
   const have = new Set(base.map(p => p.name));
-  return [...base, ...EST_EXTRA.filter(x => !have.has(x.name))].filter(p => p.name);
+  return [...base, ...EST_EXTRA.filter(x => !have.has(x.name))].filter(p => p.name && !p.off);
 }
 const estAmt = r => r.noteRow ? 0 : Math.round((Number(r.qty) || 0) * (Number(r.price) || 0));
 function estTotals(e){
@@ -2801,6 +2817,28 @@ function estExcelCsv(e){
     ...(e.rows || []).filter(r => !r.noteRow && r.name).map(r => [r.loc, r.name, r.qty, r.unit, r.price, estAmt(r), r.spec]), ["", "小計", "", "", "", estTotals(e).sub, ""]];
   return "﻿" + lines.map(l => l.map(q).join(",")).join("\r\n");
 }
+const estBack = () => coAdmin() ? back("#/admin/money", "収支") : back("#/admin/est", "見積");
+// 収支につながっていない見積（前の「＋ 新しい見積」や複製で作ったもの）に、収支の行を足す
+async function estAttachLedger(e){
+  if(!e?.id || e.status === "revised") return e;
+  const t = estTotals(e.estRows?.length ? {rows:e.estRows} : e), ordered = ["ordered", "won", "tachiai"].includes(e.status);
+  const no = e.no || (e.company ? await nextJobNo(e.company) : ""), ym = (e.issuedAt || todayIso()).slice(0, 7), now = Date.now();
+  const lid = "l_" + newId();
+  await api().saveLedger({id:lid, manual:true, ki:kiOfMonth(ym), month:"", jobNo:no, name:[e.building, e.room].filter(Boolean).join(" ") || "（物件未入力）", company:e.company || "",
+    contract:ordered ? estTotals(e).sub : 0, kind:EST_LEDGER_KIND[e.kind] || "原状回復", staff:e.staff?.name || "", staff2:"", vendors:[], note:"見積から", arranged:ordered, done:false,
+    stage:EST_TO_STAGE[e.status] || "est", estimateId:e.id, estAmount:t.sub, ...(e.jobId ? {jobRef:e.jobId} : {}), createdAt:now, updatedAt:now});
+  const ne = {...e, ledgerId:lid, no, updatedAt:now}; await api().saveEstimate(ne); S.ldCache = null;
+  return ne;
+}
+async function estAttachOrphans(){
+  if(!coAdmin() || S.estOrphDone) return;
+  S.estOrphDone = true;
+  const [ests, led] = await Promise.all([api().listEstimates().catch(() => []), api().listLedger().catch(() => [])]);
+  const linked = new Set(led.map(r => r.estimateId).filter(Boolean));
+  const orph = ests.filter(e => e.status !== "revised" && !linked.has(e.id) && !e.ledgerId);   // 収支の行を自分で消した見積は戻さない
+  for(const e of orph) await estAttachLedger(e).catch(err => console.warn("見積→収支", err));
+  if(orph.length) toast(`収支につながっていなかった見積 ${orph.length}件を収支に入れました`);
+}
 // --- 一覧 ---
 async function viewEstimates(f){
   const list = (await api().listEstimates()).filter(e => !(e.status === "revised" && e.nextId)).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -2849,11 +2887,11 @@ async function viewEstEdit(id){
   [S.props, S.prices, S.staff, S.billing] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => []), api().getBilling().catch(() => ({}))]);
   const billing = {...BILLING_DEFAULT, ...S.billing};
   let e = id === "new" ? null : await api().getEstimate(id);
-  if(id !== "new" && !e) return `${back("#/admin/est", "見積")}<div class="empty">見積が見つかりません。</div>`;
+  if(id !== "new" && !e) return `${estBack()}<div class="empty">見積が見つかりません。</div>`;
   let lastStaff = ""; try { lastStaff = localStorage.getItem("refore_last_staff") || ""; } catch(err) {}
   e ||= {id:"", status:"draft", honor:"御中", issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, kind:"退去工事",
     staff:lastStaff ? {name:lastStaff, phone:(S.staff.find(p => p.name === lastStaff) || {}).phone || ""} : null, rows:[{}, {}, {}]};
-  S.est = e;
+  S.est = e; S.estCo = e.company || "";
   const [jobs, ests] = await Promise.all([api().listJobs({}).catch(() => []), api().listEstimates().catch(() => [])]);
   S.jobNos = [...jobs.map(j => j.jobNo), ...ests.filter(x => x.id !== e.id).map(x => x.no)].filter(Boolean);
   const prices = estPrices(), cats = [...new Set(prices.map(p => p.cat))];
@@ -2865,7 +2903,7 @@ async function viewEstEdit(id){
   const docLabel = {est:"見積書", ukesho:"工事請書", invoice:"御請求書"}[docType];
   const canSubmit = !e.id || ["draft", "sent"].includes(e.status);
   const opt = (arr, cur) => arr.map(x => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("");
-  return `${back("#/admin/est", "見積")}
+  return `${estBack()}
     <div class="page-head"><div><h1>${["ordered", "won"].includes(e.status) ? "工事請書" : e.id ? "見積を編集" : "新しい見積"} ${e.id ? `<span class="pill est-${esc(e.status)}">${EST_STATUS[e.status] || "下書き"}</span>` : ""}</h1></div>
       <div class="row"><button class="btn sub" form="est-form">保存</button>
         ${canSubmit ? `<button class="btn" data-act="est-submit">${e.status === "sent" ? "もう一度提出（メール）" : e.rev ? `訂正${e.rev}を提出（メール）` : "見積を提出（メール）"}</button>` : ""}
@@ -3237,6 +3275,7 @@ function staffTable(rs, ki, name){
     <tbody>${months.map(m => tr(`${Number(m.slice(5))}月`, mine.filter(r => r.month === m))).join("")}${tr("合計", mine, "sum")}</tbody></table></div>`;
 }
 async function viewMoney(kiArg, sheetArg, subArg){
+  await estAttachOrphans();
   const ki = Number(kiArg) || kiNow(), sheet = sheetArg ? decodeURIComponent(sheetArg) : "全体", sub = subArg ? decodeURIComponent(subArg) : "";
   const {rows, cfg, names} = await ledgerData();
   const cur = rows.filter(r => inKi(r, ki)), prev = rows.filter(r => inKi(r, ki - 1));
@@ -4613,19 +4652,51 @@ function staffRowHtml(p = {}){
     <button type="button" class="i-x" data-act="rm-staff" aria-label="この担当者を削除">×</button></div>`;
 }
 function priceRowHtml(p = {unit:"式"}){
-  return `<div class="price-row" data-id="${esc(p.id || "")}">
+  const co = S.priceCo || "", std = p.sellPrice ?? DEFAULT_SELL[p.name] ?? "", by = p.sellBy || {};
+  return `<div class="price-row${p.estOnly ? " est-only" : ""}" data-id="${esc(p.id || "")}" data-sell="${esc(std)}" data-sellby="${esc(JSON.stringify(by))}">
     <input type="text" name="p_cat" value="${esc(p.cat)}" list="cat-list-p" placeholder="分類（例：表装工事）" aria-label="分類">
     <input type="text" name="p_name" value="${esc(p.name)}" placeholder="作業名（例：クロス張替え 壁）" aria-label="作業名">
     <input type="text" name="p_unit" value="${esc(p.unit)}" list="unit-list-p" placeholder="単位" aria-label="単位">
-    <input type="number" name="p_price" value="${esc(p.unitPrice ?? "")}" min="0" inputmode="numeric" placeholder="単価（税抜）" aria-label="単価（税抜）">
-    <input type="number" name="p_sell" value="${esc(p.sellPrice ?? DEFAULT_SELL[p.name] ?? "")}" min="0" inputmode="numeric" placeholder="見積単価" aria-label="見積単価（管理会社への見積に使う単価）" title="見積単価（見積書で使う単価）">
+    <input type="number" name="p_price" value="${esc(p.unitPrice ?? "")}" min="0" inputmode="numeric" placeholder="${p.estOnly ? "業者単価（0なら発注しない）" : "業者単価（税抜）"}" aria-label="業者単価（税抜）">
+    <input type="number" name="p_sell" value="${esc(co ? (by[co] ?? "") : std)}" min="0" inputmode="numeric" placeholder="${co ? `標準 ${esc(std === "" ? "なし" : std)}` : "見積単価"}" aria-label="見積単価（管理会社への見積に使う単価）" title="見積単価（見積書で使う単価）" class="${co && by[co] != null && by[co] !== "" ? "co-set" : ""}">
     <input type="number" name="p_tema" value="${esc(p.temaPrice || "")}" min="0" inputmode="numeric" placeholder="手間のみ単価" aria-label="手間のみの単価（材工の作業だけ・任意）" title="材工の作業で、業者が手間のみに切り替えたときの単価（任意）">
     <input type="text" name="p_note" value="${esc(p.note)}" placeholder="備考・品番（任意）" aria-label="備考・品番">
     <button type="button" class="i-x" data-act="rm-price" aria-label="この作業を削除">×</button></div>`;
 }
+// 見積だけの項目：単価表に入れたもの＋まだ入れていない雛形の項目
+function estOnlyRows(){
+  const have = new Set((S.prices || []).map(p => p.name));
+  return [...(S.prices || []).filter(p => p.estOnly && !p.off), ...EST_EXTRA.filter(x => !x.noteRow && !have.has(x.name)).map(x => ({id:"", cat:x.cat, name:x.name, unit:x.unit, unitPrice:x.cost, sellPrice:x.sell, note:x.note, estOnly:true}))];
+}
+// 管理会社を切り替える前に、見積単価の欄の値をその行に覚えておく
+function priceSellStash(){
+  const co = S.priceCo || "";
+  document.querySelectorAll("form[data-form=prices] .price-row").forEach(r => {
+    const v = r.querySelector("[name=p_sell]").value;
+    if(!co){ r.dataset.sell = v; return; }
+    const by = JSON.parse(r.dataset.sellby || "{}"); if(v === "") delete by[co]; else by[co] = Number(v) || 0; r.dataset.sellby = JSON.stringify(by);
+  });
+}
+document.addEventListener("change", e => {
+  const t = e.target; if(!t.matches?.("[data-price-co]")) return;
+  priceSellStash(); S.priceCo = t.value; const co = S.priceCo;
+  document.querySelectorAll("form[data-form=prices] .price-row").forEach(r => {
+    const inp = r.querySelector("[name=p_sell]"), by = JSON.parse(r.dataset.sellby || "{}"), std = r.dataset.sell;
+    inp.value = co ? (by[co] ?? "") : std; inp.placeholder = co ? `標準 ${std === "" ? "なし" : std}` : "見積単価";
+    inp.classList.toggle("co-set", !!co && by[co] != null);
+  });
+  const h = $("#ph-sell"); if(h) h.innerHTML = `見積単価${co ? `<br><b>${esc(co)}</b>` : ""}`;
+});
 // --- 設定：物件マスタ画面 ---
 async function viewSettings(tab){
   if(!["props","prices","suppliers","docs","people","data"].includes(tab)) tab = "props";
+  if(tab === "prices"){
+    const {rows: lr, cfg: lc, names: ln} = await ledgerData().catch(() => ({rows:[], cfg:{}, names:new Map()}));
+    const used = [...ln.entries()].filter(([k]) => lr.some(r => r.coKey === k) || Object.keys(lc.fees || {}).some(c => coKey(c) === k)).map(([, v]) => v);
+    const inPrices = (S.prices || []).flatMap(p => Object.keys(p.sellBy || {}));
+    S.priceCos = [...new Set([...used, ...inPrices.filter(c => !used.some(u => coSame(u, c)))])].sort((a, b) => a.localeCompare(b, "ja"));
+    if(S.priceCo && !S.priceCos.includes(S.priceCo)) S.priceCo = "";
+  }
   S.notifyCfg = await api().getNotifySettings().catch(() => ({}));
   S.admins = await api().listAdmins().catch(() => []);
   S.billingCfg = await api().getBilling().catch(() => ({}));
@@ -4651,11 +4722,17 @@ async function viewSettings(tab){
       <label class="toggle" style="margin-bottom:10px"><input type="checkbox" id="prop-replace">いまの物件マスタをすべて消して入れ替える</label>
       <input type="file" accept=".csv,text/csv" data-propimport aria-label="CSVファイルを選ぶ"></section>
 ` : ""}
-    ${tab === "prices" ? `    <section class="panel"><h2>単価表 <small>よく使う作業と職人への発注単価（実行単価・税抜）</small></h2>
+    ${tab === "prices" ? `    <section class="panel"><h2>単価表 <small>業者に払う単価（実行単価）と、管理会社への見積単価（税抜）</small></h2>
       <p class="small" style="margin:0 0 10px">ここに登録した作業は、案件作成の作業内訳で「分類 → 工事」の順にプルダウンから選べます。分類は自由に付けられます（空欄は「未分類」）。選んだ作業の単価は変更できないので、どの業者さまにも同じ単価で発注されます。単価を変えても、作成済みの案件・発注書の金額は変わりません。</p>
       <form data-form="prices" class="stack">
-        <div class="items-ed" id="price-ed">${S.prices.map(priceRowHtml).join("")}</div>
-        <div class="row between" style="flex-wrap:wrap"><span class="row"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button><button type="button" class="btn sub" data-act="add-default-prices">標準の単価を追加</button></span><button class="btn">単価表を保存</button></div>
+        <div class="price-co"><label><span>見積単価を見る・変える管理会社</span><select data-price-co><option value="">標準（全部の管理会社）</option>${(S.priceCos || []).map(c => `<option ${c === S.priceCo ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
+          <p class="small">管理会社を選ぶと、見積単価の列がその管理会社だけの単価になります。空のままの作業は標準の見積単価を使います。見積と工事メモで、宛先の管理会社に合わせた単価が入ります。</p></div>
+        <div class="price-head" aria-hidden="true"><span>分類</span><span>作業名</span><span>単位</span><span>業者単価</span><span id="ph-sell">見積単価${S.priceCo ? `<br><b>${esc(S.priceCo)}</b>` : ""}</span><span>手間のみ単価</span><span>備考・品番</span><span></span></div>
+        <div class="items-ed" id="price-ed">${S.prices.filter(p => !p.estOnly).map(priceRowHtml).join("")}</div>
+        <div class="row" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button><button type="button" class="btn sub" data-act="add-default-prices">標準の単価を追加</button></div>
+        <h3 class="price-sub">見積だけの項目 <small>諸経費・立会費・和室・設備の交換など。業者の案件の作業内訳には出ません。業者単価は見積の原価になります（0でもかまいません）</small></h3>
+        <div class="items-ed" id="price-ed-est">${estOnlyRows().map(priceRowHtml).join("")}</div>
+        <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price-est">＋ 見積だけの項目を追加</button><button class="btn">単価表を保存</button></div>
       </form>
       <datalist id="cat-list-p">${[...new Set([...PRICE_CATS, ...S.prices.map(p => p.cat)].filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
       <datalist id="unit-list-p">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist></section>
@@ -5572,6 +5649,7 @@ async function route(){
       else if(a === "invoices") html = await viewAdminInvoices(b);
       else if(a === "bills") html = await viewBills(b);
       else if(a === "est" && b === "from"){ const id = await estFromLedger(c); location.replace(`#/admin/est/edit/${id}`); return; }
+      else if(a === "est" && coAdmin() && (!b || EST_STATUS[b] || (b === "edit" && c === "new"))){ location.replace(b === "edit" ? "#/admin/memo" : "#/admin/money"); return; }
       else if(a === "est"){ if(b === "edit"){ html = await viewEstEdit(c); after = () => { estZoom(); const f = $("#est-form"); if(f){ const prev = S.est; estSync(f); S.est = prev; } return null; }; } else html = await viewEstimates(b); }
       else if(a === "money") html = b === "edit" ? await viewMoneyEdit(c) : await viewMoney(b, c, parts[4]);
       else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
@@ -5738,6 +5816,10 @@ const ACTIONS = {
   async "add-price"(el){
     const ed = el.closest("form").querySelector("#price-ed");
     ed.insertAdjacentHTML("beforeend", priceRowHtml());
+    ed.querySelector(".price-row:last-child [name=p_name]").focus();
+  },
+  async "add-price-est"(){
+    const ed = $("#price-ed-est"); ed.insertAdjacentHTML("beforeend", priceRowHtml({unit:"式", estOnly:true, unitPrice:0}));
     ed.querySelector(".price-row:last-child [name=p_name]").focus();
   },
   // 標準の単価表（初期値）のうち、今の表にない作業を下に追加する（保存するまで反映されない）
@@ -6087,13 +6169,15 @@ const ACTIONS = {
   async "est-copy"(){
     const e = readEst($("#est-form"));
     const c = {...e, id:"", no:"", status:"draft", jobId:"", wonAt:null, issuedAt:todayIso(), rows:e.rows.map(r => ({...r, id:"r_" + newId()}))};
-    const id = await api().saveEstimate({...c, id:"est_" + newId(), createdAt:Date.now(), updatedAt:Date.now()});
-    toast("複製しました（NOは入れ直してください）"); go(`#/admin/est/edit/${id}`);
+    const id = await api().saveEstimate({...c, id:"est_" + newId(), ledgerId:"", createdAt:Date.now(), updatedAt:Date.now()});
+    if(coAdmin()){ const ne = await estAttachLedger(await api().getEstimate(id)); toast(`複製して収支に入れました（工事番号 ${ne.no || "なし"}）`); }
+    else toast("複製しました（NOは入れ直してください）");
+    go(`#/admin/est/edit/${id}`);
   },
   async "est-del"(){
     const e = S.est; if(!e?.id) return;
     if(!await ask({title:"この見積を削除しますか？", body:"元に戻せません。作った案件は消えません。", ok:"削除する", danger:true})) return;
-    await api().deleteEstimate(e.id); toast("削除しました"); go("#/admin/est");
+    await api().deleteEstimate(e.id); toast("削除しました"); go(coAdmin() ? "#/admin/money" : "#/admin/est");
   },
   async "rx-open"(el){ const bar = el.closest(".msg-row").querySelector(".rx-bar"); document.querySelectorAll(".rx-bar").forEach(b => { if(b !== bar) b.hidden = true; }); if(bar) bar.hidden = !bar.hidden; },
   async rx(el){
@@ -6439,7 +6523,9 @@ const FORMS = {
   async est(form){ const e = await saveEst(readEst(form)); toast("保存しました"); if(location.hash !== `#/admin/est/edit/${e.id}`) go(`#/admin/est/edit/${e.id}`); },
   async billing(form){ const g = k => form.elements[k].value.trim(); await api().saveBilling({invoiceNumber:g("invoiceNumber"), bank:g("bank"), validity:g("validity"), terms:g("terms")}); S.billing = null; toast("保存しました"); },
   async memo(form){
-    const f = form.elements, g = k => (f[k]?.value || "").trim(), ps = estPrices();
+    const f = form.elements, g = k => (f[k]?.value || "").trim();
+    S.estCo = g("company") === "__new" ? g("companyNew") : g("company");
+    const ps = estPrices();
     // 単価表の工事は単価・原価つき。単価表にない工事は名前と数量だけ（単価は見積で入れる）
     const rows = [...form.querySelectorAll(".memo-row")].map(r => { const v = n => (r.querySelector(`[name=${n}]`)?.value || "").trim(), name = v("m_name"), q = v("m_qty");
       const pp = ps.find(x => x.id === v("m_pid") && x.name === name) || ps.find(x => x.name === name);
@@ -6578,13 +6664,19 @@ const FORMS = {
     await api().saveStaff(list); S.staff = list; toast("担当者を保存しました"); route();
   },
   async prices(form){
-    const list = [...form.querySelectorAll(".price-row")].map(r => ({id:r.dataset.id || "p_" + newId(),
+    priceSellStash();
+    const list = [...form.querySelectorAll(".price-row")].map(r => { const est = !!r.closest("#price-ed-est"), by = JSON.parse(r.dataset.sellby || "{}");
+      return {id:r.dataset.id || "p_" + newId(),
       name:r.querySelector("[name=p_name]").value.trim(), unit:r.querySelector("[name=p_unit]").value.trim(), unitPrice:Number(r.querySelector("[name=p_price]").value) || 0,
-      note:r.querySelector("[name=p_note]").value.trim(), cat:r.querySelector("[name=p_cat]").value.trim(), ...(r.querySelector("[name=p_sell]")?.value !== "" ? {sellPrice:Number(r.querySelector("[name=p_sell]").value) || 0} : {}), ...(Number(r.querySelector("[name=p_tema]")?.value) > 0 ? {temaPrice:Number(r.querySelector("[name=p_tema]").value)} : {})}))
+      note:r.querySelector("[name=p_note]").value.trim(), cat:r.querySelector("[name=p_cat]").value.trim(), ...(r.dataset.sell !== "" ? {sellPrice:Number(r.dataset.sell) || 0} : {}), ...(Number(r.querySelector("[name=p_tema]")?.value) > 0 ? {temaPrice:Number(r.querySelector("[name=p_tema]").value)} : {}),
+      ...(Object.keys(by).length ? {sellBy:by} : {}), ...(est ? {estOnly:true} : {})}; })
       .filter(p => p.name || p.unitPrice);
     if(list.some(p => !p.name)) throw new Error("単価表に作業名が空の行があります");
     if(list.some(p => !p.unit)) throw new Error("単価表に単位が空の行があります");
-    if(list.some(p => !(p.unitPrice > 0))) throw new Error("単価表の単価を入力してください");
+    if(list.some(p => !p.estOnly && !(p.unitPrice > 0))) throw new Error("単価表の業者単価を入力してください（見積だけの項目は0でもかまいません）");
+    // 雛形の見積だけの項目を×で消したときは「使わない」として残す（次に開いても出てこない）
+    const kept = new Set(list.map(x => x.name));
+    EST_EXTRA.filter(x => !x.noteRow && !kept.has(x.name)).forEach(x => list.push({id:"p_" + newId(), name:x.name, cat:x.cat, unit:x.unit || "式", unitPrice:0, note:"", estOnly:true, off:true}));
     const names = list.map(p => p.name);
     const dup = names.find((n, i) => names.indexOf(n) !== i);
     if(dup) throw new Error(`単価表に同じ作業名があります（${dup}）`);
@@ -7832,6 +7924,9 @@ document.addEventListener("mousedown", e => {
   if(li){ e.preventDefault(); const p = estPrices().find(x => x.id === li.dataset.pid), inp = li.closest(".memo-wq").querySelector("[data-memo-w]"); if(p) memoWorkPick(inp, p); return; }
   if(!e.target.closest?.(".memo-wq")) document.querySelectorAll(".memo-wac").forEach(b => { b.hidden = true; });
 });
+
+document.addEventListener("input", e => { const t = e.target; if(t.matches?.("#est-form [name=company], form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) S.estCo = t.value === "__new" ? "" : t.value.trim(); });
+document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company]")) S.estCo = t.value === "__new" ? "" : t.value; });
 
 /* ---------- 起動 ---------- */
 function loadScript(src){
