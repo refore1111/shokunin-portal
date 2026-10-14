@@ -3004,6 +3004,31 @@ function jobAdminCached(id){
   const p = Promise.all([api().getAdminInfo(id).catch(() => ({})), api().getMatOrders(id).catch(() => [])]);
   JOB_ADMIN_CACHE.set(id, {at:Date.now(), p}); return p;
 }
+// 収支の手入力の行（link）を、案件（jid）の収支にまとめる。請負金額・完了月・担当などは残し、発注業者は「ポータル以外で払った分」に入れる
+async function mergeLedgerLink(link, ex, jid){
+  const {vendors, manual, id:_old, ord, ...keep} = link, merged = {...keep};
+  Object.entries(ex || {}).forEach(([k, v]) => { if(v !== "" && v != null && v !== 0 && !(Array.isArray(v) && !v.length)) merged[k] = v; });
+  const doc = {...merged, id:jid, jobId:jid, extraVendors:[...(ex?.extraVendors || []), ...(vendors || [])], updatedAt:Date.now()};
+  await api().saveLedger(doc); await api().deleteLedger(link.id);
+  return doc;
+}
+// 予定表などにある案件のうち、まだ収支とつながっていないものを、同じ工事番号・管理会社の手入力の行とつなぐ（管理者だけ）
+async function autoLinkLedger(stored, jobs){
+  if(myRole() !== "admin") return false;
+  stored ||= await api().listLedger().catch(() => null); if(!stored) return false;
+  jobs ||= await api().listJobs({}).catch(() => []);
+  const linked = new Set(stored.filter(r => r.jobId).map(r => r.jobId)), manual = stored.filter(r => !r.jobId && r.jobNo);
+  let n = 0;
+  for(const j of jobs.filter(j => !j.parentId && j.jobNo && !linked.has(j.id))){
+    const hits = manual.filter(r => normJobNo(r.jobNo) === normJobNo(j.jobNo)); if(!hits.length) continue;
+    const [info] = await jobAdminCached(j.id), m = String(info?.manager || "").trim(); if(!m) continue;
+    const link = hits.find(r => r.company && managerKey(r.company) === managerKey(m)); if(!link) continue;
+    const doc = await mergeLedgerLink(link, null, j.id).catch(e => { console.warn(e); return null; }); if(!doc) continue;
+    stored.splice(stored.indexOf(link), 1, doc); manual.splice(manual.indexOf(link), 1); linked.add(j.id); n++;
+  }
+  if(n) S.ldCache = null;
+  return n;
+}
 async function ledgerData(){
   if(S.ldCache && Date.now() - S.ldCache.at < 20000) return S.ldCache.p;
   const p = ledgerDataLoad(); S.ldCache = {at:Date.now(), p}; p.catch(() => { S.ldCache = null; });
@@ -3012,8 +3037,9 @@ async function ledgerData(){
 async function ledgerDataLoad(){
   const [stored, jobs, cfg] = await Promise.all([api().listLedger(), api().listJobs({}), api().getLedgerCfg().catch(() => ({}))]);
   S.ledgerCfg = cfg;
+  await autoLinkLedger(stored, jobs).catch(e => console.warn(e));
   const byJob = new Map(stored.filter(r => r.jobId).map(r => [r.jobId, r]));
-  const roots = jobs.filter(j => !j.parentId && !byJob.get(j.id)?.hidden && (["assigned", "working", "finished", "completed", "paid"].includes(j.status) || byJob.get(j.id)?.contract));
+  const roots = jobs.filter(j => !j.parentId && !byJob.get(j.id)?.hidden && (["assigned", "working", "finished", "completed", "paid"].includes(j.status) || byJob.get(j.id)?.contract || byJob.get(j.id)?.ki));
   const auto = await Promise.all(roots.map(async j => {
     const L = byJob.get(j.id) || {};
     const [info, mos] = await jobAdminCached(j.id);
@@ -3023,7 +3049,7 @@ async function ledgerDataLoad(){
     const doneAt = j.completedAt || j.finishedAt;
     return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), monthSet:!!L.month, jobNo:j.jobNo || "", name:j.title, company:L.company || info.manager || "",
       contract:L.contract || 0, kind:L.kind || "", staff:L.staff ?? (j.staff?.name || ""), staff2:L.staff2 || "", vendors, extraVendors:L.extraVendors || [], note:L.note || "",
-      arranged:!!j.assignedTo, done:["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, stage:L.stage || "won", estimateId:L.estimateId || "", billId:L.billId || "", billedOutside:!!L.billedOutside, ord:L.ord ?? null};
+      arranged:!!j.assignedTo, done:["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, ki:L.ki, stage:L.stage || (j.assignedTo || L.contract ? "won" : ""), estimateId:L.estimateId || "", billId:L.billId || "", billedOutside:!!L.billedOutside, ord:L.ord ?? null};
   }));
   const rows = [...auto, ...stored.filter(r => !r.jobId)].map(r => calcLedger(r, cfg));
   // 管理会社の表示名：取り込んだ表（Numbers）の書き方を優先
@@ -4037,7 +4063,7 @@ async function viewAdminJob(id){
     <p style="margin:10px 0 0"><a class="btn sub" href="#/admin/job/${esc(id)}/mat/new">＋ 材料・外部発注を作る</a></p></section>`;
   return `${back("#/admin", "案件")}
     <div class="page-head"><div class="row"><span class="pill ${pillClass(job)}">${esc(statusLabel(job))}</span>${job.status === "draft" ? `<span class="small">作成 ${fmtTime(job.createdAt)}</span>` : ""}<span class="small">工事番号：<b style="color:var(--ink)">${esc(job.jobNo) || "未入力"}</b></span>${["draft", "open", "closed"].includes(job.status) ? `<span class="small">公開範囲：<b style="color:${job.audience === "priority" ? "#9A6A12" : "var(--ink)"}">${job.audience === "priority" ? "既存業者だけ（先行公開）" : "全体"}</b>${job.status === "open" && job.audience === "priority" && job.autoAllAt ? `　応募がなければ ${fmtFull(job.autoAllAt)} に自動で全体公開 <button class="textlink" data-act="auto-off" data-id="${esc(id)}">やめる</button>` : ""}</span>` : ""}<span class="small">管理会社：<b style="color:var(--ink)">${esc(priv.manager) || "未登録"}</b></span>${parentJob ? `<span class="small">元の案件：<a href="#/admin/job/${esc(parentJob.id)}">${esc(parentJob.title)}</a></span>` : ""}</div>
-      <div class="row">${acts}${calUrl ? `<span class="row" style="gap:6px"><input type="date" data-caldate value="${esc(cal.up)}" aria-label="完了確認の日" title="完了確認の日（最初はUP日）">${calPick}<button class="btn sub" data-act="done-cal" data-url="${esc(calUrl)}">完了確認をカレンダーに入れる</button></span>` : ""}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
+      <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
     <div class="cols">
       <div class="stack">${job.status === "selected" ? await prepayPanel(job) : ""}${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true, false, true)}${await adminItemsPanel(job, priv, apps, family)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
@@ -4049,6 +4075,9 @@ async function viewAdminJob(id){
         : `<section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
           ${apps.length ? apps.map(applicantHtml).join("") : `<p class="small" style="margin:0">${job.status === "draft" ? "公開すると、協力業者からの応募がここに届きます。" : "まだ応募はありません。"}</p>`}
         </section>`}
+        ${calUrl ? `<section class="panel"><h2>完了確認</h2>
+          <p class="small" style="margin:0 0 10px">完了確認の日と担当を選んで、Googleカレンダーに入れます（会社のアドレスで作り、担当は招待されます）。最初の日付はUP日です。</p>
+          <div class="row" style="gap:8px;flex-wrap:wrap"><input type="date" data-caldate value="${esc(cal.up)}" aria-label="完了確認の日" style="max-width:180px">${calPick}<button class="btn" data-act="done-cal" data-url="${esc(calUrl)}">カレンダーに入れる</button></div></section>` : ""}
       </div></div>`;
 }
 
@@ -5028,6 +5057,7 @@ async function viewCalendar(ym, company = ""){
   let [y, m] = String(ym || "").split("-").map(Number);
   if(!y || !m){ y = now.getFullYear(); m = now.getMonth() + 1; }
   const [jobs, apps] = await Promise.all([api().listJobs({}), api().listApplications({})]);
+  if(!S.calLinked){ S.calLinked = true; autoLinkLedger(null, jobs).catch(e => console.warn(e)); }
   const cnt = {}; apps.forEach(a => { if(a.status === "applied") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
   const first = isoOf(new Date(y, m - 1, 1).getTime()), last = isoOf(new Date(y, m, 0).getTime());
   const gridStart = addDays(first, -new Date(y, m - 1, 1).getDay());
@@ -6202,6 +6232,8 @@ const ACTIONS = {
   async "job-delete"(el){
     const id = el.dataset.job, j = await api().getJob(id); if(!j) return;
     if(!await ask({title:`「${j.title}」を削除しますか？`, body:"この案件の応募・完了報告・発注書・チャットも一緒に削除します。請求書は残ります。元に戻せません。", ok:"削除する", danger:true})) return;
+    const ld = (await api().listLedger().catch(() => [])).find(r => r.id === id);
+    if(ld){ const {extraVendors, jobId, id:_j, ...rest} = ld; await api().saveLedger({...rest, id:"l_" + newId(), manual:true, ki:ld.ki || kiNow(), jobNo:ld.jobNo || j.jobNo || "", name:ld.name || j.title, vendors:extraVendors || []}); await api().deleteLedger(id); }
     S.uploading = true;
     try { await api().deleteJobs([id]); } finally { S.uploading = false; }
     toast("案件を削除しました"); stopNotifier(); stopBadges(); location.hash = "#/admin";
@@ -6661,6 +6693,21 @@ const FORMS = {
     if(/^[A-Z]+-\d{4}-$/.test(jobNo)) jobNo = "";   // 頭だけで番号が入っていなければ空のまま保存
     if(jobNo && !/^[A-Z]+-\d{4}-\d+$/.test(jobNo)) throw new Error("工事番号は「FT-2627-122」の形で入力してください");
     if(jobNo && (S.jobNos || []).includes(jobNo)) throw new Error(`工事番号「${jobNo}」はほかの案件で使われています`);
+    // 収支の案件と同じ工事番号・管理会社でないと登録できない（収支をまだ使っていない会社は確かめない）
+    const manager = g("manager"), ledger = await api().listLedger().catch(() => []);
+    let link = null;
+    if(ledger.length){
+      if(!jobNo) throw new Error("工事番号を入れてください（収支にある案件と同じ番号）");
+      if(!manager) throw new Error("管理会社を選んでください");
+      const cur = id ? await api().getJob(id) : null, coOk = r => !r.company || managerKey(r.company) === managerKey(manager);
+      const mine = ledger.find(r => r.jobId && (r.id === id || (cur?.parentId && r.id === cur.parentId)));
+      const hits = ledger.filter(r => !r.jobId && normJobNo(r.jobNo) === jobNo);
+      if(hits.length){
+        link = hits.find(r => r.company && coOk(r));
+        if(!link) throw new Error(`工事番号「${jobNo}」は、収支では「${hits[0].company}」の案件です。管理会社を合わせてください`);
+      } else if(!(mine && (cur?.jobNo === jobNo || cur?.parentId) && coOk(mine)))
+        throw new Error(`収支に、工事番号「${jobNo}」・管理会社「${manager}」の案件がありません。先に収支で案件を追加してください`);
+    }
     const staffName = g("staff"), sp = (S.staff || []).find(p => p.name === staffName);
     const staff = staffName ? {name:staffName, phone:sp ? sp.phone || "" : ""} : null;
     if(staffName){ try { localStorage.setItem("refore_last_staff", staffName); } catch(e) {} }
@@ -6675,6 +6722,8 @@ const FORMS = {
     const jid = await api().saveJob(id, data);
     await api().setJobPrivate(jid, {address:g("address"), building:g("building"), room:g("room"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact"),
       autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), moveIn:g("moveIn"), photoUrls, items});
+    // 収支の手入力の行を、この案件の収支にまとめる（請負金額・完了月・担当などはそのまま。発注業者は「ポータル以外で払った分」に入れる）
+    if(link) await mergeLedgerLink(link, ledger.find(r => r.id === jid), jid);
     toast((mode === "open" ? "公開しました" : "保存しました") + (added ? `（単価表に${added}件追加）` : ""));
     go(`#/admin/job/${jid}`);
   },
