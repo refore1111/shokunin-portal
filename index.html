@@ -859,6 +859,22 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .tp-sub{display:flex;align-items:center;gap:6px;font-size:13.5px;cursor:pointer}
 .tp-sub.warn{font-weight:700}
 .tp-warn{font-size:10.5px;color:#fff;background:var(--shu);border-radius:3px;padding:0 5px;margin-left:2px}
+
+.memo-row{position:relative;display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.9fr) 64px 56px 34px!important;gap:6px;align-items:center;margin-bottom:6px}
+.memo-rhead{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.9fr) 64px 56px 34px;gap:6px;font-size:11.5px;color:var(--sub);margin:4px 0 2px}
+.memo-wq{min-width:0}
+.memo-wq input{width:100%}
+.memo-wac{position:absolute;left:0;right:0;top:100%;z-index:25;margin:2px 0 0;padding:4px 0;list-style:none;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px rgba(20,30,50,.14);max-height:300px;overflow:auto}
+.memo-wac li{padding:7px 12px;cursor:pointer;display:flex;flex-direction:column;line-height:1.35}
+.memo-wac li span{font-size:12px;color:var(--sub)}
+.memo-wac li:hover,.memo-wac li.on{background:var(--kon-soft)}
+.memo-wac li.none{cursor:default;font-size:13px;color:var(--sub)}
+.memo-wac mark{background:#FFF1B8;color:inherit}
+@media (max-width:560px){
+  .memo-rhead{display:none}
+  .memo-row{grid-template-columns:minmax(0,1fr) 70px 64px 34px!important;grid-template-areas:"w w w x" "l q u u";padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+  .memo-row .memo-wq{grid-area:w}.memo-row [name=m_loc]{grid-area:l}.memo-row [name=m_qty]{grid-area:q}.memo-row [name=m_unit]{grid-area:u}.memo-row .i-x{grid-area:x}
+}
 </style>
 </head>
 <body>
@@ -4947,10 +4963,10 @@ async function viewHome(){
 
 /* ---------- 管理：工事メモ（スマホで入れて、そのまま見積の下書きにする） ---------- */
 function memoRowHtml(){
-  const ps = estPrices().filter(p => !p.noteRow);
-  return `<div class="memo-row"><select name="m_loc" aria-label="箇所">${EST_LOCS.map(l => `<option>${esc(l)}</option>`).join("")}</select>
-    <select name="m_pid" aria-label="工事">${ps.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select>
+  return `<div class="memo-row"><input type="text" name="m_loc" list="memo-locs" placeholder="箇所" aria-label="箇所" autocomplete="off">
+    <div class="memo-wq"><input type="text" name="m_name" data-memo-w placeholder="工事内容（文字で探す）" aria-label="工事内容" autocomplete="off"><input type="hidden" name="m_pid"><ul class="memo-wac" hidden></ul></div>
     <input type="number" name="m_qty" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
+    <input type="text" name="m_unit" list="est-units" placeholder="単位" aria-label="単位">
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button></div>`;
 }
 async function viewMemo(){
@@ -4974,8 +4990,11 @@ async function viewMemo(){
       <label class="field"><span>備考 <small>物件マスタに覚えます（例：管理人 平日9-17時）</small></span><textarea name="mNote" rows="2"></textarea></label>
       <label class="field"><span>担当</span><select name="staff"><option value="">—</option>${(S.staff || []).map(s => `<option ${S.profile?.staffName === s.name ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>
       ${keyPicker("")}
+      <label class="field"><span>その他メモ <small>項目にないことは何でもここに。見積のメモ（Reforeだけ・書類には出ません）に入ります</small></span><textarea name="mFree" rows="2" placeholder="例：洗面台の下に水漏れ跡あり。次回、管理会社に確認"></textarea></label>
       <label class="field"><span>工事種類 <small>収支・見積に入ります</small></span><select name="kind">${LEDGER_KINDS.map(k => `<option ${k === "原状回復" ? "selected" : ""}>${k}</option>`).join("")}</select></label>
-      <div class="field"><span>工事（箇所・工事・数量）</span><div id="memo-rows">${memoRowHtml()}</div>
+      <div class="field"><span>工事（箇所・工事・数量） <small>工事内容は文字を入れると単価表から候補が出ます。単価表にない工事もそのまま入れられます</small></span>
+        <div class="memo-rhead" aria-hidden="true"><span>箇所</span><span>工事内容</span><span>数量</span><span>単位</span><span></span></div><div id="memo-rows">${memoRowHtml()}</div>
+        <datalist id="memo-locs">${EST_LOCS.map(l => `<option value="${esc(l)}">`).join("")}</datalist><datalist id="est-units">${UNITS.map(u => `<option value="${u}">`).join("")}<option value="ヶ所"></datalist>
         <button type="button" class="btn sub" data-act="memo-add" style="justify-self:start">＋ 行を足す</button></div>
       <button class="btn block big-action">見積の下書きを作る</button>
       <p class="small" style="margin:8px 0 0">収支一覧にも案件が入り、見積の画面が開きます。続けて単価や数量を直せます。</p></form>`;
@@ -6309,13 +6328,16 @@ const FORMS = {
   async billing(form){ const g = k => form.elements[k].value.trim(); await api().saveBilling({invoiceNumber:g("invoiceNumber"), bank:g("bank"), validity:g("validity"), terms:g("terms")}); S.billing = null; toast("保存しました"); },
   async memo(form){
     const f = form.elements, g = k => (f[k]?.value || "").trim(), ps = estPrices();
-    const rows = [...form.querySelectorAll(".memo-row")].map(r => ({loc:r.querySelector("[name=m_loc]").value, p:ps.find(x => x.id === r.querySelector("[name=m_pid]").value), qty:Number(r.querySelector("[name=m_qty]").value) || 0})).filter(x => x.p && x.qty > 0);
+    // 単価表の工事は単価・原価つき。単価表にない工事は名前と数量だけ（単価は見積で入れる）
+    const rows = [...form.querySelectorAll(".memo-row")].map(r => { const v = n => (r.querySelector(`[name=${n}]`)?.value || "").trim(), name = v("m_name"), q = v("m_qty");
+      const pp = ps.find(x => x.id === v("m_pid") && x.name === name) || ps.find(x => x.name === name);
+      return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:"", cost:0, cat:""}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp}; }).filter(x => x.p.name);
     const company = g("company") === "__new" ? g("companyNew") : g("company");
     if(!company) throw new Error("管理会社を選んでください");
     const prop = g("propId") ? (S.props || []).find(p => p.id === g("propId")) || {} : {};
     const bName = prop.name || g("propName");
     if(!bName) throw new Error("物件名を選ぶか入れてください");
-    if(!rows.length) throw new Error("工事の数量を1つ以上入れてください");
+    if(!rows.length) throw new Error("工事を1つ以上入れてください");
     const room = g("room"), name = room ? `${bName} ${room}` : bName, staff = g("staff"), st = (S.staff || []).find(s => s.name === staff);
     // 物件マスタにない物件（新しい管理会社を含む）は覚えておく。住所が空の物件は、入れた住所で埋める
     // 物件マスタに覚えるのは、管理会社・物件名・住所・オートロック・エレベーター・専用駐車場・備考だけ（号室・担当・鍵・工事は覚えない）
@@ -6333,7 +6355,7 @@ const FORMS = {
     await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:"", building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", master.note || ""].filter(Boolean).join("\n"), kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"), photoUrls:g("photoUrl") ? [g("photoUrl")] : [],
       issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, staff:staff ? {name:staff, phone:st?.phone || ""} : null,
-      rows:rows.map(x => ({id:"r_" + newId(), loc:x.loc, name:x.p.name, spec:"", qty:x.qty, unit:x.p.unit, price:x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id})), createdAt:now, updatedAt:now});
+      rows:rows.map(x => ({id:"r_" + newId(), loc:x.loc, name:x.p.name, spec:"", qty:x.qty, unit:x.unit || x.p.unit, price:x.free ? "" : x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id || ""})), note:g("mFree"), createdAt:now, updatedAt:now});
     S.ldCache = null; toast(`見積の下書きを作り、収支に入れました（工事番号 ${jobNo}）`); go(`#/admin/est/edit/${eid}`);
   },
   async money(form){
@@ -7490,7 +7512,7 @@ const hasFacility = v => { v = String(v || "").trim(); return !!v && !/^(無|な
 // チェックが物件マスタと同じなら元の書き方（呼出1131など）を残し、変わったときだけ「有／無」にする
 const facilityVal = (old, on) => hasFacility(old) === on ? (old || (on ? "有" : "")) : (on ? "有" : "無");
 // 鍵・入室方法：プルダウン＋必要なときだけ番号・場所。選んだ内容は1行の文字（keyInfo）にまとめて保存する
-const KEY_TYPES = [["mailbox", "メールボックス紐吊るし"], ["ps", "PS内直置き"], ["unlock", "玄関アンロック"], ["keybox", "キーBOX"], ["other", "その他"]];
+const KEY_TYPES = [["mailbox", "メールボックス紐吊るし"], ["ps", "PS内直置き"], ["unlock", "玄関アンロック"], ["keybox", "キーBOX"], ["resident", "入居者対応（入居者に開けてもらう）"], ["other", "その他"]];
 function keyParse(v){
   v = String(v || "").trim();
   if(!v) return {t:""};
@@ -7498,11 +7520,15 @@ function keyParse(v){
   if(v.startsWith("メールボックス紐吊るし")) return {t:"mailbox", note:g(/（(.*)）$/)};
   if(v.startsWith("PS内直置き")) return {t:"ps", note:g(/（(.*)）$/)};
   if(v.startsWith("玄関アンロック")) return {t:"unlock", code:g(/番号[:：]\s*([^／）]+)/)};
+  if(v.startsWith("入居者対応")){ const inner = g(/（(.*)）$/).split("／"); const nm = inner.find(x => /様$/.test(x)) || "", tel = inner.find(x => /^[\d\-+() ]{8,}$/.test(x)) || "";
+    return {t:"resident", rname:nm.replace(/様$/, ""), rtel:tel, rnote:inner.filter(x => x && x !== nm && x !== tel).join("／")}; }
   if(/^キー\s*BOX|^キーボックス/i.test(v)) return {t:"keybox", code:g(/番号[:：]\s*([^／）]+)/), place:g(/場所[:：]\s*([^／）]+)/)};
   return {t:"other", other:v};
 }
-function keyText(t, code, place, other){
+function keyText(t, code, place, other, res = {}){
   code = String(code || "").trim(); place = String(place || "").trim(); other = String(other || "").trim();
+  if(t === "resident"){ const nm = String(res.rname || "").trim(), tel = String(res.rtel || "").trim(), note = String(res.rnote || "").trim();
+    const inner = [nm && nm + "様", tel, note].filter(Boolean).join("／"); return `入居者対応${inner ? `（${inner}）` : ""}`; }
   if(t === "mailbox") return "メールボックス紐吊るし";
   if(t === "ps") return "PS内直置き";
   if(t === "unlock") return `玄関アンロック${code ? `（番号：${code}）` : ""}`;
@@ -7518,6 +7544,9 @@ function keyPicker(value, label = "鍵・入室方法", hint = "発注した業�
       <input type="text" data-key-place placeholder="キーBOXの場所（例：PS内・メーターボックス）" value="${esc(k.place || "")}" ${k.t === "keybox" ? "" : "hidden"}>
       <input type="text" data-key-code inputmode="numeric" placeholder="${k.t === "keybox" ? "キーBOXの番号" : "玄関の番号"}" value="${esc(k.code || "")}" ${["unlock", "keybox"].includes(k.t) ? "" : "hidden"}>
       <input type="text" data-key-other placeholder="例：管理人室で受け取り" value="${esc(k.other || "")}" ${k.t === "other" ? "" : "hidden"}>
+      <input type="text" data-key-rname placeholder="入居者の名前（例：山田）" value="${esc(k.rname || "")}" ${k.t === "resident" ? "" : "hidden"}>
+      <input type="tel" data-key-rtel placeholder="入居者の電話番号" value="${esc(k.rtel || "")}" ${k.t === "resident" ? "" : "hidden"}>
+      <input type="text" data-key-rnote placeholder="在宅の時間・注意（例：平日10時以降・犬あり）" value="${esc(k.rnote || "")}" ${k.t === "resident" ? "" : "hidden"}>
     </div>
     <input type="hidden" name="keyInfo" value="${esc(value || "")}"></div>`;
 }
@@ -7527,7 +7556,9 @@ function keySync(box){
   q("[data-key-code]").hidden = !["unlock", "keybox"].includes(t);
   q("[data-key-code]").placeholder = t === "keybox" ? "キーBOXの番号" : "玄関の番号";
   q("[data-key-other]").hidden = t !== "other";
-  q("[name=keyInfo]").value = keyText(t, q("[data-key-code]").value, q("[data-key-place]").value, q("[data-key-other]").value);
+  ["rname", "rtel", "rnote"].forEach(k => { q(`[data-key-${k}]`).hidden = t !== "resident"; });
+  q("[name=keyInfo]").value = keyText(t, q("[data-key-code]").value, q("[data-key-place]").value, q("[data-key-other]").value,
+    {rname:q("[data-key-rname]").value, rtel:q("[data-key-rtel]").value, rnote:q("[data-key-rnote]").value});
 }
 document.addEventListener("input", e => { const b = e.target.closest?.("[data-keypick]"); if(b) keySync(b); });
 document.addEventListener("change", e => { const b = e.target.closest?.("[data-keypick]"); if(b) keySync(b); });
@@ -7628,6 +7659,40 @@ function estRevHistory(e){
   const revs = e.revs || []; if(!revs.length) return "";
   return `<div class="er-hist small">前の版：${revs.map((r, i) => `<button type="button" class="textlink" data-act="est-oldpdf" data-i="${i}">${r.rev ? `訂正${r.rev}` : "初回"}（${yenFull(r.total)}${r.issuedAt ? "・" + fmtDate(r.issuedAt) : ""}）</button>`).join("　")}</div>`;
 }
+
+// 工事メモの工事内容：文字で単価表を探す（工事名・分類・単位）。選ぶと単位も入る
+function memoWork(input){
+  const box = input.parentElement.querySelector(".memo-wac"), q = normKey(input.value);
+  if(!q){ box.hidden = true; return; }
+  const hits = estPrices().filter(p => !p.noteRow && p.name).map(p => { const n = normKey(p.name), c = normKey(p.cat || ""); return [n.startsWith(q) ? 0 : n.includes(q) ? 1 : c.includes(q) ? 2 : -1, p]; })
+    .filter(x => x[0] >= 0).sort((a, b) => a[0] - b[0] || a[1].name.length - b[1].name.length).slice(0, 10).map(x => x[1]);
+  box.innerHTML = hits.length ? hits.map(p => `<li data-pid="${esc(p.id)}"><b>${highlight(p.name, input.value.trim())}</b><span>${esc(p.cat || "")}${p.sell ? `　${yenFull(p.sell)}／${esc(p.unit)}` : ""}</span></li>`).join("")
+    : `<li class="none">単価表にありません。このまま入れられます（単価は見積で入れます）</li>`;
+  box.hidden = false; S.mwIdx = -1;
+}
+function memoWorkPick(input, p){
+  const row = input.closest(".memo-row");
+  input.value = p.name; row.querySelector("[name=m_pid]").value = p.id;
+  const u = row.querySelector("[name=m_unit]"); if(u) u.value = p.unit || u.value;
+  row.querySelector(".memo-wac").hidden = true; row.querySelector("[name=m_qty]").focus();
+}
+document.addEventListener("input", e => {
+  const t = e.target; if(!t.matches?.("[data-memo-w]")) return;
+  t.parentElement.querySelector("[name=m_pid]").value = ""; memoWork(t);
+});
+document.addEventListener("keydown", e => {
+  const t = e.target; if(!t.matches?.("[data-memo-w]")) return;
+  const box = t.parentElement.querySelector(".memo-wac"), items = [...box.querySelectorAll("li[data-pid]")]; if(box.hidden || !items.length) return;
+  if(e.key === "ArrowDown" || e.key === "ArrowUp"){ e.preventDefault(); S.mwIdx = (S.mwIdx + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length; items.forEach((li, i) => li.classList.toggle("on", i === S.mwIdx)); }
+  else if(e.key === "Enter" && S.mwIdx >= 0){ e.preventDefault(); const p = estPrices().find(x => x.id === items[S.mwIdx].dataset.pid); if(p) memoWorkPick(t, p); }
+  else if(e.key === "Escape") box.hidden = true;
+});
+document.addEventListener("focusout", e => { if(e.target.matches?.("[data-memo-w]")) setTimeout(() => { const b = e.target.parentElement?.querySelector(".memo-wac"); if(b) b.hidden = true; }, 200); });
+document.addEventListener("mousedown", e => {
+  const li = e.target.closest?.(".memo-wac li[data-pid]");
+  if(li){ e.preventDefault(); const p = estPrices().find(x => x.id === li.dataset.pid), inp = li.closest(".memo-wq").querySelector("[data-memo-w]"); if(p) memoWorkPick(inp, p); return; }
+  if(!e.target.closest?.(".memo-wq")) document.querySelectorAll(".memo-wac").forEach(b => { b.hidden = true; });
+});
 
 /* ---------- 起動 ---------- */
 function loadScript(src){
