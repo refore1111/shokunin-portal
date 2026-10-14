@@ -968,10 +968,6 @@ const COMPANY = {name:"株式会社Refore", zip:"102-0074", address:"東京都�
 const PAYMENT_TERMS = "作業完了の確認後、60日以内に指定口座へお振込みします。";   // ← 実際の支払条件に合わせて書き換えてください
 const TAX_RATE = 0.1;
 const HTML2PDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-const JSPDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-// PDF表示ライブラリ（日本語の文字データ cmaps と標準フォントを含む配信元を使う。1つ目が使えなければ2つ目）
-const PDFJS_SOURCES = ["https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/", "https://unpkg.com/pdfjs-dist@3.11.174/"];
-let PDFJS_BASE = PDFJS_SOURCES[0];
 const UNITS = ["式","㎡","m","枚","台","箇所","個","本","室","セット","日","人工"];
 
 // 工種：大枠（8つ）＋細かい工種。案件と業者は大枠が合えばマッチ。「要確認」の工種（ロボ付エアコンなど）は、案件にあれば業者もその工種が必要
@@ -1246,12 +1242,12 @@ const itemAmount = i => Math.round((Number(i.qty) || 0) * (Number(i.unitPrice) |
 const itemsTotal = items => (items || []).reduce((a, i) => a + itemAmount(i), 0);
 const fmtQty = q => (Number(q) || 0).toLocaleString("ja-JP", {maximumFractionDigits:2});
 // 分離発注：選んだ工事を子案件に切り出して発注し、残りの工事は元の案件で募集を続ける
-async function splitAssign(jobD, priv, uid, name, ids){
+async function splitAssign(jobD, priv, uid, name, ids, cd = {}){
   const pubAll = itemsWithId(jobD.items), privAll = itemsWithId(priv.items?.length ? priv.items : jobD.items);
   const take = list => list.filter(i => ids.includes(i.iid)), keep = list => list.filter(i => !ids.includes(i.iid));
   const selPriv = take(privAll), cats = [...new Set(selPriv.map(i => i.cat).filter(c => c && c !== "その他"))];
   const label = cats.length ? cats.join("・") : selPriv[0].name + (selPriv.length > 1 ? " ほか" : "");
-  const child = {title:`${jobD.title}（${label}）`, trades:jobD.trades || [], pref:jobD.pref || "", city:jobD.city || "", startDate:jobD.startDate, endDate:jobD.endDate,
+  const child = {title:`${jobD.title}（${label}）`, trades:jobD.trades || [], pref:jobD.pref || "", city:jobD.city || "", startDate:cd.craftStart || jobD.startDate, endDate:cd.craftEnd || jobD.endDate, ...cd,
     price:itemsTotal(selPriv), taxMode:jobD.taxMode || "税別", items:take(pubAll), audience:jobD.audience || "all", site:jobD.site || null, staff:jobD.staff || null, jobNo:jobD.jobNo || "",
     description:jobD.description || "", priceNote:"", photos:jobD.photos || [], parentId:jobD.id, status:"closed", publishedAt:jobD.publishedAt || Date.now(),
     allItems:jobD.allItems?.length ? jobD.allItems : pubAll};
@@ -1320,12 +1316,14 @@ function pickItemsHtml(items, selected = null, legend = "やる工事を選ん�
       ${list.map(i => `<label class="pick-item"><input type="checkbox" name="pick" value="${esc(i.iid)}" ${on(i) ? "checked" : ""}><span>${i.loc ? `<span class="loc">${esc(i.loc)}</span>` : ""}${esc(i.name)}${zaiTag(i)}</span><span class="small">${fmtQty(i.qty)}${esc(i.unit)}${i.unitPrice ? `　${yenFull(itemAmount(i))}` : ""}</span></label>`).join("")}</div>`).join("")}
   </fieldset>`;
 }
-// 発注する工事を選ぶダイアログ。選んだ工事の目印の一覧（キャンセルなら false）を返す
-function pickItemsDialog(title, body, items, selected, ok){
+// 発注する工事と、その業者の工期を選ぶダイアログ。{ids:選んだ工事の目印, start, end}（キャンセルなら false）を返す
+function pickItemsDialog(title, body, items, selected, ok, period = ""){
   return new Promise(res => {
     const bg = document.createElement("div"); bg.className = "modal-bg";
     bg.innerHTML = `<div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="pd-title"><h2 id="pd-title">${esc(title)}</h2><p style="white-space:pre-line">${esc(body)}</p>
-      <form class="pd-form">${pickItemsHtml(items, selected, "発注する工事", "チェックした工事だけを、この業者に発注します")}</form>
+      <form class="pd-form">${pickItemsHtml(items, selected, "発注する工事", "チェックした工事だけを、この業者に発注します")}
+        <div class="two"><label class="field"><span>この業者の工期（入る日） <small>任意。決めると業者が入る日を選ぶ手間がなくなり、完了確認の予定にも入ります${period ? `（案件の工期：${esc(period)}）` : ""}</small></span><input type="date" name="pdStart"></label>
+          <label class="field"><span>終わりの日 <small>1日で終わるなら空欄</small></span><input type="date" name="pdEnd"></label></div></form>
       <p class="small pd-sum" style="margin:0 0 12px"></p>
       <div class="row end"><button type="button" class="btn sub m-no">キャンセル</button><button type="button" class="btn m-ok">${esc(ok)}</button></div></div>`;
     const sum = () => { const ids = [...bg.querySelectorAll("[name=pick]:checked")].map(x => x.value), sel = items.filter(i => ids.includes(i.iid));
@@ -1333,7 +1331,7 @@ function pickItemsDialog(title, body, items, selected, ok){
     const close = v => { bg.remove(); document.removeEventListener("keydown", key); res(v); };
     const key = e => { if(e.key === "Escape") close(false); };
     bg.querySelector(".m-no").onclick = () => close(false);
-    bg.querySelector(".m-ok").onclick = () => close([...bg.querySelectorAll("[name=pick]:checked")].map(x => x.value));
+    bg.querySelector(".m-ok").onclick = () => close({ids:[...bg.querySelectorAll("[name=pick]:checked")].map(x => x.value), start:bg.querySelector("[name=pdStart]").value, end:bg.querySelector("[name=pdEnd]").value});
     bg.addEventListener("change", () => setTimeout(sum, 0));
     bg.addEventListener("click", e => { if(e.target === bg) close(false); });
     document.addEventListener("keydown", key); document.body.appendChild(bg); sum();
@@ -1458,179 +1456,6 @@ function syncItems(form){
   const price = form.elements.price;
   price.readOnly = used.length > 0;
   if(used.length) price.value = total;
-}
-
-/* ---------- 案件PDFの読み込み ---------- */
-async function openPdf(file){
-  if(!window.pdfjsLib){
-    let err;
-    for(const base of PDFJS_SOURCES){
-      try { await loadScript(base + "build/pdf.min.js"); PDFJS_BASE = base; err = null; break; } catch(e) { err = e; }
-    }
-    if(err) throw new Error("PDFを表示する部品を読み込めませんでした。通信環境を確認してください");
-  }
-  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "build/pdf.worker.min.js";
-  return pdfjsLib.getDocument({data:await file.arrayBuffer(), cMapUrl:PDFJS_BASE + "cmaps/", cMapPacked:true,
-    standardFontDataUrl:PDFJS_BASE + "standard_fonts/", useSystemFonts:true, isEvalSupported:false}).promise;
-}
-// PDFの各ページを画像にする（Firestoreの1件あたりの上限に収まるよう、大きすぎれば画質を下げる）
-// 1ページ＝1件で保存（Firestoreの1件1MBの上限対策）。元のPDFも分割して保存
-const PDF_MAX_PAGES = 20, PDF_MAX_CHARS = 900000, PDF_CHUNK = 900000, PDF_MAX_CHUNKS = 12;
-async function renderPdfPages(pdf){
-  const n = Math.min(pdf.numPages, PDF_MAX_PAGES);
-  const steps = api()?.mode === "demo" ? [[1100, 0.72], [900, 0.6]] : [[1800, 0.85], [1500, 0.78], [1200, 0.7], [1000, 0.6]];
-  const pages = [];
-  for(let i = 1; i <= n; i++){
-    const page = await pdf.getPage(i);
-    const v1 = page.getViewport({scale:1});
-    let url = "";
-    for(const [w, q] of steps){
-      const vp = page.getViewport({scale:w / Math.max(v1.width, v1.height * 0.75)});
-      const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
-      const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
-      // intent:"print" と ENABLE_STORAGE で、フォーム欄に入力された文字や注釈も画像に焼き込む
-      await page.render({canvasContext:ctx, viewport:vp, intent:"print", annotationMode:pdfjsLib.AnnotationMode.ENABLE_STORAGE}).promise;
-      url = c.toDataURL("image/jpeg", q);
-      c.width = c.height = 0;
-      if(url.length <= PDF_MAX_CHARS) break;
-    }
-    if(url.length > PDF_MAX_CHARS) throw new Error(`${i}ページ目が大きすぎて添付できません`);
-    pages.push(url);
-  }
-  return pages;
-}
-function pdfAttachHtml(){
-  const a = S.editPdf;
-  if(!a) return `<p class="small" style="margin:8px 0 0">添付なし</p>`;
-  return `<div class="row between" style="margin:12px 0 6px"><span class="small">添付中：<b>${esc(a.name)}</b>（${a.pages.length}ページ）</span>
-      <button type="button" class="btn danger" data-act="rm-pdf">添付を外す</button></div>
-    <div class="pdf-thumbs">${a.pages.map((u, i) => `<button type="button" class="zoom" data-act="zoom" data-doc="1" data-src="${esc(u)}" aria-label="${i+1}ページ目を拡大"><img src="${esc(u)}" alt=""></button>`).join("")}</div>`;
-}
-function pdfViewHtml(a, note = ""){
-  if(!a?.pages?.length) return "";
-  if(a.src?.data && !a.url){ try { a.url = URL.createObjectURL(dataUrlToBlob(a.src.data)); } catch(e) {} }
-  // ブラウザごとのPDF表示の差をなくすため、どの端末でも高解像度の画像で表示する
-  const body = a.pages.map((u, i) => `<button type="button" class="zoom" data-act="zoom" data-doc="1" data-src="${esc(u)}" aria-label="${i+1}ページ目を拡大"><img src="${esc(u)}" alt="${i+1}ページ目" loading="lazy"></button>`).join("");
-  return `<section class="panel pdfview"><div class="row between"><h2 style="margin:0">案件PDF <small>${esc(a.name)}</small></h2>
-      <span class="row">${note ? `<span class="small">${esc(note)}</span>` : ""}${a.url ? `<a class="btn sub" href="${a.url}" target="_blank" rel="noopener">PDFを開く</a>` : a.hasSrc && a.jobId ? `<button class="btn sub" data-act="pdf-open" data-job="${esc(a.jobId)}">PDFを開く</button>` : ""}</span></div>
-    ${body}</section>`;
-}
-async function extractPdfText(file, pdf){
-  pdf = pdf || await openPdf(file);
-  const out = [];
-  for(let n = 1; n <= Math.min(pdf.numPages, 5); n++){
-    const tc = await (await pdf.getPage(n)).getTextContent();
-    const its = tc.items.filter(i => typeof i.str === "string" && i.str !== "").map(i => ({s:i.str, x:i.transform[4], y:i.transform[5], w:i.width || 0, h:Math.abs(i.height || i.transform[3]) || 10}));
-    its.sort((a, b) => b.y - a.y || a.x - b.x);
-    const lines = [];
-    its.forEach(i => {
-      const L = lines[lines.length - 1];
-      if(L && Math.abs(L.y - i.y) <= Math.max(2, i.h * 0.45)) L.items.push(i); else lines.push({y:i.y, items:[i]});
-    });
-    lines.forEach(L => {
-      L.items.sort((a, b) => a.x - b.x);
-      let t = "", end = null;
-      L.items.forEach(i => { if(end !== null && i.x - end > i.h * 0.6) t += " "; t += i.s; end = i.x + i.w; });
-      out.push(t);
-    });
-    out.push("");
-  }
-  return out.join("\n");
-}
-function findDates(line){
-  const now = new Date(), res = [];
-  let l = line;
-  const push = (y, m, d) => { if(m >= 1 && m <= 12 && d >= 1 && d <= 31) res.push(`${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`); };
-  l = l.replace(/令和\s*(\d+|元)\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/g, (_, y, m, d) => { push(2018 + (y === "元" ? 1 : +y), +m, +d); return " "; });
-  l = l.replace(/(20\d{2})\s*[年\/.\-]\s*(\d{1,2})\s*[月\/.\-]\s*(\d{1,2})\s*日?/g, (_, y, m, d) => { push(+y, +m, +d); return " "; });
-  l.replace(/(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日/g, (_, m, d) => { push(+m < now.getMonth() - 1 ? now.getFullYear() + 1 : now.getFullYear(), +m, +d); return " "; });
-  return res;
-}
-function parseJobText(raw){
-  const lines = raw.normalize("NFKC").split("\n").map(l => l.replace(/[ \t　]+/g, " ").trim()).filter(Boolean);
-  const all = lines.join("\n");
-  const r = {items:[], trades:[]};
-  const labeled = re => { for(const l of lines){ const m = l.match(re); if(m && m[1] && m[1].trim()) return m[1].trim(); } return ""; };
-  const num = v => Number(String(v).replace(/[,¥\s]/g, "")) || 0;
-
-  r.title = labeled(/(?:件名|工事名|案件名|工事件名|作業名称)\s*[:]?\s*(.+)/);
-  r.manager = labeled(/管理会社(?:名)?\s*[:]?\s*(.+)/);
-  r.keyInfo = labeled(/(?:鍵|キー|入室方法)(?:の受け渡し|情報)?\s*[:]\s*(.+)/);
-  let building = labeled(/(?:物件名|建物名|マンション名)\s*[:]?\s*(.+)/);
-  const room = labeled(/(?:号室|部屋番号|部屋)\s*[:]\s*(.+)/);
-
-  // 住所：ラベル付きを優先、なければ最初に見つかった住所
-  const PREF = /(東京都|神奈川県|埼玉県|千葉県)\s*([^\s\d]+?[市区町村])((?:[^\s\d]+?区)?)/;
-  let addrLine = labeled(/(?:現場住所|物件住所|所在地|住所|現場)\s*[:]?\s*((?:東京都|神奈川県|埼玉県|千葉県).+)/) || (lines.find(l => PREF.test(l)) || "");
-  if(addrLine){
-    const m = addrLine.match(PREF);
-    if(m){
-      r.pref = m[1]; r.city = m[2] + m[3];
-      let addr = addrLine.slice(addrLine.indexOf(m[0])).split(/\s*(?:TEL|電話|FAX)/i)[0].trim();
-      const b = addr.match(/\s(\S*(?:マンション|ハイツ|コーポ|レジデンス|アパート|荘|ビル|テラス|メゾン|パレス|ハイム|コート|プラザ|タワー|ハウス)\S*(?:\s*\d+号?室?)?)$/) || addr.match(/\s(\S+\s*\d+号室)$/);
-      if(b){ if(!building) building = b[1]; addr = addr.slice(0, b.index).trim(); }
-      r.address = addr.replace(/\s+/g, "");
-    }
-  }
-  r.building = [building, room && !building.includes(room) ? room : ""].filter(Boolean).join(" ");
-
-  // 作業日：工期・作業日などの行から
-  const dates = [];
-  lines.forEach((l, k) => {
-    if(/工期|作業日|施工日|着工|完工|作業予定|施工予定|日程|希望日|実施日|工事日/.test(l)){
-      let d = findDates(l);
-      if(!d.length && lines[k + 1]) d = findDates(lines[k + 1]);
-      dates.push(...d);
-    }
-  });
-  if(dates.length){ r.startDate = dates[0]; const e = dates[dates.length - 1]; r.endDate = e > dates[0] ? e : ""; }
-
-  // 作業内訳：「作業名 数量 単位 単価 金額」の並びを拾う
-  const UNIT = "式|m2|m|平米|枚|台|箇所|ヶ所|か所|カ所|ケ所|個|本|室|セット|組|日|人工|回|ヶ月|kg|L";
-  const reA = new RegExp(`^(?:No\\.?\\s*)?(?:\\d{1,2}[.)]?\\s+)?(.*?[^\\d\\s,].*?)\\s+(\\d+(?:\\.\\d+)?)\\s*(${UNIT})\\s+¥?\\s*([\\d,]+)(?:\\s+¥?\\s*([\\d,]+))?`);
-  const reB = /^(?:\d{1,2}[.)]?\s+)?(.*?[^\d\s,].*?)\s+(\d+(?:\.\d+)?)\s+¥?\s*([\d,]{3,})\s+¥?\s*([\d,]{3,})\s*$/;
-  lines.forEach(l => {
-    if(/合計|小計|消費税|税込|値引|総額|見積金額|請求金額|発注金額|振込|口座/.test(l)) return;
-    let m = l.match(reA);
-    if(m){ r.items.push({name:m[1].trim(), qty:+m[2], unit:m[3] === "m2" || m[3] === "平米" ? "㎡" : m[3], unitPrice:num(m[4])}); return; }
-    m = l.match(reB);
-    if(m) r.items.push({name:m[1].trim(), qty:+m[2], unit:"式", unitPrice:num(m[3])});
-  });
-  r.items = r.items.filter(i => i.unitPrice > 0 && i.name.length <= 60);
-
-  // 金額と税区分
-  const sub = labeled(/小計\s*[:]?\s*¥?\s*([\d,]{3,})/);
-  const tot = labeled(/(?:合計金額|合計|総額|御見積金額|見積金額|発注金額|請負金額)\s*(?:\(税込\)|\(税抜\)|\(税別\))?\s*[:]?\s*¥?\s*([\d,]{3,})/);
-  if(r.items.length){ r.price = itemsTotal(r.items); r.taxMode = "税別"; }
-  else if(sub){ r.price = num(sub); r.taxMode = "税別"; }
-  else if(tot){ r.price = num(tot); r.taxMode = /税込/.test(all) && !/税抜|税別/.test(all) ? "税込" : "税別"; }
-
-  // 工種
-  const T = [["エアコンクリーニング", /エアコン/], ["クロス張替え", /クロス|壁紙/], ["床（CF・フロアタイル）", /CF|クッションフロア|フロアタイル|フローリング/],
-    ["塗装", /塗装/], ["設備交換", /交換|取替|取り替え|取付/], ["簡易修繕", /補修|修繕|修理|網戸/], ["退去立会", /立会/]];
-  T.forEach(([t, re]) => { if(re.test(all)) r.trades.push(t); });
-  if(/(ハウス|ルーム|室内|退去|美装)\s*クリーニング|清掃|美装/.test(all) || (/クリーニング/.test(all) && !r.trades.includes("エアコンクリーニング"))) r.trades.unshift("ハウスクリーニング");
-
-  // 作業内容・備考
-  const notes = [];
-  lines.forEach(l => { const m = l.match(/^(?:作業内容|工事内容|備考|特記事項|注意事項|連絡事項)\s*[:]?\s*(.+)/); if(m) notes.push(m[1].trim()); });
-  r.description = notes.length ? notes.join("\n") : r.items.length ? r.items.map(i => `・${i.name}`).join("\n") : "";
-  if(!r.title && r.items.length) r.title = r.items[0].name + (r.items.length > 1 ? " ほか" : "");
-  return r;
-}
-async function importPdf(input){
-  const file = input.files[0]; if(!file) return;
-  const form = input.closest("form"), box = form.querySelector("#pdf-result");
-  box.innerHTML = `<p class="small">「${esc(file.name)}」を読み込んでいます…</p>`;
-  try {
-    const pdf = await openPdf(file);
-    const src = await blobToDataURL(file);
-    S.editPdf = {name:file.name, pages:await renderPdfPages(pdf), addedAt:Date.now()};
-    S.editPdfSrc = src.length <= PDF_CHUNK * PDF_MAX_CHUNKS ? {name:file.name, data:src} : null; S.editPdfChanged = true;
-    form.querySelector("#pdf-attach").innerHTML = pdfAttachHtml();
-    if(!form.elements.title.value.trim()){ form.elements.title.value = file.name.replace(/\.pdf$/i, ""); form.elements.title.dataset.auto = "1"; }
-    box.innerHTML = "";
-  } finally { input.value = ""; }
 }
 
 function buildOrderDoc(job, priv, c, extra = {}){
@@ -1948,8 +1773,6 @@ class DemoBackend {
   async saveDocument(doc){ (this.data.documents ||= {})[doc.id] = doc; this.save(); }
   async updateDocument(id, d){ Object.assign(this.data.documents[id], d); this.save(); }
   async getJobPrivate(id){ const d = clone(this.data.jobPrivate[id] || {}); if(myRole() !== "admin") delete d.manager; return d; }
-  async getJobPdf(id){ const v = (this.data.jobPdf || {})[id]; return v ? clone({...v, src:(this.data.jobPdfSrc || {})[id] || null, jobId:id}) : null; }
-  async getJobPdfSource(id){ return clone((this.data.jobPdfSrc || {})[id] || null); }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
   async getProperties(){ return clone(this.sd().properties || []); }
   async getPrices(){ return clone(this.sd().prices || DEFAULT_PRICES); }
@@ -2031,12 +1854,6 @@ class DemoBackend {
   async saveInvoice(d){ (this.data.invoices ||= {})[d.id] = d; this.save(); }
   async updateInvoice(id, d){ Object.assign(this.data.invoices[id], d); this.save(); }
   async listInvoices(f = {}){ let a = Object.values(this.data.invoices || {}); if(f.month) a = a.filter(x => x.month === f.month); if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId); if(f.type) a = a.filter(x => x.type === f.type); if(myRole() === "admin") a = scopeList(a); return a.map(clone); }
-  async setJobPdf(id, d, src){
-    this.data.jobPdf ||= {}; this.data.jobPdfSrc ||= {};
-    if(d) this.data.jobPdf[id] = d; else delete this.data.jobPdf[id];
-    if(d && src) this.data.jobPdfSrc[id] = src; else delete this.data.jobPdfSrc[id];
-    this.save();
-  }
   async setJobPrivate(id, d){ S.ldCache = null; JOB_ADMIN_CACHE.delete(id); this.data.jobPrivate[id] = {...d}; this.save(); }
 
   async listApplications(f = {}){
@@ -2285,28 +2102,6 @@ class FirebaseBackend {
     if(!a.exists || !("manager" in a.data())) await j.collection("admin").doc("info").set({manager:s.data().manager || ""}, {merge:true});
     await j.collection("private").doc("detail").update({manager:firebase.firestore.FieldValue.delete()});
   }
-  // 案件PDF（募集中は承認済みの業者全員、発注後は発注先が見られる）
-  // files/pdf に目次、files/page_000… に各ページの画像、files/src_000… に元のPDFを分割して保存
-  async getJobPdf(id, {withSrc = false} = {}){
-    const files = this.col("jobs").doc(id).collection("files"), ID = firebase.firestore.FieldPath.documentId();
-    let meta;
-    try { const m = await files.doc("pdf").get(); meta = m.exists ? m.data() : null; }
-    catch(e) { if(e.code === "permission-denied") return null; throw e; }
-    if(!meta) return null;
-    if(meta.pages) return {...meta, jobId:id};   // 以前の形式
-    const range = async pre => (await files.where(ID, ">=", pre).where(ID, "<", pre + "~").get()).docs.sort((a, b) => a.id.localeCompare(b.id)).map(d => d.data().data);
-    const key = `${id}_${meta.addedAt}`, cache = (S.pdfCache ||= {});
-    const pages = cache[key]?.pages || await range("page_");
-    let src = cache[key]?.src || null;
-    if(withSrc && !src && meta.srcChunks){ const chunks = await range("src_"); if(chunks.length === meta.srcChunks) src = {name:meta.name, data:chunks.join("")}; }
-    cache[key] = {pages, src};
-    return {name:meta.name, addedAt:meta.addedAt, pages, src, hasSrc:!!meta.srcChunks, jobId:id};
-  }
-  // 元のPDFファイル（発注書としてダウンロード。管理者と発注先だけ）
-  async getJobPdfSource(id){
-    try { const s = await this.col("jobs").doc(id).collection("private").doc("pdfsrc").get(); return s.exists ? s.data() : null; }
-    catch(e) { if(e.code === "permission-denied") return null; throw e; }
-  }
   async getInvoice(id){
     try { const s = await this.col("invoices").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
@@ -2485,19 +2280,6 @@ class FirebaseBackend {
     if(f.type) q = q.where("type", "==", f.type);
     const list = this.docs(await q.get());
     return myRole() === "admin" ? scopeList(list) : list;
-  }
-  async setJobPdf(id, d, src){
-    const j = this.col("jobs").doc(id), files = j.collection("files");
-    const old = await files.get();
-    for(const doc of old.docs) await doc.ref.delete();
-    try { await j.collection("private").doc("pdfsrc").delete(); } catch(e) {}
-    if(!d) return;
-    const pad = i => String(i).padStart(3, "0");
-    for(let i = 0; i < d.pages.length; i++) await files.doc(`page_${pad(i)}`).set({i, data:d.pages[i]});
-    const chunks = [];
-    if(src?.data) for(let i = 0; i < src.data.length; i += PDF_CHUNK) chunks.push(src.data.slice(i, i + PDF_CHUNK));
-    for(let i = 0; i < chunks.length; i++) await files.doc(`src_${pad(i)}`).set({i, data:chunks[i]});
-    await files.doc("pdf").set({name:d.name, addedAt:d.addedAt || Date.now(), pageCount:d.pages.length, srcChunks:chunks.length});
   }
   async setJobPrivate(id, d){ S.ldCache = null; JOB_ADMIN_CACHE.delete(id);
     const {manager, ...rest} = d, j = this.col("jobs").doc(id);
@@ -2745,6 +2527,22 @@ function gcalUrl(j, p){
   const d = v => v.replace(/-/g, ""), loc = [p.address, [p.building, p.room].filter(Boolean).join(" ")].filter(Boolean).join(" ");
   const note = [p.keyInfo ? "鍵・入室方法：" + p.keyInfo : "", p.contact ? "連絡事項：" + p.contact : "", location.href.split("#")[0] + "#/work/" + j.id].filter(Boolean).join("\n");
   return "https://calendar.google.com/calendar/render?" + new URLSearchParams({action:"TEMPLATE", text:j.title || "工事", dates:`${d(j.craftStart)}/${d(addDays(j.craftEnd || j.craftStart, 1))}`, location:loc, details:note}).toString();
+}
+// 完了確認の予定（終日・UP日）。題名は「完(物件名)」、雑工事があれば「完雑(物件名)」
+function doneCalUrl(root, priv, fam){
+  const md = v => v ? `${Number(v.slice(5, 7))}/${Number(v.slice(8, 10))}` : "", d = v => v.replace(/-/g, "");
+  const span = (a, b) => b && b !== a ? `${md(a)}〜${md(b)}` : md(a);
+  const ends = fam.map(j => j.craftEnd || j.craftStart || j.endDate || j.startDate).filter(Boolean);
+  const up = [root.endDate || root.startDate, ...ends].filter(Boolean).sort().pop() || todayIso();
+  const items = itemsWithId(root.allItems?.length ? root.allItems : root.items), zatsu = items.filter(i => i.cat === "雑工事");
+  const place = [priv.building, priv.room].filter(Boolean).join(" ") || root.title || "案件";
+  const lines = [priv.manager || "", md(up), priv.moveIn ? `入居 ${md(priv.moveIn)}` : "", "",
+    ...fam.map(j => `${craftName(j.assignedTo)} ${j.craftStart ? span(j.craftStart, j.craftEnd) : span(j.startDate, j.endDate) + "（入る日は未定）"}`),
+    ...(zatsu.length ? ["", "雑工事", ...zatsu.map(i => [i.loc, i.name].filter(Boolean).join("・") + (i.note ? `　${i.note}` : ""))] : [])];
+  // 会社のアドレス（Refore は info@、工務店は通知先か代表者のメール）のGoogleアカウントで作る
+  const owner = tenant() ? (S.company?.notifyEmail || S.company?.ownerEmail || "") : REPORT_EMAIL;
+  return "https://calendar.google.com/calendar/render?" + new URLSearchParams({...(owner ? {authuser:owner} : {}), action:"TEMPLATE", text:`完${zatsu.length ? "雑" : ""}(${place})`, dates:`${d(up)}/${d(addDays(up, 1))}`,
+    location:priv.address || "", details:lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "")}).toString();
 }
 /* ---------- 見積（Reforeの雛形の書式：見積書・発注請書・御請求書。単価は雛形の見積単価と実行単価） ---------- */
 const EST_STATUS = {draft:"下書き", sent:"提出済み（受注待ち）", ordered:"受注（請書を作成中）", won:"受注（業者に公開済み）", self:"完了（自社施工）", tachiai:"立会のみ", lost:"失注", revised:"訂正済み"};
@@ -3459,7 +3257,7 @@ function ledgerFromCsv(text, company, ki){
     const cancel = /キャンセル/.test(g("請負金額"));
     // 完了月がある行（Numbersで完了済み）は請求済みとして扱う。完了月が空の行は進行中の案件
     const contract0 = cancel ? 0 : yenNum(g("請負金額"));
-    out.push({id:"l_" + newId(), ord:out.length, manual:true, billedOutside:!!month, stage:month ? "" : (cancel ? "lost" : contract0 ? "won" : ""), ki, month:month || "", jobNo:g("工事番号"), name, company, contract:cancel ? 0 : yenNum(g("請負金額")), kind:g("工事種類"), staff:g("立会担当"),
+    out.push({id:"l_" + newId(), manual:true, billedOutside:!!month, stage:month ? "" : (cancel ? "lost" : contract0 ? "won" : ""), ki, month:month || "", jobNo:g("工事番号"), name, company, contract:cancel ? 0 : yenNum(g("請負金額")), kind:g("工事種類"), staff:g("立会担当"),
       staff2:sCol >= 0 ? String(r[sCol] || "").replace(/　/g, " ").trim() : "", vendors, note:[cancel ? "キャンセル" : "", g("備考")].filter(Boolean).join(" "),
       arranged:/☑|✓|TRUE/i.test(g("手配")), done:/☑|✓|TRUE/i.test(g("完了")),
       ...(netCol >= 0 && num(r[netCol]) !== undefined ? {netOv:num(r[netCol])} : {}),
@@ -3636,13 +3434,11 @@ function familyListHtml(all, own, {taxMode = "税別", tags = null, ownItems = n
         ${i.note ? `<span class="wnote">備考・品番：${esc(i.note)}</span>` : ""}${tags ? `<span class="wtags">${tags(i)}</span>` : ""}</li>`; }).join("")}</ul></div>`).join("")}
     ${total && !tags ? `<div class="wtotal"><span>${own ? "あなたの工事の合計（税抜）" : "合計（税抜）"}</span><span><span class="num">${yenFull(total)}</span>${taxMode === "税込" ? "" : `<small>税込 ${yenFull(calcAmount(total, "税別").total)}</small>`}</span></div>` : ""}`;
 }
-const attachedPdfRow = id => `<div class="doc-row"><span class="row-main"><b>案件PDF</b><span class="small">添付書類（PDF）</span></span><button class="btn sub" data-act="dl-order" data-job="${esc(id)}">ダウンロード</button></div>`;
-function docRow(label, doc, note, canSee = true, attachedJob = null){
+function docRow(label, doc, note, canSee = true){
   const ok = doc && canSee;
-  const btn = attachedJob ? `<button class="btn sub" data-act="dl-order" data-job="${esc(attachedJob)}">ダウンロード</button>`
-    : `<button class="btn sub" data-act="pdf" data-id="${esc(doc?.id)}">ダウンロード</button>`;
-  const view = !attachedJob && ok ? `<button class="btn sub" data-act="pv-order" data-id="${esc(doc.id)}">見る</button>` : "";
-  return `<div class="doc-row"><span class="row-main"><b>${label}</b><span class="small">${ok ? `${attachedJob ? "添付PDF" : esc(doc.number)}　${fmtTime(doc.issuedAt || doc.createdAt)} 発注` : esc(note)}</span></span>
+  const btn = `<button class="btn sub" data-act="pdf" data-id="${esc(doc?.id)}">ダウンロード</button>`;
+  const view = ok ? `<button class="btn sub" data-act="pv-order" data-id="${esc(doc.id)}">見る</button>` : "";
+  return `<div class="doc-row"><span class="row-main"><b>${label}</b><span class="small">${ok ? `${esc(doc.number)}　${fmtTime(doc.issuedAt || doc.createdAt)} 発注` : esc(note)}</span></span>
     ${ok ? `<span class="row">${view}${btn}</span>` : ""}</div>`;
 }
 const dataUrlToBlob = u => { const [h, b] = u.split(","); const bin = atob(b); const a = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], {type:h.match(/data:([^;]+)/)?.[1] || "application/pdf"}); };
@@ -3763,7 +3559,7 @@ async function viewJobDetail(id){
   const uid = S.user.uid;
   const job = await api().getJob(id);
   if(!job) return `${back("#/jobs", "案件一覧")}<div class="empty">この案件は募集が終了したため表示できません。</div>`;
-  const [apps, pdfA, priv] = await Promise.all([api().listApplications({craftsmanId:uid}), api().getJobPdf(id), job.assignedTo === uid ? api().getJobPrivate(id).catch(() => ({})) : {}]);
+  const [apps, priv] = await Promise.all([api().listApplications({craftsmanId:uid}), job.assignedTo === uid ? api().getJobPrivate(id).catch(() => ({})) : {}]);
   const app = apps.find(a => a.jobId === id);
   const gone = app && ["withdrawn", "declined"].includes(app.status), again = gone && app.reapplyOK && job.status === "open" && job.assignedTo !== uid;
   let action;
@@ -3804,7 +3600,7 @@ async function viewJobDetail(id){
   const mine = app?.itemIds && !app.allItems ? new Set(app.itemIds) : null;
   const detailItems = !canPick && items0.length ? (mine ? familyListHtml(temaConv(items0, app.tema || []), mine, {taxMode:taxModeOf(job)}) : workListHtml(temaConv(items0, app?.tema || []), taxModeOf(job))) : "";
   const block = craftJobBlock(job, site, {full:job.assignedTo === uid, itemsHtml:detailItems, itemsLabel:items0.length ? `${items0.length}件` : "", itemsOpen:true});
-  return `${back("#/jobs", "案件一覧")}${pdfViewHtml(pdfA)}${coJobBanner(job)}<div class="cols"><div class="stack">${block}${work}</div><div class="stack">${action}${askBox}</div></div>`;
+  return `${back("#/jobs", "案件一覧")}${coJobBanner(job)}<div class="cols"><div class="stack">${block}${work}</div><div class="stack">${action}${askBox}</div></div>`;
 }
 async function viewApplied(){
   const apps = (await api().listApplications({craftsmanId:S.user.uid})).sort((a, b) => b.createdAt - a.createdAt);
@@ -3892,7 +3688,7 @@ async function viewWorkDetail(id){
   const uid = S.user.uid;
   const job = await api().getJob(id);
   if(!job || job.assignedTo !== uid) return `${back("#/work", "受注した案件")}<div class="empty">この案件は表示できません。</div>`;
-  const [priv, reports, order, payment, pdfA] = await Promise.all([api().getJobPrivate(id), api().listReports({craftsmanId:uid}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`), api().getJobPdf(id)]);
+  const [priv, reports, order, payment] = await Promise.all([api().getJobPrivate(id), api().listReports({craftsmanId:uid}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`)]);
   const rs = reports.filter(r => r.jobId === id).sort((a, b) => b.createdAt - a.createdAt);
   const canReport = job.status === "finished" && !rs.some(r => r.status === "submitted" || r.status === "approved");
   let step = "";
@@ -3930,7 +3726,7 @@ async function viewWorkDetail(id){
     step = `<div class="note" style="margin:0">お支払いが完了しました。</div>`;
   }
   const docs = `<section class="panel"><h2>書類</h2>
-    ${job.craftStart ? docRow("発注書", order, "準備中です") : docRow("発注書", null, "入る日を決めると、発注書が見られるようになります")}${pdfA ? attachedPdfRow(id) : ""}</section>`;
+    ${job.craftStart ? docRow("発注書", order, "準備中です") : docRow("発注書", null, "入る日を決めると、発注書が見られるようになります")}</section>`;
   const cs = job.craftStart || job.startDate, ce = job.craftEnd || job.endDate || cs;
   const firstDates = job.status === "assigned" && job.acceptedAt && !job.craftStart;
   const dates = (job.status === "assigned" && job.acceptedAt) || job.status === "working" ? `<form class="panel" data-form="craftdates" data-id="${esc(id)}" ${firstDates ? 'style="border:2px solid var(--kon-text)"' : ""}><h2>${firstDates ? "入る日を決めてください" : "入る日"}</h2>
@@ -3943,7 +3739,7 @@ async function viewWorkDetail(id){
   const contact = `<section class="panel"><h2>${esc(coNameOf(job))}とのチャット</h2>
     ${t?.lastAt ? `<p class="small" style="margin:0 0 10px">${isUnread(t) ? `<span class="badge">新着</span> ` : ""}${fmtTime(t.lastAt)}　${esc(t.lastText)}</p>` : `<p class="small" style="margin:0 0 10px">現場のことで確認したいことは、ここから${esc(coNameOf(job))}にチャットを送れます。</p>`}
     <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${t?.lastAt ? "やりとりを開く" : `${esc(coNameOf(job))}とチャットする`}</button></section>`;
-  return `${back("#/work", "受注した案件")}${pdfViewHtml(pdfA)}${coJobBanner(job)}<div class="cols">
+  return `${back("#/work", "受注した案件")}${coJobBanner(job)}<div class="cols">
     <div class="stack">${lateTop}${step}${dates}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${craftJobBlock(job, priv, {full:true, showPrice:!(job.status === "assigned" && !job.acceptedAt && !job.declinedAt), itemsHtml:itemsPanelBody(job, priv), itemsLabel:priv.items?.length ? `${itemsWithId(priv.items).length}件` : "", itemsOpen:true})}</div></div>`;
 }
@@ -4083,13 +3879,12 @@ function editPhotosHtml(){
 async function viewJobEdit(id){
   const job = id ? await api().getJob(id) : {trades:[], pref:"東京都", status:"draft", photos:[]};
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
-  const [priv, pdfA] = id ? await Promise.all([api().getJobPrivate(id), api().getJobPdf(id)]) : [{}, null];
+  const priv = id ? await api().getJobPrivate(id) : {};
   [S.props, S.prices, S.staff, S.ledgerCfg] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => []), api().getLedgerCfg().catch(() => ({}))]);
   // 新しい案件は、前回選んだ担当者を最初から選んでおく
   let lastStaff = ""; try { lastStaff = localStorage.getItem("refore_last_staff") || ""; } catch(e) {}
   const staffSel = id ? (job.staff?.name || "") : lastStaff;
   const staffOpts = [...S.staff.map(p => p.name), ...(staffSel && !S.staff.some(p => p.name === staffSel) && id ? [staffSel] : [])];
-  S.editPdf = pdfA; S.editPdfSrc = null; S.editPdfChanged = false;
   S.jobNos = (await api().listJobs({}).catch(() => [])).filter(j => j.jobNo && j.id !== id && j.parentId !== id && j.id !== job.parentId && !(job.parentId && j.parentId === job.parentId)).map(j => j.jobNo);
   setTimeout(() => { const f = document.querySelector("form[data-form=job]"); if(f) fillJobNo(f); }, 0);
   S.editPhotos = [...(job.photos || [])];
@@ -4104,13 +3899,8 @@ async function viewJobEdit(id){
     : `<button class="btn" name="mode" value="keep">変更を保存</button>`;
   return `${back(id ? `#/admin/job/${id}` : "#/admin", id ? "案件の管理" : "案件")}
     <h1>${id ? "案件を編集" : "新しい案件"}</h1>
-    <p class="lead">添付したPDF・案件名・作業内容・作業内訳（単価・金額を含む）・工種・作業日は承認済みの協力業者全員に公開されます。${tenant() ? "住所は市区町村まで、オートロック・エレベーターは公開されます（番地・物件名は発注先にだけ表示）。" : "住所・物件名・オートロック・エレベーターも公開されます。"}鍵・入室方法・連絡事項・写真URLは発注した業者にだけ表示され、管理会社は業者には表示されません。PDFがなくても案件を公開できます。</p>
+    <p class="lead">案件名・作業内容・作業内訳（単価・金額を含む）・工種・作業日は承認済みの協力業者全員に公開されます。${tenant() ? "住所は市区町村まで、オートロック・エレベーターは公開されます（番地・物件名は発注先にだけ表示）。" : "住所・物件名・オートロック・エレベーターも公開されます。"}鍵・入室方法・連絡事項・写真URLは発注した業者にだけ表示され、管理会社は業者には表示されません。</p>
     <form data-form="job" data-id="${esc(id || "")}" class="stack">
-      <section class="panel import"><h2>案件PDFの添付 <small>任意</small></h2>
-        <p class="small" style="margin:0 0 10px">管理会社からの発注書・依頼書のPDFを選ぶと、案件に添付して大きく表示します（中身の読み取りや自動入力はしません）。PDFは募集中の案件として承認済みの業者全員に表示され、発注後は発注先の業者が「発注書」としてダウンロードできます。</p>
-        <input type="file" accept="application/pdf,.pdf" data-pdfimport aria-label="案件PDFを選ぶ">
-        <div id="pdf-attach">${pdfAttachHtml()}</div>
-        <div id="pdf-result"></div></section>
       <section class="panel"><h2>発注内容（作業内訳）<small>単価・金額も含めて募集中の業者に表示・発注書に載ります</small></h2>
         <p class="small" style="margin:0 0 10px">各行に「箇所」（洋室・トイレなど）と「備考・品番」も入れられます。よく使う作業はプルダウンから選ぶと、単価表の発注単価が入ります（単価は変更できません。単価表は「設定」で編集）。表にない作業は「その他（手入力）」で入力します。「単価表に追加」にチェックして保存すると、次からプルダウンで選べます（選んでいた分類に入ります）。合計が業者さまへの支払金額になり、発注書と月末の請求書はこの金額で作られます（業者さまは変更できません）。</p>
         <div class="items-ed" id="items-ed">${editItems.map(itemRowHtml).join("")}</div>
@@ -4148,6 +3938,7 @@ async function viewJobEdit(id){
           <label class="field"><span>管理会社</span><select name="manager">${managerOptions(priv.manager)}</select></label>
         </div>
         <label class="field"><span>住所</span><input type="text" name="address" value="${esc(priv.address)}" autocomplete="off"></label>
+        <label class="field" style="max-width:260px"><span>入居日 <small>入居が決まっているときだけ。完了確認の予定に入ります</small></span><input type="date" name="moveIn" value="${esc(priv.moveIn)}"></label>
         <div class="two">
           <label class="field"><span>オートロック</span><input type="text" name="autolock" value="${esc(priv.autolock)}" placeholder="例：有／無／鍵対応／呼出1131"></label>
           <label class="field"><span>エレベーター</span><input type="text" name="elevator" value="${esc(priv.elevator)}" placeholder="例：有／無"></label>
@@ -4163,7 +3954,7 @@ async function viewJobEdit(id){
 async function viewAdminJob(id){
   const job = await api().getJob(id);
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
-  const [apps, priv, reports, order, payment, pdfA, threads] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`), api().getJobPdf(id), api().listThreads({jobId:id})]);
+  const [apps, priv, reports, order, payment, threads] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`), api().listThreads({jobId:id})]);
   // 以前に作った案件は、業者が見る用の作業内訳（job.items）が空なので、管理者が開いたときに写しておく
   const fix = {};
   if(priv.items?.length && !job.items?.some(i => i.unitPrice))
@@ -4176,6 +3967,13 @@ async function viewAdminJob(id){
   const family = await api().listJobs({}).catch(() => []);
   refreshFamilyOthers(id).catch(e => console.error(e));
   const kids = family.filter(j => j.parentId === id), parentJob = job.parentId ? family.find(j => j.id === job.parentId) : null;
+  // 完了確認の予定：元の案件と分離発注の子案件の、発注した業者をまとめる
+  const root = parentJob || job, calFam = [root, ...family.filter(j => j.parentId === root.id && j.id !== root.id)].map(j => j.id === job.id ? job : j).filter(j => j.assignedTo && !j.declinedAt);
+  const calUrl = calFam.length ? doneCalUrl(root, priv, calFam) : "";
+  // 完了確認の担当：メールのあるメンバーから選ぶ（案件の担当者を最初に選んでおく）。選んだ人は予定に招待される
+  const calMembers = calUrl ? (await api().listAdmins().catch(() => [])).filter(m => m.email && m.status !== "suspended") : [];
+  const calWho = (root.staff || job.staff)?.name || "";
+  const calPick = calMembers.length ? `<select data-calto aria-label="完了確認の担当"><option value="">完了確認の担当（招待しない）</option>${calMembers.map(m => { const n = m.staffName || m.name || m.email; return `<option value="${esc(m.email)}" ${calWho && (m.staffName === calWho || m.name === calWho) ? "selected" : ""}>${esc(n)}</option>`; }).join("")}</select>` : "";
   const order0 = {selected:0, applied:1, rejected:2, withdrawn:3, declined:3};
   apps.sort((a, b) => (order0[a.status] - order0[b.status]) || (a.createdAt - b.createdAt));
   const rs = reports.sort((a, b) => b.createdAt - a.createdAt);
@@ -4232,14 +4030,12 @@ async function viewAdminJob(id){
       kidOrders[n] ? `data-act="pv-order" data-id="${esc(kidOrders[n].id)}"` : "", `${kidOrders[n] ? dl(kidOrders[n].id) + `<a class="btn sub" href="#/admin/job/${esc(k.id)}/doc/${esc(kidOrders[n].id)}">手で直す</a>` : ""}<a class="btn sub" href="#/admin/job/${esc(k.id)}">開く</a>`)).join("")}
     ${matOrders.map(o => { const t = moTotals(o); return line(o.supplierName, `${o.kind === "work" ? "工事の発注書" : "材料発注書"}　${(o.items || []).length}件　${t.base ? `${yenFull(t.total)}（税込）` : "見積依頼"}　${o.status === "sent" ? `送信済み ${fmtTime(o.sentAt)}` : "未送信"}`,
       `data-act="mo-view" data-job="${esc(id)}" data-id="${esc(o.id)}"`, `<button class="btn sub" data-act="mo-pdf" data-job="${esc(id)}" data-id="${esc(o.id)}">ダウンロード</button><a class="btn sub" href="#/admin/job/${esc(id)}/mat/${esc(o.id)}">編集</a><button class="btn sub" data-act="mo-mail" data-job="${esc(id)}" data-id="${esc(o.id)}">メール</button>`); }).join("")}
-    ${pdfA ? attachedPdfRow(id) : ""}
-    ${!job.assignedTo && !kids.length && !matOrders.length && !pdfA ? `<p class="small" style="margin:0 0 6px">まだ手配した業者はありません。業者に発注すると、ここに業者名と発注書が並びます。</p>` : ""}
+    ${!job.assignedTo && !kids.length && !matOrders.length ? `<p class="small" style="margin:0 0 6px">まだ手配した業者はありません。業者に発注すると、ここに業者名と発注書が並びます。</p>` : ""}
     ${!job.assignedTo && ["open", "draft"].includes(job.status) ? `<div class="send-other"><div><b>応募がないときは</b><span class="small">宛名を変えた発注書をPDFにして、LINEなどでほかの業者に送れます（ポータルの募集はそのまま）</span></div><button type="button" class="btn sub" data-act="send-other" data-job="${esc(id)}">宛名を変えてPDF</button></div>` : ""}
     <p style="margin:10px 0 0"><a class="btn sub" href="#/admin/job/${esc(id)}/mat/new">＋ 材料・外部発注を作る</a></p></section>`;
   return `${back("#/admin", "案件")}
     <div class="page-head"><div class="row"><span class="pill ${pillClass(job)}">${esc(statusLabel(job))}</span>${job.status === "draft" ? `<span class="small">作成 ${fmtTime(job.createdAt)}</span>` : ""}<span class="small">工事番号：<b style="color:var(--ink)">${esc(job.jobNo) || "未入力"}</b></span>${["draft", "open", "closed"].includes(job.status) ? `<span class="small">公開範囲：<b style="color:${job.audience === "priority" ? "#9A6A12" : "var(--ink)"}">${job.audience === "priority" ? "既存業者だけ（先行公開）" : "全体"}</b>${job.status === "open" && job.audience === "priority" && job.autoAllAt ? `　応募がなければ ${fmtFull(job.autoAllAt)} に自動で全体公開 <button class="textlink" data-act="auto-off" data-id="${esc(id)}">やめる</button>` : ""}</span>` : ""}<span class="small">管理会社：<b style="color:var(--ink)">${esc(priv.manager) || "未登録"}</b></span>${parentJob ? `<span class="small">元の案件：<a href="#/admin/job/${esc(parentJob.id)}">${esc(parentJob.title)}</a></span>` : ""}</div>
-      <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
-    ${pdfViewHtml(pdfA, "発注先の業者にも表示されます")}
+      <div class="row">${acts}${calUrl ? `<span class="row" style="gap:6px">${calPick}<button class="btn sub" data-act="done-cal" data-url="${esc(calUrl)}">完了確認をカレンダーに入れる</button></span>` : ""}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
     <div class="cols">
       <div class="stack">${job.status === "selected" ? await prepayPanel(job) : ""}${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true, false, true)}${await adminItemsPanel(job, priv, apps, family)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
@@ -5943,7 +5739,6 @@ const ACTIONS = {
   async "rm-price"(el){ el.closest(".price-row").remove(); },
   async "rm-item"(el){ const form = el.closest("form"); el.closest(".item-row").remove(); syncItems(form); },
   async "cal-job"(el){ const j = S.cal?.jobs.get(el.dataset.id); if(j) calPopup(j); },
-  async "rm-pdf"(el){ S.editPdf = null; S.editPdfSrc = null; S.editPdfChanged = true; el.closest("form").querySelector("#pdf-attach").innerHTML = pdfAttachHtml(); },
   async "rm-photo"(el){ S.editPhotos.splice(Number(el.dataset.i), 1); $("#photo-edit").innerHTML = editPhotosHtml(); },
   async withdraw(el){
     if(!await ask({title:"応募を取り下げますか？", body:"取り下げたあとにもう一度応募するには、Reforeの許可が必要です。", ok:"取り下げる", danger:true})) return;
@@ -6016,16 +5811,6 @@ const ACTIONS = {
       `DTSTART;VALUE=DATE:${d(s)}`, `DTEND;VALUE=DATE:${d(e)}`, `SUMMARY:${x(j.title)}`, `LOCATION:${x(loc)}`, `DESCRIPTION:${x(note)}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
     saveBlob(new Blob([ics], {type:"text/calendar"}), `${(j.title || "予定").slice(0, 30)}.ics`);
   },
-  // 元のPDFを開く（ポップアップを止められないよう、先に新しいタブを開いておく）
-  async "pdf-open"(el){
-    const w = window.open("", "_blank");
-    try {
-      const a = await api().getJobPdf(el.dataset.job, {withSrc:true});
-      if(!a?.src?.data) throw new Error("元のPDFが見つかりません");
-      const url = URL.createObjectURL(dataUrlToBlob(a.src.data));
-      if(w) w.location = url; else location.href = url;
-    } catch(e) { if(w) w.close(); throw e; }
-  },
   async "money-csv"(){
     const L = S.ledger; if(!L) return;
     saveBlob(new Blob([ledgerCsv(L.list)], {type:"text/csv"}), `${L.ki}期_${L.sheet}.csv`);
@@ -6071,12 +5856,20 @@ const ACTIONS = {
         }
         const n = sets.reduce((a, x) => a + x.rows.length, 0);
         if(!n) throw new Error("取り込める行がありませんでした");
-        if(!await ask({title:`${n}行を取り込みますか？`, body:sets.map(x => `・${x.ki}期 ${x.co}：${x.rows.length}行`).join("\n") + "\n\n前に取り込んだ同じ行（同じ期・管理会社・物件名・工事番号）は、新しい内容で上書きします。", ok:"取り込む"})) return;
+        if(!await ask({title:`${n}行を取り込みますか？`, body:sets.map(x => `・${x.ki}期 ${x.co}：${x.rows.length}行`).join("\n") + "\n\n前に取り込んだ同じ行（同じ期・管理会社・工事番号）は、新しい内容で上書きします。", ok:"取り込む"})) return;
         const old = (await api().listLedger()).filter(r => !r.jobId);
         // 同じ期・管理会社・物件名で、工事番号が同じもの（または以前の取り込みで数字だけになった番号：「118.0」と「E-2425-118」）は同じ行として上書き
         const sameNo = (a, b) => a === b || (/^\d+(\.0+)?$/.test(String(a || "")) && String(b || "").endsWith("-" + Number(a))) || (/^\d+(\.0+)?$/.test(String(b || "")) && String(a || "").endsWith("-" + Number(b)));
         const used = new Set();
-        const all = sets.flatMap(x => x.rows.map(r => { const o = old.find(y => !used.has(y.id) && y.ki === r.ki && coKey(y.company) === coKey(r.company) && y.name === r.name && sameNo(y.jobNo, r.jobNo)); if(o){ used.add(o.id); return {...o, ...r, id:o.id}; } return r; }));
+        // 物件名が変わっていても（「…10/13完了」が付いたなど）、工事番号が同じなら同じ行として上書きする
+        const same = (y, r) => !used.has(y.id) && y.ki === r.ki && coKey(y.company) === coKey(r.company);
+        const all = sets.flatMap(x => x.rows.map(r => {
+          const o = old.find(y => same(y, r) && y.name === r.name && sameNo(y.jobNo, r.jobNo)) || (r.jobNo ? old.find(y => same(y, r) && sameNo(y.jobNo, r.jobNo)) : null);
+          if(!o) return r;
+          used.add(o.id); const m = {...o, ...r, id:o.id}; delete m.ord;
+          // Numbersでまだ完了していない行は、ポータルで進めた状態（見積中・受注待ち・失注）と請負金額を残す
+          if(!r.month){ if(["est", "wait", "lost"].includes(o.stage)) m.stage = o.stage; if(!r.contract && o.contract && !/キャンセル/.test(r.note)) m.contract = o.contract; }
+          return m; }));
         await api().saveLedgerMany(all); toast(`${all.length}行を取り込みました`); route();
       } catch(e) { toast(e.message || String(e)); }
     };
@@ -6350,17 +6143,20 @@ const ACTIONS = {
     const [jobD, priv] = await Promise.all([api().getJob(job), api().getJobPrivate(job)]);
     const noItems = !priv.items?.length;
     const all = itemsWithId(priv.items?.length ? priv.items : jobD.items);
+    let cd = {};
     if(all.length > 1){
       const want = JSON.parse(el.dataset.items || "null");
-      const ids = await pickItemsDialog(`${name} さんに発注しますか？`, "発注する工事を選んでください。全部選べばこの案件をそのまま発注し、一部だけなら、その工事を別の案件（子案件）にして発注します。", all, want ? want.filter(x => all.some(i => i.iid === x)) : null, "発注する");
-      if(ids === false) return;
+      const r = await pickItemsDialog(`${name} さんに発注しますか？`, "発注する工事を選んでください。全部選べばこの案件をそのまま発注し、一部だけなら、その工事を別の案件（子案件）にして発注します。", all, want ? want.filter(x => all.some(i => i.iid === x)) : null, "発注する", jobD.startDate ? fmtRange(jobD.startDate, jobD.endDate) : "");
+      if(r === false) return;
+      const ids = r.ids;
       if(!ids.length) throw new Error("発注する工事を1つ以上選んでください");
+      if(r.start) cd = {craftStart:r.start, craftEnd:r.end && r.end >= r.start ? r.end : r.start};
       await applyTemaToJob(jobD, priv, tema.filter(x => ids.includes(x)));
-      if(ids.length < all.length) return splitAssign(jobD, priv, uid, name, ids);
+      if(ids.length < all.length) return splitAssign(jobD, priv, uid, name, ids, cd);
     } else if(!await ask({title:`${name} さんに発注しますか？`, body:`発注内容（作業内訳）から発注書を自動で作成し、業者さまがダウンロードできるようになります。現場情報もこの業者に表示されます。ほかの応募者は「見送り」になります。${noItems ? "\n\n※作業内訳がまだ入力されていません。先に「編集」で作業ごとの金額を入力してください（あとから入力して発注書を作り直すこともできます）。" : `\n\n発注金額（税抜）：${yenFull(jobD.price)}`}`, ok:"発注する"})) return;
     if(all.length <= 1) await applyTemaToJob(jobD, priv, tema);
     const c = S.crafts.get(uid) || await api().getProfile(uid);
-    if(await assignOrPrepay(job, uid, buildOrderDoc(jobD, priv, c, await orderExtra(job))) === "prepay"){ toast(`${name} さんを発注先に選びました。先払いをお願いします`); return route(); }
+    if(await assignOrPrepay(job, uid, buildOrderDoc({...jobD, ...cd}, priv, c, await orderExtra(job)), cd) === "prepay"){ toast(`${name} さんを発注先に選びました。先払いをお願いします`); return route(); }
     notifyMail(job, "発注されました", `「${jobD.title}」をあなたに発注しました。ポータルで発注内容と金額を確認して、「承諾する」を押してください。\n工期：${fmtRange(jobD.startDate, jobD.endDate)}`, {to:uid});
     toast(`${name} さんに発注し、発注書を作成しました`); route();
   },
@@ -6394,6 +6190,11 @@ const ACTIONS = {
       toast(`案件を${res.jobs}件削除しました`);
     } finally { S.uploading = false; }
     S.delSel = new Set(); stopNotifier(); stopBadges(); route();
+  },
+  // 完了確認の予定を開く。担当に選んだメンバーを招待に入れる
+  async "done-cal"(el){
+    const to = el.parentElement.querySelector("[data-calto]")?.value || "";
+    window.open(el.dataset.url + (to ? "&add=" + encodeURIComponent(to) : ""), "_blank", "noopener");
   },
   async "job-delete"(el){
     const id = el.dataset.job, j = await api().getJob(id); if(!j) return;
@@ -6478,25 +6279,6 @@ const ACTIONS = {
     for(const l of d.lines) await api().setJobStatus(l.jobId, "paid");
     if(d.lines[0]) notifyMail(d.lines[0].jobId, `${fmtMonth(d.month)}分の請求書を支払済みにしました`, `請求番号：${d.number}\nお支払い金額：${yenFull(d.total)}（${d.lines.length}件）`, {to:d.craftsmanId});
     toast("支払済みにしました"); route();
-  },
-  async "dl-order"(el){
-    const id = el.dataset.job;
-    const [old, view, order] = await Promise.all([api().getJobPdfSource(id), api().getJobPdf(id, {withSrc:true}), api().getDocument(`${id}_order`)]);
-    const src = view?.src || old;
-    const base = `案件PDF_${order?.number || id}`;
-    if(src?.data){ saveBlob(dataUrlToBlob(src.data), `${base}_${src.name}`); return; }
-    if(!view?.pages?.length) throw new Error("添付PDFが見つかりません");
-    // 元のPDFが大きくて保存できなかった場合は、表示用の画像からPDFを作り直す
-    toast("PDFを作成しています…");
-    if(!window.jspdf) await loadScript(JSPDF_URL);
-    const doc = new window.jspdf.jsPDF({unit:"mm", format:"a4"});
-    for(let i = 0; i < view.pages.length; i++){
-      const img = new Image(); img.src = view.pages[i]; await img.decode();
-      const w = 210, h = w * img.height / img.width;
-      if(i) doc.addPage([w, h]); else if(Math.abs(h - 297) > 1){ doc.deletePage(1); doc.addPage([w, h]); }
-      doc.addImage(view.pages[i], "JPEG", 0, 0, w, h);
-    }
-    doc.save(`${base}.pdf`);
   },
   async "pv-order"(el){
     const d = await withWorkDate(await api().getDocument(el.dataset.id)); if(!d) throw new Error("書類が見つかりません");
@@ -6843,7 +6625,7 @@ const FORMS = {
     const photoUrls = g("photoUrls").split(/\s+/).map(u => u.trim()).filter(Boolean);
     const badUrl = photoUrls.find(u => !/^https?:\/\/\S+$/i.test(u));
     if(badUrl) throw new Error(`写真確認URLは https:// から始まるリンクを入力してください（${badUrl.slice(0, 40)}）`);
-    const title = g("title") || (S.editPdf ? S.editPdf.name.replace(/\.pdf$/i, "") : "");
+    const title = g("title");
     if(!title) throw new Error("案件名を入力してください");
     const items = readItems(form).filter(i => i.name || i.unitPrice);
     if(items.some(i => !i.name)) throw new Error("作業内訳に作業名が空の行があります");
@@ -6889,8 +6671,7 @@ const FORMS = {
     if(!id && !data.status) data.status = "draft";
     const jid = await api().saveJob(id, data);
     await api().setJobPrivate(jid, {address:g("address"), building:g("building"), room:g("room"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact"),
-      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), photoUrls, items});
-    if(S.editPdfChanged){ toast("PDFを保存しています…"); await api().setJobPdf(jid, S.editPdf, S.editPdfSrc); S.editPdfChanged = false; }
+      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), moveIn:g("moveIn"), photoUrls, items});
     toast((mode === "open" ? "公開しました" : "保存しました") + (added ? `（単価表に${added}件追加）` : ""));
     go(`#/admin/job/${jid}`);
   },
@@ -7169,10 +6950,6 @@ document.addEventListener("change", e => {
   }
   if(e.target.matches("[name=i_cat]")){ applyCat(e.target.closest(".item-row")); syncItems(e.target.form); return; }
   if(e.target.matches("[name=i_pick]")){ applyPick(e.target.closest(".item-row")); syncItems(e.target.form); return; }
-  if(e.target.matches("[data-pdfimport]")){
-    importPdf(e.target).catch(err => { console.error(err); toast("PDFを読み込めませんでした（" + (err.message || err) + "）"); const b = $("#pdf-result"); if(b) b.innerHTML = ""; });
-    return;
-  }
   if(e.target.matches("[data-reportphotos]")){
     const seen = new Set(S.reportFiles.map(f => f.name + f.size));
     [...e.target.files].forEach(f => { if(f.type.startsWith("image/") && !seen.has(f.name + f.size)){ S.reportFiles.push(f); seen.add(f.name + f.size); } });
@@ -7225,7 +7002,7 @@ const SUBSCRIPTION_ON = false;   // サブスク（プラン・月額の請求�
 const OP_DEFAULT = {
   plans:{p10:{name:"10件プラン", price:3000, limit:10}, p30:{name:"30件プラン", price:5000, limit:30}, p50:{name:"50件プラン", price:8000, limit:50}},
   trial:{name:"お試しプラン", limit:5, days:30},
-  fee:0.1, memberFee:100, moneyFee:1000, extraFee:500,
+  fee:0.1, memberFee:0, moneyFee:1000, extraFee:500,
   bank:"", opName:"株式会社Refore（GENPUKU Pro 運営）", opInvoiceNumber:""
 };
 const opCfg = () => ({...OP_DEFAULT, ...(S.opCfg || {}), plans:{...OP_DEFAULT.plans, ...((S.opCfg || {}).plans || {})}, trial:{...OP_DEFAULT.trial, ...((S.opCfg || {}).trial || {})}});
@@ -7309,9 +7086,10 @@ function coJobBanner(j){
 }
 
 /* ---------- 先払い（工務店 → Refore、銀行振込） ---------- */
-async function assignOrPrepay(jobId, uid, order){
+async function assignOrPrepay(jobId, uid, order, extra = {}){
   const j = await api().getJob(jobId);
   if(tenant() && j?.pay){
+    if(Object.keys(extra).length) await api().saveJob(jobId, extra);
     const amt = calcAmount(j.price, taxModeOf(j)), fee = Math.round(amt.total * opFee());
     const c = S.crafts.get(uid) || {};
     const pay = {id:`${jobId}_${Date.now().toString(36)}`, jobId, companyId:S.cid, coName:S.company?.name || "", craftsmanId:uid, craftsmanName:c.tradeName || c.name || "",
@@ -7319,7 +7097,7 @@ async function assignOrPrepay(jobId, uid, order){
     await api().requestPrepay(jobId, uid, order, pay);
     return "prepay";
   }
-  await api().assign(jobId, uid, order);
+  await api().assign(jobId, uid, order, extra);
   return "assigned";
 }
 async function prepayPanel(job){
@@ -7377,11 +7155,11 @@ function coInfoPanel(){
 async function viewCoMembers(){
   const [mem, inv] = await Promise.all([api().listMembers(S.cid), api().listInvites({companyId:S.cid}).catch(() => [])]);
   const c = S.company, active = mem.filter(m => m.status !== "suspended"), paid = active.filter(m => !m.owner).length;
-  return `<h1>メンバー</h1><p class="lead">管理画面にログインする人を招待します。招待した人が参加すると、1人につき月額 ${yenFull(opCfg().memberFee)} です（最初の管理者は無料）。</p>
+  return `<h1>メンバー</h1><p class="lead">管理画面にログインする人（従業員）を招待します。${opCfg().memberFee ? `招待した人が参加すると、1人につき月額 ${yenFull(opCfg().memberFee)} です（最初の管理者は無料）。` : "メンバーの追加は無料です。"}</p>
     <div class="cols"><section class="panel"><h2>メンバー <small>${active.length}人</small></h2>
       ${active.map(m => `<div class="doc-row"><span class="row-main"><b>${esc(m.name || m.email)}${m.uid === S.user.uid ? "（あなた）" : ""}${m.owner ? `　<span class="small">代表</span>` : ""}</b><span class="small">${esc(m.email)}</span></span>
         <span class="row">${m.owner ? `<span class="pill approved">管理者</span>` : `<select data-memrole="${esc(m.uid)}" aria-label="役割">${["管理者", "担当者"].map(r => `<option ${r === m.coRole ? "selected" : ""}>${r}</option>`).join("")}</select>${m.uid !== S.user.uid ? `<button class="btn sub danger-text" data-act="mem-remove" data-uid="${esc(m.uid)}">外す</button>` : ""}`}</span></div>`).join("")}
-      <p class="small" style="margin:10px 0 0"><b>管理者</b>はすべての画面と契約を扱えます。<b>担当者</b>は見積・案件・予定表・チャット・請求書を扱えます（収支・設定・契約は見えません）。メンバーの月額は今 ${paid}人 × ${yenFull(opCfg().memberFee)} です。</p></section>
+      <p class="small" style="margin:10px 0 0"><b>管理者</b>はすべての画面と契約を扱えます。<b>担当者</b>は見積・案件・予定表・チャット・請求書を扱えます（収支・設定・契約は見えません）。${opCfg().memberFee ? `メンバーの月額は今 ${paid}人 × ${yenFull(opCfg().memberFee)} です。` : ""}</p></section>
     <div class="stack"><form class="panel" data-form="coinvite"><h2>招待する</h2>
       <label class="field"><span>名前</span><input name="name" required placeholder="例：佐々木"></label>
       <label class="field"><span>メールアドレス</span><input name="email" type="email" required placeholder="例：sasaki@example.jp"></label>
@@ -7484,19 +7262,13 @@ async function issueCraftInvoice(id, extra, jobs, toName, label){
   return {lines, total:base + tax, prev};
 }
 
-/* ---------- 職人：メンバー（従業員） ---------- */
+/* ---------- 職人：メンバー（従業員）。招待はやめた（2026-10-15）。前に招待した人がいるときだけ一覧を出して外せるようにする ---------- */
 async function crewPanel(){
   if(S.me || S.profile?.employee || api()?.mode !== "firebase" && api()?.mode !== "demo") return "";
-  const [crew, inv] = await Promise.all([api().listCrew(S.user.uid).catch(() => []), api().listInvites({ownerUid:S.user.uid}).catch(() => [])]);
-  const act = crew.filter(m => m.status !== "suspended");
-  return `<div class="cols" style="margin-top:16px"><section class="panel"><h2>メンバー <small>従業員</small></h2>
-      <p class="small" style="margin:0 0 10px">従業員は、あなたが受けた案件の現場情報・予定・チャットを見られ、作業開始・完了と完了報告を送れます。お金・請求書・応募はあなただけが扱います。追加は無料です。</p>
-      ${act.length ? act.map(m => `<div class="doc-row"><span class="row-main"><b>${esc(m.name)}</b><span class="small">${esc(m.email)}</span></span><button class="btn sub danger-text" data-act="crew-remove" data-uid="${esc(m.uid)}">外す</button></div>`).join("") : `<p class="small" style="margin:0">まだいません。</p>`}
-      ${inv.length ? `<h3 style="margin:12px 0 6px">招待中</h3>${inv.map(x => inviteRow(x)).join("")}` : ""}</section>
-    <form class="panel" data-form="crewinvite"><h2>従業員を招待する</h2>
-      <label class="field"><span>名前</span><input name="name" required placeholder="例：鈴木"></label>
-      <label class="field"><span>メールアドレス</span><input name="email" type="email" required></label>
-      <button class="btn">招待メールを送る</button></form></div>`;
+  const act = (await api().listCrew(S.user.uid).catch(() => [])).filter(m => m.status !== "suspended");
+  if(!act.length) return "";
+  return `<section class="panel" style="margin-top:16px"><h2>メンバー（従業員）</h2>
+    ${act.map(m => `<div class="doc-row"><span class="row-main"><b>${esc(m.name)}</b><span class="small">${esc(m.email)}</span></span><button class="btn sub danger-text" data-act="crew-remove" data-uid="${esc(m.uid)}">外す</button></div>`).join("")}</section>`;
 }
 function viewCrewProfile(){
   return `<h1>登録情報</h1><section class="panel"><dl class="kv"><dt>名前</dt><dd>${esc(S.me.name)}</dd><dt>メール</dt><dd>${esc(S.me.email)}</dd><dt>所属</dt><dd>${esc(S.profile.tradeName || S.profile.name)}（親方：${esc(S.profile.name)}さん）</dd></dl>
@@ -7750,12 +7522,6 @@ Object.assign(FORMS, {
     const mem = await api().listMembers(S.cid);
     if(mem.some(m => (m.email || "").toLowerCase() === email && m.status !== "suspended")) throw new Error("このメールアドレスの人は、すでにメンバーです");
     const id = await api().createInvite({kind:"co", companyId:S.cid, companyName:S.company?.name || "", coRole:g("coRole") === "管理者" ? "管理者" : "担当者", email, name:g("name"), invitedBy:S.user.uid});
-    const sent = await sendInviteMail(id);
-    toast(sent ? `${g("name")}さんに招待メールを送りました` : "招待を作りました。「リンクをコピー」で送ってください"); route();
-  },
-  async crewinvite(form){
-    const g = k => String(form.elements[k]?.value || "").trim();
-    const id = await api().createInvite({kind:"crew", ownerUid:S.user.uid, ownerName:S.profile.tradeName || S.profile.name || "", email:g("email").toLowerCase(), name:g("name")});
     const sent = await sendInviteMail(id);
     toast(sent ? `${g("name")}さんに招待メールを送りました` : "招待を作りました。「リンクをコピー」で送ってください"); route();
   },
