@@ -660,7 +660,7 @@ body{font-size:17px}
 .vend-row{display:grid;grid-template-columns:1fr 140px 34px;gap:6px;margin-bottom:6px}
 .stg{display:inline-block;font-size:11.5px;font-weight:700;border-radius:3px;padding:0 6px;margin-right:6px;white-space:nowrap;border:1px solid #c3c8d0;color:#5a6270}
 .stg-est{border-color:#1F78C1;color:#1F78C1}.stg-wait{background:#FFF4D6;border-color:#C99A1C;color:#8A5F00}.stg-won{background:#E6F4EC;border-color:#2C7A4B;color:#2C7A4B}
-.stg-tachiai{background:#EEF0F4;color:#3a4252}.stg-lost{color:#999;border-color:#ddd}
+.stg-tachiai{background:#EEF0F4;color:#3a4252}.stg-self{background:#EAF2FB;border-color:#2F6DB5;color:#2F6DB5}.stg-lost{color:#999;border-color:#ddd}
 .mtbl td.stgc{white-space:nowrap}
 .flowbar{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
 .flowbar .fb{flex:1;min-width:110px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--surface);display:grid}
@@ -2732,10 +2732,10 @@ function gcalUrl(j, p){
   return "https://calendar.google.com/calendar/render?" + new URLSearchParams({action:"TEMPLATE", text:j.title || "工事", dates:`${d(j.craftStart)}/${d(addDays(j.craftEnd || j.craftStart, 1))}`, location:loc, details:note}).toString();
 }
 /* ---------- 見積（Reforeの雛形の書式：見積書・発注請書・御請求書。単価は雛形の見積単価と実行単価） ---------- */
-const EST_STATUS = {draft:"下書き", sent:"提出済み（受注待ち）", ordered:"受注（請書を作成中）", won:"受注（業者に公開済み）", tachiai:"立会のみ", lost:"失注", revised:"訂正済み"};
+const EST_STATUS = {draft:"下書き", sent:"提出済み（受注待ち）", ordered:"受注（請書を作成中）", won:"受注（業者に公開済み）", self:"完了（自社施工）", tachiai:"立会のみ", lost:"失注", revised:"訂正済み"};
 // 収支の行の状態（見積の状態と連動）
 const LEDGER_STAGE = {"":"見積前", est:"見積中", wait:"受注待ち", won:"受注", done:"完了", tachiai:"立会のみ", lost:"失注"};
-const EST_TO_STAGE = {draft:"est", sent:"wait", ordered:"won", won:"won", tachiai:"tachiai", lost:"lost"};
+const EST_TO_STAGE = {draft:"est", sent:"wait", ordered:"won", won:"won", self:"done", tachiai:"tachiai", lost:"lost"};
 const stageTag = st => `<span class="stg stg-${st || "none"}">${LEDGER_STAGE[st || ""] || "見積前"}</span>`;
 const EST_KINDS = ["退去工事", "原状回復工事", "修繕工事", "フルリノベーション工事", "リフォーム工事", "入居前工事"];
 const BILLING_DEFAULT = {validity:"発行日より1ヶ月", terms:"工事完了月末締、翌月末日支払", invoiceNumber:"", bank:""};
@@ -2899,8 +2899,9 @@ async function viewEstEdit(id){
   const t = estTotals(e), seal = await api().getSeal().catch(() => "");
   S.estSeal = seal;
   const jobSt = e.jobId ? (await api().getJob(e.jobId).catch(() => null))?.status || "" : "";
-  const docType = e.status === "tachiai" || ["completed", "paid"].includes(jobSt) ? "invoice" : ["ordered", "won"].includes(e.status) ? "ukesho" : "est";
+  const docType = ["tachiai", "self"].includes(e.status) || ["completed", "paid"].includes(jobSt) ? "invoice" : ["ordered", "won"].includes(e.status) ? "ukesho" : "est";
   const docLabel = {est:"見積書", ukesho:"工事請書", invoice:"御請求書"}[docType];
+  S.estDoc = docType;
   const canSubmit = !e.id || ["draft", "sent"].includes(e.status);
   const opt = (arr, cur) => arr.map(x => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("");
   return `${estBack()}
@@ -2946,15 +2947,17 @@ async function viewEstEdit(id){
         <div class="row end"><span class="row">${e.id ? `<button type="button" class="btn sub" data-act="est-copy">複製</button><button type="button" class="btn sub danger-text" data-act="est-del">削除</button>` : ""}</span></div></section>
       <section class="panel est-result"><h2>管理会社からの返事</h2>${estResultHtml(e)}</section>
     </form>
-    <aside class="est-pv" aria-label="書類のプレビュー"><div class="est-pv-bar"><b>プレビュー</b><span class="small">${["ordered", "won"].includes(e.status) ? "工事請書" : "見積書"}　このまま印刷・PDFになります</span></div><div class="est-pv-page"><style>${PDF_CSS}</style><div class="pv-zoom" id="est-pv">${estDocHtml(e, ["ordered", "won"].includes(e.status) ? "ukesho" : "est", seal, billing)}</div></div></aside></div>`;
+    <aside class="est-pv" aria-label="書類のプレビュー"><div class="est-pv-bar"><b>プレビュー</b><span class="small">${docLabel}　このまま印刷・PDFになります</span></div><div class="est-pv-page"><style>${PDF_CSS}</style><div class="pv-zoom" id="est-pv">${estDocHtml(e, docType, seal, billing)}</div></div></aside></div>`;
 }
 // 返事に合わせて：そのまま業者に公開／直してから公開／訂正見積／立会費のみ／失注
 function estResultHtml(e){
   if(e.status === "revised") return `<p style="margin:0">この見積は前の仕組みで訂正しました。${e.nextId ? `<a href="#/admin/est/edit/${esc(e.nextId)}">新しい見積（訂正${(e.rev || 0) + 1}）を開く</a>` : ""}</p>`;
   if(e.jobId) return `<p style="margin:0 0 10px">${stageTag("won")} 工事請書の内容で、業者に発注する案件を作りました。</p><a class="btn sub" href="#/admin/job/${esc(e.jobId)}">案件を開く</a>`;
   if(e.status === "ordered") return `<p style="margin:0 0 12px">${stageTag("won")} 受注しました。上の工事の内容が<b>最終の工事請書</b>です。直したら保存してください。請書の金額 <b>${yenFull(estTotals(e).sub)}</b>（税抜）が収支の請負金額になります${e.estRows?.length ? `（見積は ${yenFull(estTotals({rows:e.estRows}).sub)}）` : ""}。</p>
-    <div class="est-btns"><button type="button" class="btn sub" data-act="est-pdf" data-type="ukesho">工事請書PDF</button><button type="button" class="btn" data-act="est-publish">この請書で業者に公開</button><button type="button" class="btn sub" data-act="est-job">直してから公開</button><button type="button" class="textlink" data-act="est-unorder">受注待ちに戻す</button></div>
-    <ul class="small est-btn-help"><li><b>この請書で業者に公開</b>：請書の工事を実行単価で案件にして、既存業者に先に公開します（24時間応募がなければ全体に公開）。</li><li><b>直してから公開</b>：案件を下書きで作り、編集画面を開きます。</li></ul>`;
+    <div class="est-btns"><button type="button" class="btn sub" data-act="est-pdf" data-type="ukesho">工事請書PDF</button><button type="button" class="btn" data-act="est-publish">この請書で業者に公開</button><button type="button" class="btn sub" data-act="est-job">直してから公開</button><button type="button" class="btn sub" data-act="est-self">自社施工で完了</button><button type="button" class="textlink" data-act="est-unorder">受注待ちに戻す</button></div>
+    <ul class="small est-btn-help"><li><b>この請書で業者に公開</b>：請書の工事を実行単価で案件にして、既存業者に先に公開します（24時間応募がなければ全体に公開）。</li><li><b>直してから公開</b>：案件を下書きで作り、編集画面を開きます。</li><li><b>自社施工で完了</b>：業者には公開せず、自分たちで施工して完了にします（修繕など）。請書の金額が売上になり、管理会社への請求に入ります。材料費などは収支の✎で入れられます。</li></ul>`;
+  if(e.status === "self") return `<p style="margin:0">${stageTag("done")} 自社施工で完了しました（完了日 ${fmtDate(e.selfDoneAt ? isoOf(e.selfDoneAt) : "")}）。請書の金額 <b>${yenFull(estTotals(e).sub)}</b>（税抜）で、管理会社への請求に入ります。</p>
+    <div class="est-btns" style="margin-top:10px"><button type="button" class="btn sub" data-act="est-pdf" data-type="invoice">御請求書PDF</button>${e.ledgerId ? `<a class="btn sub" href="#/admin/money/edit/${esc(e.ledgerId)}">材料費などを入れる（収支）</a>` : ""}<button type="button" class="textlink" data-act="est-unself">受注（請書）に戻す</button></div>`;
   if(e.status === "tachiai") return `<p style="margin:0">${stageTag("tachiai")} 工事はなく、立会費 ${yenFull(itemsTotal((e.billRows || []).map(r => ({qty:r.qty, unitPrice:r.price}))))}（税抜）で完了にしました。御請求書は立会費だけで出ます。</p>
     <p style="margin:10px 0 0"><button type="button" class="textlink" data-act="est-reopen">返事の前に戻す</button></p>`;
   if(e.status === "lost") return `<p style="margin:0">${stageTag("lost")} 失注にしました。</p><p style="margin:10px 0 0"><button type="button" class="textlink" data-act="est-reopen">返事の前に戻す</button></p>`;
@@ -2976,7 +2979,7 @@ function estSync(form){
   try { estMarkDiff(form); } catch(err) { console.warn(err); }
   form.querySelectorAll(".er:not(.note)").forEach(el => { const r = e.rows.find(x => x.id === el.dataset.id); const a = el.querySelector(".e-amt"); if(a) a.textContent = yenFull(r ? estAmt(r) : 0); });
   $("#est-tot").innerHTML = estTotHtml(estTotals(e));
-  clearTimeout(S.estPvT); S.estPvT = setTimeout(() => { const pv = $("#est-pv"); if(pv) pv.innerHTML = estDocHtml(S.est, ["ordered", "won"].includes(S.est.status) ? "ukesho" : "est", S.estSeal, {...BILLING_DEFAULT, ...S.billing}); estZoom(); }, 250);
+  clearTimeout(S.estPvT); S.estPvT = setTimeout(() => { const pv = $("#est-pv"); if(pv) pv.innerHTML = estDocHtml(S.est, S.estDoc || (["ordered", "won"].includes(S.est.status) ? "ukesho" : "est"), S.estSeal, {...BILLING_DEFAULT, ...S.billing}); estZoom(); }, 250);
   const hint = $("#estno-hint"), head = `${jobNoPrefix(e.company)}-${jobNoPeriod()}-`;
   if(hint){ const used = (S.jobNos || []).filter(n => n.startsWith(head)).sort((a, b) => Number(a.split("-")[2]) - Number(b.split("-")[2])); hint.textContent = used.length ? `最後に使った番号：${used[used.length - 1]}` : ""; }
 }
@@ -3042,7 +3045,7 @@ async function syncLedgerFromEst(e){
   if(!e.ledgerId || e.status === "revised") return;
   const row = (await api().listLedger()).find(x => x.id === e.ledgerId); if(!row) return;
   // 受注（請書）からは、請書の金額が収支の請負金額
-  const ordered = ["ordered", "won"].includes(e.status), estSub = estTotals(e.estRows?.length ? {rows:e.estRows} : e).sub;
+  const ordered = ["ordered", "won", "self"].includes(e.status), estSub = estTotals(e.estRows?.length ? {rows:e.estRows} : e).sub;
   await api().saveLedger({...row, estimateId:e.id, stage:EST_TO_STAGE[e.status] || "est", estAmount:estSub, ...(EST_LEDGER_KIND[e.kind] ? {kind:EST_LEDGER_KIND[e.kind]} : {}), ...(ordered ? {contract:estTotals(e).sub} : {}), updatedAt:Date.now()});
 }
 // 見積を保存（新しい見積は、ここで番号を付ける）
@@ -3098,14 +3101,14 @@ async function viewBills(ymArg){
   const cards = companies.map(co => {
     const k = coKey(co), day = cfg.close?.[k] ?? 0, fmts = cfg.billFmt?.[k] || ["sum"], {from, to} = closePeriod(ym, day), id = `${k}_${ym}`, bill = billBy.get(id);
     const due = to <= todayIso();
-    const list = bill ? rows.filter(r => bill.ledgerIds.includes(r.id)) : rows.filter(r => r.coKey === k && r.done && !r.billedOutside && !(r.billId && r.billId !== id) && ["won", "tachiai", undefined, ""].includes(r.stage) && (d => d && d >= from && d <= to)(doneDateOf(r)));
+    const list = bill ? rows.filter(r => bill.ledgerIds.includes(r.id)) : rows.filter(r => r.coKey === k && r.done && !r.billedOutside && !(r.billId && r.billId !== id) && ["won", "tachiai", "done", undefined, ""].includes(r.stage) && (d => d && d >= from && d <= to)(doneDateOf(r)));
     if(!list.length && !bill) return "";
     S.bills.cards[id] = {co, k, from, to, list, fmts};
     const sub = list.reduce((a, r) => a + (Number(r.contract) || 0), 0), noAmt = list.filter(r => !Number(r.contract)).length;
     return `<section class="panel bill-card"><div class="row between"><h2 style="margin:0">${esc(co)} <small>${closeLabel(day)}　${fmtDate(from)}〜${fmtDate(to)}</small></h2>
         ${bill ? `<span class="pill paid">発行済み ${fmtDate(bill.issuedAt)}</span>` : due ? `<span class="pill waiting">締め日を過ぎました</span>` : `<span class="pill">締め日前（${fmtDate(to)}）</span>`}</div>
       <div class="tbl-wrap" style="margin-top:10px"><table class="mtbl nb"><thead><tr><th>工事番号</th><th>物件名称</th><th>工事種類</th><th>完了日</th><th class="r">金額（税抜）</th></tr></thead><tbody>
-        ${list.map(r => `<tr><td>${esc(r.jobNo)}</td><td class="name">${esc(r.name)}${r.stage === "tachiai" ? " <span class=\"stg stg-tachiai\">立会のみ</span>" : ""}</td><td>${esc(r.kind)}</td><td>${fmtDate(doneDateOf(r))}</td><td class="r">${Number(r.contract) ? yenFull(r.contract) : `<a class="warn" href="#/admin/money/edit/${esc(r.id)}">請負金額を入力</a>`}</td></tr>`).join("")}
+        ${list.map(r => `<tr><td>${esc(r.jobNo)}</td><td class="name">${esc(r.name)}${r.stage === "tachiai" ? " <span class=\"stg stg-tachiai\">立会のみ</span>" : r.self ? " <span class=\"stg stg-self\">自社施工</span>" : ""}</td><td>${esc(r.kind)}</td><td>${fmtDate(doneDateOf(r))}</td><td class="r">${Number(r.contract) ? yenFull(r.contract) : `<a class="warn" href="#/admin/money/edit/${esc(r.id)}">請負金額を入力</a>`}</td></tr>`).join("")}
         <tr class="sum"><th colspan="4">小計 ${list.length}件　消費税 ${yenFull(Math.floor(sub * TAX_RATE))}</th><td class="r">${yenFull(sub)}</td></tr></tbody></table></div>
       ${noAmt ? `<p class="small warn" style="margin:6px 0 0">請負金額が入っていない案件が${noAmt}件あります。</p>` : ""}
       <div class="row between" style="margin-top:10px;align-items:center">
@@ -3221,7 +3224,7 @@ function nextStep(r){
     if(!r.billId && !r.billedOutside) return {href:`#/admin/bills/${(doneDateOf(r) || curMonth()).slice(0, 7)}`, label:"請求する"};
     return {href:`#/admin/job/${r.jobId}`, label:"案件を見る"};
   }
-  if(r.stage === "tachiai" && r.done && !r.billId && !r.billedOutside) return {href:`#/admin/bills/${(doneDateOf(r) || curMonth()).slice(0, 7)}`, label:"請求する"};
+  if((r.stage === "tachiai" || (r.stage === "done" && r.self)) && r.done && !r.billId && !r.billedOutside) return {href:`#/admin/bills/${(doneDateOf(r) || curMonth()).slice(0, 7)}`, label:"請求する"};
   if(r.estimateId) return {href:`#/admin/est/edit/${r.estimateId}`, label:{est:"見積を仕上げる", wait:"返事を入れる", won:"請書・公開"}[r.stage] || "見積を見る"};
   if(r.manual && !r.billedOutside && !["tachiai", "lost"].includes(r.stage) && !r.done) return {href:`#/admin/est/from/${r.id}`, label:"見積を作る"};
   return {href:`#/admin/money/edit/${r.id}`, label:"編集"};
@@ -6169,6 +6172,26 @@ const ACTIONS = {
     await api().saveEstimate({...e, status:"revised", nextId:nid, updatedAt:Date.now()});
     if(e.ledgerId){ const row = (await api().listLedger()).find(x => x.id === e.ledgerId); if(row) await api().saveLedger({...row, estimateId:nid, stage:"est", updatedAt:Date.now()}); }
     toast("訂正見積を作りました。直して提出してください"); go(`#/admin/est/edit/${nid}`);
+  },
+  async "est-self"(){
+    const e = await saveEst(readEst($("#est-form")), true);
+    if(!(e.rows || []).some(r => !r.noteRow && r.name)) throw new Error("工事の内容を入れてください");
+    const v = prompt(`自社施工で完了にします（業者には公開しません）。\n請書の金額 ${yenFull(estTotals(e).sub)}（税抜）が売上になります。\n\n完了日を入れてください`, todayIso()); if(v === null) return;
+    const d0 = String(v).normalize("NFKC").trim().replace(/[/.]/g, "-").replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/, (m, y, mo, da) => `${y}-${mo.padStart(2, "0")}-${da.padStart(2, "0")}`);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d0) || isNaN(new Date(d0))) throw new Error("完了日は 2026-10-14 のように入れてください");
+    const at = new Date(d0 + "T12:00:00").getTime(), month = d0.slice(0, 7), now = Date.now();
+    const d = await saveEst({...e, status:"self", selfDoneAt:at}, true);
+    const base = {contract:estTotals(d).sub, stage:"done", done:true, doneAt:at, month, arranged:true, self:true, estimateId:d.id, estAmount:estTotals(d.estRows?.length ? {rows:d.estRows} : d).sub, updatedAt:now};
+    const row = d.ledgerId ? (await api().listLedger()).find(x => x.id === d.ledgerId) : null;
+    if(row) await api().saveLedger({...row, ...base, note:row.note || "自社施工"});
+    else { const lid = "l_" + newId(); await api().saveLedger({id:lid, manual:true, ki:kiOfMonth(month), jobNo:d.no || "", name:estTitle(d), company:d.company || "", kind:EST_LEDGER_KIND[d.kind] || "", staff:d.staff?.name || "", vendors:[], note:"自社施工", createdAt:now, ...base}); await api().saveEstimate({...d, ledgerId:lid}); }
+    S.ldCache = null; toast(`自社施工で完了にしました（${fmtDate(d0)}）。管理会社への請求に入ります`); route();
+  },
+  async "est-unself"(){
+    if(!await ask({title:"受注（請書）に戻しますか？", body:"完了を取り消して、請書の状態に戻します。収支も「受注」に戻ります。", ok:"戻す"})) return;
+    const d = await saveEst({...readEst($("#est-form")), status:"ordered", selfDoneAt:null}, true);
+    if(d.ledgerId){ const row = (await api().listLedger()).find(x => x.id === d.ledgerId); if(row){ if(row.billId) throw new Error("もう管理会社への請求書を作っています。先に請求書を取り消してください"); await api().saveLedger({...row, stage:"won", done:false, doneAt:0, month:"", self:false, updatedAt:Date.now()}); } }
+    S.ldCache = null; toast("受注（請書）に戻しました"); route();
   },
   async "est-tachiai"(){
     const e = await saveEst(readEst($("#est-form")), true);
