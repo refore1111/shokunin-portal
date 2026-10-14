@@ -922,6 +922,7 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .send-other div{display:flex;flex-direction:column;gap:2px}
 .so-modal{max-width:460px}
 .home-scope{margin:-4px 0 10px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.price-row.only-co [name=p_note]{color:#2F6DB5;font-weight:600}
 </style>
 </head>
 <body>
@@ -2750,9 +2751,9 @@ function coSell(p, co){
   return k != null && m[k] !== "" && m[k] != null ? Number(m[k]) : null;
 }
 function estPrices(co = S.estCo){
-  const base = (S.prices || DEFAULT_PRICES).map(p => ({id:p.id, cat:p.cat || "その他", name:p.name, unit:p.unit, sell:coSell(p, co) ?? Number(p.sellPrice ?? DEFAULT_SELL[p.name] ?? 0), cost:Number(p.unitPrice) || 0, note:/材工/.test(p.note || "") ? "" : (p.note || ""), off:!!p.off}));
+  const base = (S.prices || DEFAULT_PRICES).map(p => ({id:p.id, cat:p.cat || "その他", name:p.name, unit:p.unit, sell:coSell(p, co) ?? Number(p.sellPrice ?? DEFAULT_SELL[p.name] ?? 0), cost:Number(p.unitPrice) || 0, note:/材工/.test(p.note || "") ? "" : (p.note || ""), off:!!p.off, onlyCo:p.onlyCo || ""}));
   const have = new Set(base.map(p => p.name));
-  return [...base, ...EST_EXTRA.filter(x => !have.has(x.name))].filter(p => p.name && !p.off);
+  return [...base, ...EST_EXTRA.filter(x => !have.has(x.name))].filter(p => p.name && !p.off && (!p.onlyCo || !co || coSame(p.onlyCo, co)));
 }
 const estAmt = r => r.noteRow ? 0 : Math.round((Number(r.qty) || 0) * (Number(r.price) || 0));
 function estTotals(e){
@@ -4678,7 +4679,7 @@ function staffRowHtml(p = {}){
 }
 function priceRowHtml(p = {unit:"式"}){
   const co = S.priceCo || "", std = p.sellPrice ?? DEFAULT_SELL[p.name] ?? "", by = p.sellBy || {};
-  return `<div class="price-row${p.estOnly ? " est-only" : ""}" data-id="${esc(p.id || "")}" data-sell="${esc(std)}" data-sellby="${esc(JSON.stringify(by))}">
+  return `<div class="price-row${p.estOnly ? " est-only" : ""}${p.onlyCo ? " only-co" : ""}" data-id="${esc(p.id || "")}" data-only="${esc(p.onlyCo || "")}" title="${p.onlyCo ? esc(p.onlyCo) + "だけの項目" : ""}" data-sell="${esc(std)}" data-sellby="${esc(JSON.stringify(by))}">
     <input type="text" name="p_cat" value="${esc(p.cat)}" list="cat-list-p" placeholder="分類（例：表装工事）" aria-label="分類">
     <input type="text" name="p_name" value="${esc(p.name)}" placeholder="作業名（例：クロス張替え 壁）" aria-label="作業名">
     <input type="text" name="p_unit" value="${esc(p.unit)}" list="unit-list-p" placeholder="単位" aria-label="単位">
@@ -4757,7 +4758,7 @@ async function viewSettings(tab){
         <div class="row" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button><button type="button" class="btn sub" data-act="add-default-prices">標準の単価を追加</button></div>
         <h3 class="price-sub">見積だけの項目 <small>諸経費・立会費・和室・設備の交換など。業者の案件の作業内訳には出ません。業者単価は見積の原価になります（0でもかまいません）</small></h3>
         <div class="items-ed" id="price-ed-est">${estOnlyRows().map(priceRowHtml).join("")}</div>
-        <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price-est">＋ 見積だけの項目を追加</button><button class="btn">単価表を保存</button></div>
+        <div class="row between" style="flex-wrap:wrap"><span class="row" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price-est">＋ 見積だけの項目を追加</button><button type="button" class="btn sub" data-act="price-co-import" title="管理会社の単価表から作ったファイルを読み込み、その管理会社の見積単価に入れます">管理会社の見積単価を取り込む</button></span><button class="btn">単価表を保存</button></div>
       </form>
       <datalist id="cat-list-p">${[...new Set([...PRICE_CATS, ...S.prices.map(p => p.cat)].filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
       <datalist id="unit-list-p">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist></section>
@@ -5892,6 +5893,30 @@ const ACTIONS = {
     ed.insertAdjacentHTML("beforeend", priceRowHtml());
     ed.querySelector(".price-row:last-child [name=p_name]").focus();
   },
+  async "price-co-import"(){
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
+    inp.onchange = async () => {
+      try {
+        const f = inp.files[0]; if(!f) return;
+        const data = JSON.parse(await f.text()), list = data.rows || [];
+        if(data.kind !== "coSell" || !list.length) throw new Error("管理会社の見積単価のファイルではありません");
+        const prices = await api().getPrices().catch(() => clone(S.prices || DEFAULT_PRICES));
+        const nk = v => normKey(String(v || "").replace(/　/g, " "));
+        const find = n => prices.find(x => !x.off && nk(x.name) === nk(n));
+        let set = 0, added = 0; const cos = {};
+        for(const x of list){
+          const sell = Math.max(0, Math.round(Number(x.sell) || 0)); cos[x.co] = (cos[x.co] || 0) + 1;
+          let hits = (x.targets || []).map(t => { let p = find(t); if(!p){ const ex = EST_EXTRA.find(e => !e.noteRow && e.name === t); if(ex){ p = {id:"p_" + newId(), cat:ex.cat, name:ex.name, unit:ex.unit, unitPrice:ex.cost, sellPrice:ex.sell, note:ex.note || "", estOnly:true}; prices.push(p); } } return p; }).filter(Boolean);
+          if(!hits.length){ const p = find(x.name); if(p) hits = [p]; }
+          if(!hits.length){ prices.push({id:"p_" + newId(), cat:x.cat || "未分類", name:x.name, unit:x.unit || "式", unitPrice:0, note:`${x.co}の単価表`, estOnly:true, onlyCo:x.co, sellBy:{[x.co]:sell}}); added++; continue; }
+          hits.forEach(p => { p.sellBy = {...(p.sellBy || {})}; const k = Object.keys(p.sellBy).find(c => coSame(c, x.co)); if(k && k !== x.co) delete p.sellBy[k]; p.sellBy[x.co] = sell; set++; });
+        }
+        if(!await ask({title:"見積単価を取り込みますか？", body:`${Object.entries(cos).map(([c, n]) => `・${c}：${n}件`).join("\n")}\n\n今の単価表の工事に見積単価を入れる：${set}件\n単価表にない工事を、その管理会社だけの項目として足す：${added}件\n（足した項目は「見積だけの項目」に入ります。業者単価は0なので、必要なら入れてください）`, ok:"取り込む"})) return;
+        await api().savePrices(prices); S.prices = prices; toast("見積単価を取り込みました"); route();
+      } catch(e) { toast(e.message || String(e)); }
+    };
+    inp.click();
+  },
   async "add-price-est"(){
     const ed = $("#price-ed-est"); ed.insertAdjacentHTML("beforeend", priceRowHtml({unit:"式", estOnly:true, unitPrice:0}));
     ed.querySelector(".price-row:last-child [name=p_name]").focus();
@@ -6813,7 +6838,7 @@ const FORMS = {
       return {id:r.dataset.id || "p_" + newId(),
       name:r.querySelector("[name=p_name]").value.trim(), unit:r.querySelector("[name=p_unit]").value.trim(), unitPrice:Number(r.querySelector("[name=p_price]").value) || 0,
       note:r.querySelector("[name=p_note]").value.trim(), cat:r.querySelector("[name=p_cat]").value.trim(), ...(r.dataset.sell !== "" ? {sellPrice:Number(r.dataset.sell) || 0} : {}), ...(Number(r.querySelector("[name=p_tema]")?.value) > 0 ? {temaPrice:Number(r.querySelector("[name=p_tema]").value)} : {}),
-      ...(Object.keys(by).length ? {sellBy:by} : {}), ...(est ? {estOnly:true} : {})}; })
+      ...(Object.keys(by).length ? {sellBy:by} : {}), ...(est ? {estOnly:true} : {}), ...(r.dataset.only ? {onlyCo:r.dataset.only} : {})}; })
       .filter(p => p.name || p.unitPrice);
     if(list.some(p => !p.name)) throw new Error("単価表に作業名が空の行があります");
     if(list.some(p => !p.unit)) throw new Error("単価表に単位が空の行があります");
