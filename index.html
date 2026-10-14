@@ -2770,6 +2770,11 @@ function estTotals(e){
 const estTitle = e => [e.building, e.room, e.kind].filter(Boolean).join(" ");
 // --- 書類（PDF）。見積書・発注請書は青い帯、御請求書はグレー（雛形と同じ） ---
 function estDocHtml(e, type, seal, billing = {}){
+  if(type === "invoice" && !e.noFee){
+    const fee = e.feePct ?? coFee(e.company || "", S.ledgerCfg || S.bills?.cfg || {});
+    if(fee){ const base = (type === "invoice" && e.status === "tachiai" && e.billRows?.length) ? e.billRows : e.rows || [], sub = estTotals({rows:base}).sub, fa = Math.round(sub * fee / 100);
+      if(fa) e = {...e, ...(e.status === "tachiai" && e.billRows?.length ? {billRows:[...base, {id:"r_fee", name:`元請手数料（${fee}%）`, qty:1, unit:"式", price:-fa}]} : {rows:[...base, {id:"r_fee", name:`元請手数料（${fee}%）`, qty:1, unit:"式", price:-fa}]})}; }
+  }
   if(type === "invoice" && e.status === "tachiai" && e.billRows?.length) e = {...e, rows:e.billRows};
   if(type === "est" && e.estRows?.length) e = {...e, rows:e.estRows};   // 受注後も、見積書は出したときの内容
   if(type === "ukesho" && e.ukeIssuedAt) e = {...e, issuedAt:e.ukeIssuedAt};
@@ -3106,6 +3111,8 @@ function closePeriod(ym, day){
   return {from, to};
 }
 // 完了の日：ポータルの案件は完了確認の日、手入力の行は完了にした日（なければ完了月の末日）
+// 請求する金額：手数料のある会社（孫受け）は、請負金額から手数料を引いた金額
+const billAmt = r => r.lost ? 0 : r.fee ? Math.round((Number(r.contract) || 0) * (1 - r.fee / 100)) : Number(r.contract) || 0;
 const doneDateOf = r => r.doneAt ? isoOf(r.doneAt) : r.month ? `${r.month}-${String(new Date(...r.month.split("-").map(Number), 0).getDate()).padStart(2, "0")}` : "";
 async function viewBills(ymArg){
   const ym = /^\d{4}-\d{2}$/.test(ymArg || "") ? ymArg : curMonth();
@@ -3119,13 +3126,13 @@ async function viewBills(ymArg){
     const list = bill ? rows.filter(r => bill.ledgerIds.includes(r.id)) : rows.filter(r => r.coKey === k && r.done && !r.billedOutside && !(r.billId && r.billId !== id) && ["won", "tachiai", "done", undefined, ""].includes(r.stage) && (d => d && d >= from && d <= to)(doneDateOf(r)));
     if(!list.length && !bill) return "";
     S.bills.cards[id] = {co, k, from, to, list, fmts};
-    const sub = list.reduce((a, r) => a + (Number(r.contract) || 0), 0), noAmt = list.filter(r => !Number(r.contract)).length;
+    const sub = list.reduce((a, r) => a + billAmt(r), 0), noAmt = list.filter(r => !Number(r.contract)).length, feeN = list.filter(r => r.fee).length;
     return `<section class="panel bill-card"><div class="row between"><h2 style="margin:0">${esc(co)} <small>${closeLabel(day)}　${fmtDate(from)}〜${fmtDate(to)}</small></h2>
         ${bill ? `<span class="pill paid">発行済み ${fmtDate(bill.issuedAt)}</span>` : due ? `<span class="pill waiting">締め日を過ぎました</span>` : `<span class="pill">締め日前（${fmtDate(to)}）</span>`}</div>
       <div class="tbl-wrap" style="margin-top:10px"><table class="mtbl nb"><thead><tr><th>工事番号</th><th>物件名称</th><th>工事種類</th><th>完了日</th><th class="r">金額（税抜）</th></tr></thead><tbody>
-        ${list.map(r => `<tr><td>${esc(r.jobNo)}</td><td class="name">${esc(r.name)}${r.stage === "tachiai" ? " <span class=\"stg stg-tachiai\">立会のみ</span>" : r.self ? " <span class=\"stg stg-self\">自社施工</span>" : ""}</td><td>${esc(r.kind)}</td><td>${fmtDate(doneDateOf(r))}</td><td class="r">${Number(r.contract) ? yenFull(r.contract) : `<a class="warn" href="#/admin/money/edit/${esc(r.id)}">請負金額を入力</a>`}</td></tr>`).join("")}
+        ${list.map(r => `<tr><td>${esc(r.jobNo)}</td><td class="name">${esc(r.name)}${r.stage === "tachiai" ? " <span class=\"stg stg-tachiai\">立会のみ</span>" : r.self ? " <span class=\"stg stg-self\">自社施工</span>" : ""}</td><td>${esc(r.kind)}</td><td>${fmtDate(doneDateOf(r))}</td><td class="r">${Number(r.contract) ? `${yenFull(billAmt(r))}${r.fee ? `<br><small class="sub">請負 ${yenFull(r.contract)} −手数料${esc(r.fee)}%</small>` : ""}` : `<a class="warn" href="#/admin/money/edit/${esc(r.id)}">請負金額を入力</a>`}</td></tr>`).join("")}
         <tr class="sum"><th colspan="4">小計 ${list.length}件　消費税 ${yenFull(Math.floor(sub * TAX_RATE))}</th><td class="r">${yenFull(sub)}</td></tr></tbody></table></div>
-      ${noAmt ? `<p class="small warn" style="margin:6px 0 0">請負金額が入っていない案件が${noAmt}件あります。</p>` : ""}
+      ${noAmt ? `<p class="small warn" style="margin:6px 0 0">請負金額が入っていない案件が${noAmt}件あります。</p>` : ""}${feeN ? `<p class="small" style="margin:6px 0 0">孫受け：元請手数料を引いた金額で請求します。</p>` : ""}
       <div class="row between" style="margin-top:10px;align-items:center">
         <span class="row bill-cfg"><select data-billclose="${esc(k)}" aria-label="締め日">${[0, 5, 10, 15, 20, 25].map(d => `<option value="${d}" ${Number(day) === d ? "selected" : ""}>${closeLabel(d)}</option>`).join("")}</select>
           ${Object.entries(BILL_FMT).map(([f, l]) => `<label class="toggle"><input type="checkbox" data-billfmt="${esc(k)}" value="${f}" ${fmts.includes(f) ? "checked" : ""}>${l}</label>`).join("")}</span>
@@ -3222,13 +3229,13 @@ async function ledgerDataLoad(){
 }
 const inKi = (r, ki) => r.month ? kiOfMonth(r.month) === ki : (r.ki ?? kiNow()) === ki;
 const yoy = (a, b) => b ? `${(a / b * 100).toFixed(1)}%` : "";
-const sumLedger = rs => { const n = rs.filter(r => !r.lost).length, sales = rs.reduce((a, r) => a + (Number(r.contract) || 0), 0), net = rs.reduce((a, r) => a + r.net, 0), profit = rs.reduce((a, r) => a + r.profit, 0), refore = rs.reduce((a, r) => a + r.refore, 0);
-  return {n, sales, net, profit, refore, avgS:n ? Math.round(sales / n) : 0, avgP:n ? Math.round(profit / n) : 0, rate:sales ? profit / sales : 0}; };
+const sumLedger = rs => { const n = rs.filter(r => !r.lost).length, gross = rs.reduce((a, r) => a + (r.lost ? 0 : Number(r.contract) || 0), 0), sales = rs.reduce((a, r) => a + (Number(r.net) || 0), 0), net = rs.reduce((a, r) => a + r.net, 0), profit = rs.reduce((a, r) => a + r.profit, 0), refore = rs.reduce((a, r) => a + r.refore, 0);
+  return {n, gross, sales, net, profit, refore, avgS:n ? Math.round(sales / n) : 0, avgP:n ? Math.round(profit / n) : 0, rate:sales ? profit / sales : 0}; };
 // 月次（各シートの月次と同じ：前年同期比つき。手数料がある会社は「8%」の列も）
 function monthlyTable(rs, prev, ki, fee){
   const months = kiMonths(ki), done = rs.filter(r => r.month), pdone = prev.filter(r => r.month);
   const pm = m => `${Number(m.slice(0, 4)) - 1}${m.slice(4)}`;
-  const cols = [["件数", "n", v => v], ["売上", "sales", yenFull], ...(fee ? [[`${fee}%`, "net", yenFull]] : []), ["利益", "profit", yenFull], ["利益(Refore)", "refore", yenFull], ["件数平均売上", "avgS", yenFull], ["件数平均利益", "avgP", yenFull]];
+  const cols = [["件数", "n", v => v], ...(fee ? [["請負金額（手数料前）", "gross", yenFull]] : []), [fee ? `売上（-${fee}%）` : "売上", "sales", yenFull], ["利益", "profit", yenFull], ["利益(Refore)", "refore", yenFull], ["件数平均売上", "avgS", yenFull], ["件数平均利益", "avgP", yenFull]];
   const tr = (label, a, b, cls = "") => `<tr class="${cls}"><th>${label}</th>${cols.map(([, k, f]) => `<td class="r">${f(a[k])}</td><td class="r yoy">${yoy(a[k], b[k])}</td>`).join("")}<td class="r">${pct(a.rate)}</td><td class="r yoy">${b.rate ? yoy(a.rate, b.rate) : ""}</td></tr>`;
   let body = "";
   for(let q = 0; q < 4; q++){
@@ -6225,7 +6232,7 @@ const ACTIONS = {
     const id = el.dataset.id, c = S.bills?.cards[id]; if(!c) return;
     const noAmt = c.list.filter(r => !Number(r.contract)).length;
     if(!await ask({title:`${c.co} の請求書を作りますか？`, body:`${fmtDate(c.from)}〜${fmtDate(c.to)}に完了した ${c.list.length}件です。${noAmt ? `\n請負金額が入っていない案件が${noAmt}件あります（0円で入ります）。` : ""}\n作った案件は、次の請求に入りません。`, ok:"請求書を作る"})) return;
-    const rows = c.list.map(r => ({ledgerId:r.id, jobNo:r.jobNo || "", name:r.name, kind:r.kind || "", doneDate:doneDateOf(r), amount:Number(r.contract) || 0, estimateId:r.estimateId || "", jobId:r.jobId || ""}));
+    const rows = c.list.map(r => ({ledgerId:r.id, jobNo:r.jobNo || "", name:r.name, kind:r.kind || "", doneDate:doneDateOf(r), amount:billAmt(r), gross:Number(r.contract) || 0, fee:r.fee || 0, estimateId:r.estimateId || "", jobId:r.jobId || ""}));
     const sub = rows.reduce((a, r) => a + r.amount, 0), tax = Math.floor(sub * TAX_RATE), ym = S.bills.ym;
     const bill = {id, company:c.co, coKey:c.k, ym, close:S.bills.cfg.close?.[c.k] ?? 0, from:c.from, to:c.to, ledgerIds:rows.map(r => r.ledgerId), rows, sub, tax, total:sub + tax,
       no:`${jobNoPrefix(c.co)}-${ym.replace("-", "")}`, issuedAt:todayIso(), createdAt:Date.now()};
@@ -6251,7 +6258,8 @@ const ACTIONS = {
       const docs = [];
       for(const r of bill.rows){
         let e = r.estimateId ? await api().getEstimate(r.estimateId).catch(() => null) : null;
-        if(!e || !e.rows?.length) e = {company:bill.company, honor:"御中", no:r.jobNo, building:r.name, kind:r.kind, rows:[{id:"r1", name:r.kind ? `${r.kind}　一式` : "工事一式", qty:1, unit:"式", price:r.amount}]};
+        if(!e || !e.rows?.length) e = {company:bill.company, honor:"御中", no:r.jobNo, building:r.name, kind:r.kind, noFee:true, rows:[{id:"r1", name:r.kind ? `${r.kind}　一式` : "工事一式", qty:1, unit:"式", price:r.amount}]};
+        else if(r.fee) e = {...e, feePct:r.fee};
         docs.push(estDocHtml(e, "invoice", seal, billing));
       }
       html = `<div class="pdfwrap">${docs.join("")}</div>`; name = `${bill.ym.replace("-", "")}・案件ごとの御請求書・${fileSafe(bill.company)}.pdf`;
