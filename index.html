@@ -3245,8 +3245,12 @@ function ledgerTable(list, fee){
   const cnt = {}; list.forEach(r => { const k = jobNoKey(r.jobNo); if(k) cnt[k[0]] = (cnt[k[0]] || 0) + 1; });
   const pref = k => -(cnt[k] || 0);
   const sorted = [...list].sort((a, b) => { const x = jobNoKey(a.jobNo), y = jobNoKey(b.jobNo), ao = a.ord ?? null, bo = b.ord ?? null;
-    if((ao !== null) !== (bo !== null)) return ao !== null ? -1 : 1;
+    if((ao !== null) !== (bo !== null)) return ao !== null ? 1 : -1;
     if(ao !== null && ao !== bo) return ao - bo;
+    if(ao === null){
+      if(!x || !y) return (x ? 1 : 0) - (y ? 1 : 0) || (b.createdAt || 0) - (a.createdAt || 0);
+      return y[1] - x[1] || pref(x[0]) - pref(y[0]) || x[0].localeCompare(y[0]) || y[2] - x[2] || (b.createdAt || 0) - (a.createdAt || 0);
+    }
     if(!x || !y) return (x ? 0 : 1) - (y ? 0 : 1) || (a.createdAt || 0) - (b.createdAt || 0);
     return x[1] - y[1] || pref(x[0]) - pref(y[0]) || x[0].localeCompare(y[0]) || x[2] - y[2]; });
   const live = list.filter(r => r.month), sm = sumLedger(live), lostCost = list.filter(r => r.lost).reduce((a, r) => a + r.profit, 0);
