@@ -2916,7 +2916,7 @@ async function viewEstEdit(id){
   const [jobs, ests] = await Promise.all([api().listJobs({}).catch(() => []), api().listEstimates().catch(() => [])]);
   S.jobNos = [...jobs.map(j => j.jobNo), ...ests.filter(x => x.id !== e.id).map(x => x.no)].filter(Boolean);
   const prices = estPrices(), cats = [...new Set(prices.map(p => p.cat))];
-  const companies = [...new Set([...(S.props || []).map(p => p.company), ...Object.keys(JOBNO_PREFIX)].filter(Boolean))];
+  const companies = [...new Set([...(S.props || []).map(p => p.company), ...Object.keys(JOBNO_PREFIX)].filter(c => c && !coEnded(c)))];
   const t = estTotals(e), seal = await api().getSeal().catch(() => "");
   S.estSeal = seal;
   const jobSt = e.jobId ? (await api().getJob(e.jobId).catch(() => null))?.status || "" : "";
@@ -3172,6 +3172,8 @@ const pct = v => `${Math.round((Number(v) || 0) * 100)}%`;
 const craftName = uid => { const c = S.crafts?.get(uid); return c ? (c.tradeName || c.name) : "業者"; };
 // 管理会社名のゆれ（FLEX TOKYO／FLEXTOKYO、Nワークス／nworks）をそろえる
 const coKey = s => String(s || "").replace(/[\s　]/g, "").toLowerCase().replace("nワークス", "nworks");
+// 取引終了にした管理会社（収支の設定）。タブ・管理会社ごとの表・管理会社の候補に出さない。数字は全社の合計に入れたまま
+const coEnded = (c, cfg = S.ledgerCfg) => (cfg?.ended || []).some(x => coKey(x) === coKey(c));
 // 利益＝請負金額（手数料を引いた額）−発注額。Refore＝利益−立会・完了雑工事の作業金額
 // 孫受けの会社の元請手数料（%）。設定で入れた値（0も含む）を優先、なければ決まりの値
 const DEFAULT_CO_FEE = {"FLEXTOKYO":8};
@@ -3209,6 +3211,7 @@ async function ledgerData(){
 }
 async function ledgerDataLoad(){
   const [stored, jobs, cfg] = await Promise.all([api().listLedger(), api().listJobs({}), api().getLedgerCfg().catch(() => ({}))]);
+  S.ledgerCfg = cfg;
   const byJob = new Map(stored.filter(r => r.jobId).map(r => [r.jobId, r]));
   const roots = jobs.filter(j => !j.parentId && !byJob.get(j.id)?.hidden && (["assigned", "working", "finished", "completed", "paid"].includes(j.status) || byJob.get(j.id)?.contract));
   const auto = await Promise.all(roots.map(async j => {
@@ -3331,7 +3334,8 @@ async function viewMoney(kiArg, sheetArg, subArg){
   const ki = Number(kiArg) || kiNow(), sheet = sheetArg ? decodeURIComponent(sheetArg) : "全体", sub = subArg ? decodeURIComponent(subArg) : "";
   const {rows, cfg, names} = await ledgerData();
   const cur = rows.filter(r => inKi(r, ki)), prev = rows.filter(r => inKi(r, ki - 1));
-  const companies = [...names.entries()].filter(([k]) => rows.some(r => r.coKey === k) || Object.keys(cfg.fees || {}).some(c => coKey(c) === k)).map(([, v]) => v).sort((a, b) => a.localeCompare(b, "ja"));
+  const allCos = [...names.entries()].filter(([k]) => rows.some(r => r.coKey === k) || Object.keys(cfg.fees || {}).some(c => coKey(c) === k)).map(([, v]) => v).sort((a, b) => a.localeCompare(b, "ja"));
+  const companies = allCos.filter(c => !coEnded(c, cfg));
   const url = (k, s = sheet, x = "") => `#/admin/money/${k}/${encodeURIComponent(s)}${x ? "/" + encodeURIComponent(x) : ""}`;
   let body, list = cur;
   if(sheet === "全体"){
@@ -3342,6 +3346,7 @@ async function viewMoney(kiArg, sheetArg, subArg){
       <section class="panel"><h2>月次（全社）</h2>${monthlyTable(cur, prev, ki, 0)}</section>
       <section class="panel"><h2>管理会社ごと</h2><div class="tbl-wrap"><table class="mtbl nb"><thead><tr><th>管理会社</th><th class="r">件数</th><th class="r">売上</th><th class="r">利益</th><th class="r">利益(Refore)</th><th class="r">利益率</th></tr></thead><tbody>
         ${companies.map(c => { const s = sumLedger(cur.filter(r => r.coKey === coKey(c) && r.month)); return `<tr><th><a href="${url(ki, c)}">${esc(c)}</a></th><td class="r">${s.n}</td><td class="r">${yenFull(s.sales)}</td><td class="r">${yenFull(s.profit)}</td><td class="r">${yenFull(s.refore)}</td><td class="r">${pct(s.rate)}</td></tr>`; }).join("")}
+        ${(rs => rs.length ? (s => `<tr><th>取引終了の会社</th><td class="r">${s.n}</td><td class="r">${yenFull(s.sales)}</td><td class="r">${yenFull(s.profit)}</td><td class="r">${yenFull(s.refore)}</td><td class="r">${pct(s.rate)}</td></tr>`)(sumLedger(rs)) : "")(cur.filter(r => r.month && coEnded(r.company, cfg)))}
         ${(s => `<tr class="sum"><th>合計</th><td class="r">${s.n}</td><td class="r">${yenFull(s.sales)}</td><td class="r">${yenFull(s.profit)}</td><td class="r">${yenFull(s.refore)}</td><td class="r">${pct(s.rate)}</td></tr>`)(sumLedger(cur.filter(r => r.month)))}</tbody></table></div></section>`;
   } else if(sheet === "検索"){
     const q = sub.trim(), toks = q.split(/[\s　]+/).map(normKey).filter(Boolean);
@@ -3381,12 +3386,14 @@ async function viewMoney(kiArg, sheetArg, subArg){
     <form class="lsearch" data-form="lsearch" data-ki="${esc(ki)}" role="search"><input type="search" name="q" value="${esc(sheet === "検索" ? sub : "")}" placeholder="案件を探す（物件名・工事番号・管理会社・担当・業者）" aria-label="収支の案件を探す" enterkeyhint="search"><button class="btn sub">探す</button>${sheet === "検索" ? `<a class="textlink" href="${url(ki, "全体")}">やめる</a>` : ""}</form>
     <nav class="sheets" aria-label="シート">${["全体", ...companies, "個人成績"].map(s => `<a href="${url(ki, s)}" ${s === sheet ? 'aria-current="true"' : ""}>${esc(s)}</a>`).join("")}</nav>
     ${body}
-    <details class="panel"><summary class="textlink">元請手数料（孫受け）・作業金額の設定</summary>
+    <details class="panel"><summary class="textlink">管理会社の設定（元請手数料・取引終了）・作業金額</summary>
       <form data-form="moneycfg" class="stack" style="margin-top:10px">
-        ${companies.map(c => `<label class="field" style="max-width:360px"><span>${esc(c)} の元請手数料（%）<small>孫受けのとき。請負金額からこの%を引いて利益を出します</small></span><input type="number" step="0.1" min="0" name="fee" data-co="${esc(c)}" value="${esc(coFee(c, cfg) || "")}" placeholder="0（手数料なし）"></label>`).join("")}
+        <p class="small" style="margin:0">「取引終了」にした管理会社は、上のタブ・管理会社ごとの表・案件や見積の管理会社の候補に出なくなります。数字は全社の合計に入ったままです。</p>
+        ${allCos.map(c => `<div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap"><label class="field" style="max-width:360px;margin:0"><span>${esc(c)} の元請手数料（%）<small>孫受けのとき。請負金額からこの%を引いて利益を出します</small></span><input type="number" step="0.1" min="0" name="fee" data-co="${esc(c)}" value="${esc(coFee(c, cfg) || "")}" placeholder="0（手数料なし）"></label>
+          <label class="toggle" style="margin:0 0 10px"><input type="checkbox" name="ended" data-co="${esc(c)}" ${coEnded(c, cfg) ? "checked" : ""}>取引終了</label></div>`).join("")}
         <label class="field" style="max-width:360px"><span>立会・完了雑工事の作業金額（請負金額の%）</span><input type="number" step="0.1" min="0" name="staffRate" value="${esc(cfg.staffRate ?? 0.5)}"></label>
         <button class="btn sub" style="align-self:flex-start">設定を保存</button></form></details>
-    ${!["全体", "個人成績"].includes(sheet) && companies.includes(sheet) ? `<p style="margin:14px 0 0"><button class="link danger-text" data-act="ledger-purge" data-co="${esc(sheet)}">「${esc(sheet)}」をこのサイトから消す（収支・物件マスタ・見積・請求）</button></p>` : ""}`;
+    ${!["全体", "個人成績"].includes(sheet) && allCos.includes(sheet) ? `<p style="margin:14px 0 0"><button class="link danger-text" data-act="ledger-purge" data-co="${esc(sheet)}">「${esc(sheet)}」をこのサイトから消す（収支・物件マスタ・見積・請求）</button></p>` : ""}`;
 }
 // 1行の編集（ポータルの案件は請負金額・工事種類・担当・追加の発注先など、手入力の行は全部）
 async function viewMoneyEdit(id){
@@ -3394,7 +3401,7 @@ async function viewMoneyEdit(id){
   const r = id === "new" ? {id:"", manual:true, vendors:[], ki:Number(S.ledger?.ki) || kiNow(), company:S.ledger && !["全体", "個人成績"].includes(S.ledger.sheet) ? S.ledger.sheet : ""} : rows.find(x => x.id === id);
   if(!r) return `${back("#/admin/money", "収支")}<div class="empty">行が見つかりません。</div>`;
   S.staff ||= await api().getStaff().catch(() => []);
-  const companies = [...new Set([...names.values(), ...(S.props || []).map(p => p.company)].filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+  const companies = [...new Set([...names.values(), ...(S.props || []).map(p => p.company)].filter(c => c && !coEnded(c, cfg)))].sort((a, b) => a.localeCompare(b, "ja"));
   const auto = !!r.jobId, extra = auto ? (r.extraVendors || []) : (r.vendors || []);
   const staffOpts = cur => `<option value="">なし</option>${[...new Set([...(S.staff || []).map(p => p.name), cur].filter(Boolean))].map(n => `<option ${n === cur ? "selected" : ""}>${esc(n)}</option>`).join("")}`;
   const vrow = (v = {}) => `<div class="vend-row"><input type="text" name="v_name" value="${esc(v.name)}" placeholder="発注業者" aria-label="発注業者"><input type="number" name="v_amount" value="${esc(v.amount ?? "")}" placeholder="発注金額" aria-label="発注金額"><button type="button" class="i-x" data-act="rm-vend" aria-label="この行を削除">×</button></div>`;
@@ -4077,7 +4084,7 @@ async function viewJobEdit(id){
   const job = id ? await api().getJob(id) : {trades:[], pref:"東京都", status:"draft", photos:[]};
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
   const [priv, pdfA] = id ? await Promise.all([api().getJobPrivate(id), api().getJobPdf(id)]) : [{}, null];
-  [S.props, S.prices, S.staff] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => [])]);
+  [S.props, S.prices, S.staff, S.ledgerCfg] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => []), api().getLedgerCfg().catch(() => ({}))]);
   // 新しい案件は、前回選んだ担当者を最初から選んでおく
   let lastStaff = ""; try { lastStaff = localStorage.getItem("refore_last_staff") || ""; } catch(e) {}
   const staffSel = id ? (job.staff?.name || "") : lastStaff;
@@ -4400,7 +4407,7 @@ const managerKey = c => { const x = jobNoPrefix(c); return x !== "O" ? x : coLoo
 function managerList(){
   const seen = new Set(), out = [];
   const extra = [...new Set((S.props || []).map(p => String(p.company || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
-  [...MANAGERS, ...extra].forEach(c => { const k = managerKey(c); if(!seen.has(k)){ seen.add(k); out.push(c); } });
+  [...MANAGERS, ...extra].filter(c => !coEnded(c)).forEach(c => { const k = managerKey(c); if(!seen.has(k)){ seen.add(k); out.push(c); } });
   return out;
 }
 const managerPick = cur => { cur = String(cur || "").trim(); return cur ? managerList().find(c => managerKey(c) === managerKey(cur)) || cur : ""; };
@@ -6740,7 +6747,8 @@ const FORMS = {
     // 0（手数料なし）も保存する（決まりの8%を止められるように）。締め日・請求書の形などほかの設定は残す
     const cfg0 = await api().getLedgerCfg().catch(() => ({})), fees = {};
     form.querySelectorAll("[name=fee]").forEach(i => { const v = Math.max(0, Number(i.value) || 0); if(v || coFee(i.dataset.co, {}) || Object.keys(cfg0.fees || {}).some(k => coKey(k) === coKey(i.dataset.co))) fees[i.dataset.co] = v; });
-    await api().saveLedgerCfg({...cfg0, fees, staffRate:Number(form.elements.staffRate.value) || 0}); toast("設定を保存しました"); route();
+    const ended = [...form.querySelectorAll("[name=ended]:checked")].map(i => i.dataset.co);
+    await api().saveLedgerCfg({...cfg0, fees, ended, staffRate:Number(form.elements.staffRate.value) || 0}); toast("設定を保存しました"); route();
   },
   async rating(form){
     const stars = Number(form.elements.stars.value || 0);
