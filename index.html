@@ -311,6 +311,8 @@ textarea{min-height:110px;resize:vertical}
   .price-row [name=p_name],.price-row [name=p_note],.price-row [name=p_cat]{grid-column:1/-1}
   .item-row .i-amt{grid-column:1/-1}
 }
+.home-week>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}.home-week>summary::-webkit-details-marker{display:none}
+.home-week>summary h2{margin:0;flex:1}.home-week>summary::after{content:"▾";color:var(--muted,#888);transition:transform .2s}.home-week:not([open])>summary::after{transform:rotate(-90deg)}.home-week[open]>summary{margin-bottom:12px}
 .i-total{font-family:var(--num);font-size:24px;font-weight:600}
 .import{border:2px dashed var(--kon-text)}
 .pdftext{white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:var(--paper);padding:8px;border-radius:4px;margin:6px 0 0}
@@ -1240,15 +1242,22 @@ const stampFor = st => STATUS_TIME[st] ? {[STATUS_TIME[st]]:Date.now()} : {};
 /* 書類データの作成（PDFはダウンロードのたびにこのデータから作ります） */
 const itemAmount = i => Math.round((Number(i.qty) || 0) * (Number(i.unitPrice) || 0));
 const itemsTotal = items => (items || []).reduce((a, i) => a + itemAmount(i), 0);
+// 業者の駐車場代：案件ごとに最初から入れる（外したり金額を変えたりできる）。作業内訳の最後に「駐車場代」の行として載る
+const PARKING_FEE = 1500;
+const isParking = i => !!i?.parking;
+const formParking = f => f?.elements?.pkOn?.checked ? Math.max(0, Math.round(Number(f.elements.pkAmt?.value) || 0)) : 0;
+const parkingItem = (amt, iid = "pk_" + newId()) => ({iid, cat:"その他", loc:"", name:"駐車場代", qty:1, unit:"式", unitPrice:amt, note:"", zai:false, parking:true});
 const fmtQty = q => (Number(q) || 0).toLocaleString("ja-JP", {maximumFractionDigits:2});
 // 分離発注：選んだ工事を子案件に切り出して発注し、残りの工事は元の案件で募集を続ける
 async function splitAssign(jobD, priv, uid, name, ids, cd = {}){
   const pubAll = itemsWithId(jobD.items), privAll = itemsWithId(priv.items?.length ? priv.items : jobD.items);
-  const take = list => list.filter(i => ids.includes(i.iid)), keep = list => list.filter(i => !ids.includes(i.iid));
-  const selPriv = take(privAll), cats = [...new Set(selPriv.map(i => i.cat).filter(c => c && c !== "その他"))];
-  const label = cats.length ? cats.join("・") : selPriv[0].name + (selPriv.length > 1 ? " ほか" : "");
+  const take = list => list.filter(i => ids.includes(i.iid) && !isParking(i)), keep = list => list.filter(i => !ids.includes(i.iid) || isParking(i));
+  // 駐車場代は業者ごとにかかるので、子案件にも同じ金額で入れる（元の案件にも残す）
+  const pk = privAll.find(isParking), pkNew = pk ? parkingItem(pk.unitPrice) : null;
+  const selPriv = [...take(privAll), ...(pkNew ? [pkNew] : [])], cats = [...new Set(selPriv.map(i => i.cat).filter(c => c && c !== "その他"))];
+  const work = selPriv.filter(i => !isParking(i)), label = cats.length ? cats.join("・") : work[0].name + (work.length > 1 ? " ほか" : "");
   const child = {title:`${jobD.title}（${label}）`, trades:jobD.trades || [], pref:jobD.pref || "", city:jobD.city || "", startDate:cd.craftStart || jobD.startDate, endDate:cd.craftEnd || jobD.endDate, ...cd,
-    price:itemsTotal(selPriv), taxMode:jobD.taxMode || "税別", items:take(pubAll), audience:jobD.audience || "all", site:jobD.site || null, staff:jobD.staff || null, jobNo:jobD.jobNo || "",
+    price:itemsTotal(selPriv), parking:pkNew ? pkNew.unitPrice : 0, taxMode:jobD.taxMode || "税別", items:[...take(pubAll), ...(pkNew ? [pkNew] : [])], audience:jobD.audience || "all", site:jobD.site || null, staff:jobD.staff || null, jobNo:jobD.jobNo || "",
     description:jobD.description || "", priceNote:"", photos:jobD.photos || [], parentId:jobD.id, status:"closed", publishedAt:jobD.publishedAt || Date.now(),
     allItems:jobD.allItems?.length ? jobD.allItems : pubAll};
   const cid = await api().saveJob(null, child);
@@ -1451,11 +1460,10 @@ function syncItems(form){
   const items = readItems(form);
   rows.forEach((r, k) => { r.querySelector(".i-amt").textContent = yenFull(itemAmount(items[k])); });
   const used = items.filter(i => i.name || i.unitPrice);
-  const total = itemsTotal(used);
-  form.querySelector(".i-total").textContent = yenFull(total);
-  const price = form.elements.price;
+  const total = itemsTotal(used), price = form.elements.price;
   price.readOnly = used.length > 0;
   if(used.length) price.value = total;
+  form.querySelector(".i-total").textContent = yenFull((used.length ? total : Number(price.value) || 0) + formParking(form));
 }
 
 function buildOrderDoc(job, priv, c, extra = {}){
@@ -2716,7 +2724,7 @@ async function viewEstEdit(id){
   const [jobs, ests] = await Promise.all([api().listJobs({}).catch(() => []), api().listEstimates().catch(() => [])]);
   S.jobNos = [...jobs.map(j => j.jobNo), ...ests.filter(x => x.id !== e.id).map(x => x.no)].filter(Boolean);
   const prices = estPrices(), cats = [...new Set(prices.map(p => p.cat))];
-  const companies = [...new Set([...(S.props || []).map(p => p.company), ...Object.keys(JOBNO_PREFIX)].filter(c => c && !coEnded(c)))];
+  const companies = await ledgerCosLoad();
   const t = estTotals(e), seal = await api().getSeal().catch(() => "");
   S.estSeal = seal;
   const jobSt = e.jobId ? (await api().getJob(e.jobId).catch(() => null))?.status || "" : "";
@@ -3057,8 +3065,17 @@ async function ledgerDataLoad(){
   [...stored.filter(r => !r.jobId), ...rows].forEach(r => { if(r.company && !names.has(coKey(r.company))) names.set(coKey(r.company), r.company); });
   Object.keys(cfg.fees || {}).forEach(c => { if(!names.has(coKey(c))) names.set(coKey(c), c); });
   rows.forEach(r => { r.coKey = coKey(r.company); r.coName = names.get(r.coKey) || r.company; });
+  S.ledgerCoNames = [...names.values()];
   return {rows, cfg, names};
 }
+// 管理会社の候補は収支を基準にする（取引終了の会社と「その他」は出さない。収支が読めないときだけ物件マスタの会社）
+function ledgerCos(keep = []){
+  const seen = new Set(), base = S.ledgerCoNames?.length ? S.ledgerCoNames : (S.props || []).map(p => p.company);
+  const out = base.map(c => String(c || "").trim()).filter(c => c && c !== "その他" && !coEnded(c)).filter(c => { const k = managerKey(c); if(seen.has(k)) return false; seen.add(k); return true; });
+  keep.map(c => String(c || "").trim()).filter(c => c && !seen.has(managerKey(c))).forEach(c => { seen.add(managerKey(c)); out.push(c); });
+  return out.sort((a, b) => a.localeCompare(b, "ja"));
+}
+async function ledgerCosLoad(){ if(!S.ledgerCoNames) await ledgerData().catch(() => {}); return ledgerCos(); }
 const inKi = (r, ki) => r.month ? kiOfMonth(r.month) === ki : (r.ki ?? kiNow()) === ki;
 const yoy = (a, b) => b ? `${(a / b * 100).toFixed(1)}%` : "";
 const sumLedger = rs => { const n = rs.filter(r => !r.lost).length, gross = rs.reduce((a, r) => a + (r.lost ? 0 : Number(r.contract) || 0), 0), sales = rs.reduce((a, r) => a + (Number(r.net) || 0), 0), net = rs.reduce((a, r) => a + r.net, 0), profit = rs.reduce((a, r) => a + r.profit, 0), refore = rs.reduce((a, r) => a + r.refore, 0);
@@ -3227,7 +3244,7 @@ async function viewMoneyEdit(id){
   const r = id === "new" ? {id:"", manual:true, vendors:[], ki:Number(S.ledger?.ki) || kiNow(), company:S.ledger && !["全体", "個人成績"].includes(S.ledger.sheet) ? S.ledger.sheet : ""} : rows.find(x => x.id === id);
   if(!r) return `${back("#/admin/money", "収支")}<div class="empty">行が見つかりません。</div>`;
   S.staff ||= await api().getStaff().catch(() => []);
-  const companies = [...new Set([...names.values(), ...(S.props || []).map(p => p.company)].filter(c => c && !coEnded(c, cfg)))].sort((a, b) => a.localeCompare(b, "ja"));
+  const companies = [...ledgerCos(), "その他"];
   const auto = !!r.jobId, extra = auto ? (r.extraVendors || []) : (r.vendors || []);
   const staffOpts = cur => `<option value="">なし</option>${[...new Set([...(S.staff || []).map(p => p.name), cur].filter(Boolean))].map(n => `<option ${n === cur ? "selected" : ""}>${esc(n)}</option>`).join("")}`;
   const vrow = (v = {}) => `<div class="vend-row"><input type="text" name="v_name" value="${esc(v.name)}" placeholder="発注業者" aria-label="発注業者"><input type="number" name="v_amount" value="${esc(v.amount ?? "")}" placeholder="発注金額" aria-label="発注金額"><button type="button" class="i-x" data-act="rm-vend" aria-label="この行を削除">×</button></div>`;
@@ -3909,6 +3926,7 @@ async function viewJobEdit(id){
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
   const priv = id ? await api().getJobPrivate(id) : {};
   [S.props, S.prices, S.staff, S.ledgerCfg] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => []), api().getLedgerCfg().catch(() => ({}))]);
+  await ledgerCosLoad();
   // 新しい案件は、前回選んだ担当者を最初から選んでおく
   let lastStaff = ""; try { lastStaff = localStorage.getItem("refore_last_staff") || ""; } catch(e) {}
   const staffSel = id ? (job.staff?.name || "") : lastStaff;
@@ -3918,8 +3936,13 @@ async function viewJobEdit(id){
   S.editPhotos = [...(job.photos || [])];
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
   const isDraft = !id || job.status === "draft";
-  const usedItems = (priv.items?.length ? priv.items : job.items || []).filter(i => i.name || i.unitPrice);
+  const allUsed = (priv.items?.length ? priv.items : job.items || []).filter(i => i.name || i.unitPrice);
+  const usedItems = allUsed.filter(i => !isParking(i)), pkIt = allUsed.find(isParking);
   const editItems = usedItems.length ? usedItems : [{qty:1, unit:"式"}];
+  // 駐車場代：新しい案件・下書きは最初から1,500円を入れておく
+  const pkOn = pkIt ? true : job.parking != null ? Number(job.parking) > 0 : isDraft;
+  const pkAmt = pkIt ? pkIt.unitPrice : Number(job.parking) > 0 ? Number(job.parking) : PARKING_FEE;
+  const workPrice = usedItems.length ? itemsTotal(usedItems) : Number(job.price) > 0 ? Number(job.price) - (pkIt ? 0 : Number(job.parking) || 0) : "";
   const buttons = isDraft
     ? `<div class="aud-pick" role="radiogroup" aria-label="公開する相手"><label><input type="radio" name="audience" value="priority" ${job.audience !== "all" ? "checked" : ""}>既存業者のみに公開（あとから全体に公開もできます）</label><label><input type="radio" name="audience" value="all" ${job.audience === "all" ? "checked" : ""}>最初から全体に公開${tenant() ? `（発注時に先払い・運営手数料${Math.round(opFee() * 100)}%）` : ""}</label>${tenant() ? coPostNote() : ""}
 </div>
@@ -3935,9 +3958,11 @@ async function viewJobEdit(id){
         <datalist id="unit-list">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist>
         <datalist id="loc-list">${ITEM_LOCS.map(u => `<option value="${esc(u)}">`).join("")}</datalist>
         <div class="row between" style="margin-top:10px;flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-item">＋ 作業を追加</button>
-          <span>合計（税抜）<span class="i-total">${yenFull(itemsTotal(editItems))}</span></span></div>
-        <label class="field" style="margin:12px 0 0"><span>支払金額（税抜） <small>作業内訳を入力すると合計が自動で入ります</small></span>
-          <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${usedItems.length ? itemsTotal(usedItems) : Number(job.price) > 0 ? esc(job.price) : ""}" placeholder="例：25000" ${usedItems.length ? "readonly" : ""}></label>
+          <span>合計（税抜・駐車場代込み）<span class="i-total">${yenFull((Number(workPrice) || 0) + (pkOn ? pkAmt : 0))}</span></span></div>
+        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center"><label class="toggle" style="margin:0"><input type="checkbox" name="pkOn" ${pkOn ? "checked" : ""}>業者の駐車場代を入れる</label>
+          <input type="number" name="pkAmt" min="0" step="1" inputmode="numeric" value="${esc(pkAmt)}" style="width:110px" aria-label="駐車場代（税抜）"><span class="small">円（税抜）　いらないときはチェックを外します。作業内訳の最後に載ります</span></div>
+        <label class="field" style="margin:12px 0 0"><span>作業の支払金額（税抜・駐車場代は別） <small>作業内訳を入力すると合計が自動で入ります</small></span>
+          <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${esc(workPrice)}" placeholder="例：25000" ${usedItems.length ? "readonly" : ""}></label>
       </section>
       <section class="panel"><h2>工種・作業日</h2>
         <label class="field"><span>${esc(meName())}の担当者 <small>発注書に載ります。一覧は「設定」で編集</small></span>
@@ -4228,14 +4253,12 @@ function fillJobNo(form, force = false){
   const used = (S.jobNos || []).filter(n => n.startsWith(head)).sort((a, b) => Number(a.split("-")[2]) - Number(b.split("-")[2]));
   if(hint) hint.textContent = used.length ? `ポータルで最後に使った番号：${used[used.length - 1]}（収支一覧の番号を確認して入れてください）` : "収支一覧を見て、最後の番号を入れてください";
 }
-// 案件の管理会社のプルダウン：いつもの管理会社＋物件マスタにある会社。同じ会社（工事番号の略号が同じ）は1つにまとめる
+// 案件の管理会社のプルダウン：収支にある会社（ledgerCos）。同じ会社（工事番号の略号が同じ）は1つにまとめる
 const MANAGERS = ["FLEX TOKYO", "Nワークス", "アイレントホーム", "イデアルシーク", "ジェントリーブルーエージェント", "ベストホームクリエイト", "リアルエステート", "ファミリープロパティー"];
 const managerKey = c => { const x = jobNoPrefix(c); return x !== "O" ? x : coLoose(c); };
 function managerList(){
-  const seen = new Set(), out = [];
-  const extra = [...new Set((S.props || []).map(p => String(p.company || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
-  [...MANAGERS, ...extra].filter(c => !coEnded(c)).forEach(c => { const k = managerKey(c); if(!seen.has(k)){ seen.add(k); out.push(c); } });
-  return out;
+  const list = ledgerCos();
+  return list.length ? list : MANAGERS.filter(c => !coEnded(c));
 }
 const managerPick = cur => { cur = String(cur || "").trim(); return cur ? managerList().find(c => managerKey(c) === managerKey(cur)) || cur : ""; };
 function managerOptions(cur){
@@ -4674,9 +4697,9 @@ function renderPropList(){
 function propEditor(p = {}){
   return new Promise(res => {
     const bg = document.createElement("div"); bg.className = "modal-bg";
-    // 管理会社はプルダウンから選ぶ。一覧にない会社は「＋ 新しい管理会社を追加」で入力
-    const cos = [...new Set([...(S.props || []).map(x => x.company), p.company].filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
-    const companyOpts = `<option value="">選んでください</option>${cos.map(c => `<option ${c === p.company ? "selected" : ""}>${esc(c)}</option>`).join("")}<option value="__new" ${cos.length ? "" : "selected"}>＋ 新しい管理会社を追加</option>`;
+    // 管理会社は収支にある会社から選ぶ。一覧にない会社は「＋ 新しい管理会社を追加」で入力
+    const cos = ledgerCos([p.company]), cur = p.company ? cos.find(c => managerKey(c) === managerKey(p.company)) : "";
+    const companyOpts = `<option value="">選んでください</option>${cos.map(c => `<option ${c === cur ? "selected" : ""}>${esc(c)}</option>`).join("")}<option value="__new" ${cos.length ? "" : "selected"}>＋ 新しい管理会社を追加</option>`;
     const f = (n, l, v, ph = "") => `<label class="field"><span>${l}</span><input type="text" name="${n}" value="${esc(v)}" placeholder="${esc(ph)}"></label>`;
     bg.innerHTML = `<form class="modal" role="dialog" aria-modal="true" aria-labelledby="pe-t"><h2 id="pe-t">${p.id ? "物件を編集" : "物件を追加"}</h2>
       ${f("name", "物件名", p.name)}${f("address", "所在地", p.address)}
@@ -4950,9 +4973,9 @@ async function viewHome(){
     <div class="cols"><section class="panel"><h2>やること <small>${todo.length}件</small></h2>
       ${me ? `<p class="small home-scope">${mineOnly ? `担当が<b>${esc(staffCanon(me) || me)}</b>の案件だけ出しています。` : "全員の案件を出しています。"}<button type="button" class="textlink" data-act="home-scope">${mineOnly ? "全部を見る" : "自分の担当だけにする"}</button></p>` : ""}
       ${todo.length ? `<div class="list">${todo.map(x => `<a class="row-item" href="${x.href}"><span class="row-main"><b>${esc(x.t)}</b><span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span><span class="small">開く ›</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今やることはありません。</p>`}</section>
-    <section class="panel"><h2>今週の現場 <small>業者が入る日</small></h2>
+    <details class="panel home-week" ${(() => { try { return localStorage.getItem("refore_home_week") === "0" ? "" : "open"; } catch(e) { return "open"; } })()}><summary><h2>今週の現場 <small>業者が入る日・${week.length}件</small></h2></summary>
       ${week.length ? `<div class="list">${week.map(x => `<a class="row-item" href="#/admin/job/${esc(x.j.id)}"><span class="row-main"><b>${esc(x.j.title)}</b><span class="small">${fmtRange(x.s, x.e)}　${esc(S.crafts.get(x.j.assignedTo)?.name || "未発注")}</span></span><span class="pill ${pillClass(x.j)}">${esc(statusLabel(x.j))}</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今週の現場はありません。</p>`}
-      <p style="margin:10px 0 0"><a class="textlink" href="#/admin/calendar">予定表を開く ›</a></p></section></div>`;
+      <p style="margin:10px 0 0"><a class="textlink" href="#/admin/calendar">予定表を開く ›</a></p></details></div>`;
 }
 
 /* ---------- 管理：工事メモ（スマホで入れて、そのまま見積の下書きにする） ---------- */
@@ -5015,11 +5038,9 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("[name=d_acc]")) memoDimCalc(t.closest(".memo-row")); });
 async function viewMemo(){
+  S.estCo = "";   // 前に開いた見積の管理会社の単価が残らないように
   [S.prices, S.props, S.staff] = await Promise.all([api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getProperties().catch(() => []), api().getStaff().catch(() => [])]);
-  // 管理会社は収支一覧のシートと同じ並び・書き方（物件マスタの「FLEX TOKYO」「Nワークス」なども同じ会社として扱う）
-  const {rows: lrows, cfg: lcfg, names: lnames} = await ledgerData().catch(() => ({rows:[], cfg:{}, names:new Map()}));
-  let cos = [...lnames.entries()].filter(([k]) => lrows.some(r => r.coKey === k) || Object.keys(lcfg.fees || {}).some(c => coKey(c) === k)).map(([, v]) => v);
-  if(!cos.length) cos = [...new Set((S.props || []).map(p => String(p.company || "").trim()).filter(Boolean))];
+  const cos = await ledgerCosLoad();
   return `${back("#/admin/home", "ホーム")}<div class="page-head"><div><h1>工事メモ</h1><p class="lead">現場でスマホから入れます。工事は単価表から選ぶので、そのまま見積の下書きになります。</p></div></div>
     <form class="panel memo" data-form="memo">
       <label class="field"><span>管理会社 <small>見積の宛先になります</small></span><select name="company" data-memo-co required>
@@ -5069,7 +5090,7 @@ async function viewCalendar(ym, company = ""){
   shown.forEach((j, i) => { j.manager = String(privs[i]?.manager || "").trim(); });
   const NONE = "未設定";
   const coOf = j => j.manager || NONE;
-  const masterCos = [...new Set((S.props?.length ? S.props : await api().getProperties().catch(() => [])).map(p => p.company).filter(Boolean))];
+  const masterCos = await ledgerCosLoad();
   const monthJobs = shown.filter(j => j.startDate <= last && j.endDate >= first);
   const counts = {}; monthJobs.forEach(j => { counts[coOf(j)] = (counts[coOf(j)] || 0) + 1; });
   const cos = [...new Set([...masterCos, ...shown.map(coOf)])].filter(c => c !== NONE).sort((a, b) => (counts[b] || 0) - (counts[a] || 0) || a.localeCompare(b, "ja"));
@@ -6174,7 +6195,7 @@ const ACTIONS = {
     const {job, uid, name} = el.dataset, tema = JSON.parse(el.dataset.tema || "[]");
     const [jobD, priv] = await Promise.all([api().getJob(job), api().getJobPrivate(job)]);
     const noItems = !priv.items?.length;
-    const all = itemsWithId(priv.items?.length ? priv.items : jobD.items);
+    const all = itemsWithId(priv.items?.length ? priv.items : jobD.items).filter(i => !isParking(i));
     let cd = {};
     if(all.length > 1){
       const want = JSON.parse(el.dataset.items || "null");
@@ -6238,10 +6259,10 @@ const ACTIONS = {
     try { await api().deleteJobs([id]); } finally { S.uploading = false; }
     toast("案件を削除しました"); stopNotifier(); stopBadges(); location.hash = "#/admin";
   },
-  async "prop-add"(){ const p = await propEditor(); if(!p) return; S.props.push(p); await api().saveProperties(S.props); toast("物件を追加しました"); route(); },
+  async "prop-add"(){ await ledgerCosLoad(); const p = await propEditor(); if(!p) return; S.props.push(p); await api().saveProperties(S.props); toast("物件を追加しました"); route(); },
   async "prop-edit"(el){
     const i = S.props.findIndex(p => p.id === el.dataset.id); if(i < 0) return;
-    const p = await propEditor(S.props[i]); if(!p) return;
+    await ledgerCosLoad(); const p = await propEditor(S.props[i]); if(!p) return;
     S.props[i] = p; await api().saveProperties(S.props); toast("保存しました"); renderPropList();
   },
   async "prop-del"(el){
@@ -6683,10 +6704,12 @@ const FORMS = {
       if(added){ await api().savePrices(prices); S.prices = prices; }
     }
     items.forEach(i => { delete i.addPrice; delete i.addCat; });
-    const price = items.length ? itemsTotal(items) : Math.max(0, Math.round(Number(g("price")) || 0));
+    const parking = formParking(form);
+    const price = (items.length ? itemsTotal(items) : Math.max(0, Math.round(Number(g("price")) || 0))) + parking;
+    if(items.length && parking) items.push(parkingItem(parking));
     // 募集中に業者全員が見る作業内訳（単価・金額も見せる。住所・鍵などは発注先だけが読める private に保存）
     const publicItems = items.map(i => ({iid:i.iid, cat:i.cat || "その他", loc:i.loc || "", name:i.name, qty:i.qty, unit:i.unit, unitPrice:i.unitPrice, note:i.note || "", zai:!!i.zai,
-      ...(i.temaPrice ? {temaPrice:i.temaPrice} : {}), ...(i.tema ? {tema:true, zaiPrice:i.zaiPrice ?? 0} : {})}));
+      ...(i.temaPrice ? {temaPrice:i.temaPrice} : {}), ...(i.tema ? {tema:true, zaiPrice:i.zaiPrice ?? 0} : {}), ...(i.parking ? {parking:true} : {})}));
     // 住所・物件名・オートロック・エレベーターは募集中の業者にも見せる（鍵・入室方法・連絡事項・写真URLは発注先だけ。管理会社は業者に見せない）
     const site = {address:g("address"), building:g("building"), room:g("room"), autolock:g("autolock"), elevator:g("elevator")};
     let jobNo = normJobNo(g("jobNo"));
@@ -6711,7 +6734,7 @@ const FORMS = {
     const staffName = g("staff"), sp = (S.staff || []).find(p => p.name === staffName);
     const staff = staffName ? {name:staffName, phone:sp ? sp.phone || "" : ""} : null;
     if(staffName){ try { localStorage.setItem("refore_last_staff", staffName); } catch(e) {} }
-    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price, taxMode:"税別", items:publicItems, site, staff, jobNo, description:g("description")};
+    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price, parking, taxMode:"税別", items:publicItems, site, staff, jobNo, description:g("description")};
     if(!id) Object.assign(data, {priceNote:"", photos:[]});
     if(mode === "open" || mode === "draft") data.status = mode;
     if(fd.get("audience")) data.audience = fd.get("audience") === "priority" ? "priority" : "all";
@@ -6929,7 +6952,7 @@ document.addEventListener("input", e => {
   if(e.target.matches?.("form[data-form=job] [name=title]")) e.target.dataset.auto = "";
   if(e.target.matches?.("[data-delfilter=q]")){ S.delFilter.q = e.target.value; renderDelList(); }
   if(e.target.closest?.(".mo-row")) moSync(e.target.form);
-  if(e.target.matches?.("[data-propfilter=q]")){ S.propFilter.q = e.target.value; renderPropList(); } if(e.target.closest(".item-row")) syncItems(e.target.form);  });
+  if(e.target.matches?.("[data-propfilter=q]")){ S.propFilter.q = e.target.value; renderPropList(); } if(e.target.closest(".item-row") || e.target.matches?.("[name=pkOn],[name=pkAmt],form[data-form=job] [name=price]")) syncItems(e.target.form);  });
 // 業者が選んだ工事と、手間のみでやる工事
 function pickChoice(){
   const all = itemsWithId(S.pickItems || []), boxes = document.querySelectorAll(".witem [name=pick]");
@@ -7647,6 +7670,7 @@ function memoPick(f, p){
   // 物件マスタの会社名は、収支一覧の同じ会社の書き方に合わせる
   const co = (opts.find(o => o.value && o.value !== "__new" && coSame(o.value, pc)) || {}).value || pc;
   if(co && !coSame(f.elements.company.value, co)){ if(!opts.some(o => o.value === co)) f.elements.company.add(new Option(co, co), f.elements.company.options.length - 1); f.elements.company.value = co; $("#memo-co-new").hidden = true; }
+  S.estCo = memoCo(f);   // 物件から管理会社が入ったときも、その会社の単価で工事を出す
   f.elements.address.value = p.address || "";
   alSet(f, p.al); evSet(f, p.ev); f.elements.mPk.checked = hasFacility(p.pk); f.elements.mNote.value = p.note || "";
   $("#memo-ac").hidden = true; f.elements.propName.setAttribute("aria-expanded", "false");
@@ -7892,6 +7916,7 @@ document.addEventListener("mousedown", e => {
 });
 
 document.addEventListener("input", e => { const t = e.target; if(t.matches?.("#est-form [name=company], form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) S.estCo = t.value === "__new" ? "" : t.value.trim(); });
+document.addEventListener("toggle", e => { if(e.target.matches?.(".home-week")) try { localStorage.setItem("refore_home_week", e.target.open ? "1" : "0"); } catch(x) {} }, true);
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company]")) S.estCo = t.value === "__new" ? "" : t.value; });
 
 /* ---------- 起動 ---------- */
