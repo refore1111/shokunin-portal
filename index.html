@@ -3374,7 +3374,7 @@ async function viewMoney(kiArg, sheetArg, subArg){
   S.ledger = {ki, sheet, list, rows};
   return `<div class="page-head"><div><h1>収支 <small class="small">${esc(kiLabel(ki))}</small></h1></div>
       <div class="row"><a class="btn sub" href="${url(ki - 1)}" aria-label="前の期">‹ ${ki - 1}期</a><a class="btn sub" href="${url(ki + 1)}" aria-label="次の期">${ki + 1}期 ›</a>
-        <a class="btn" href="#/admin/money/edit/new">＋ 案件を追加</a><button class="btn sub" data-act="money-import">CSVを取り込む</button><button class="btn sub" data-act="money-order" title="Numbersの表と同じ並び順にします（金額などは変わりません）">並び順を取り込む</button><button class="btn sub" data-act="money-csv">CSVで書き出す</button></div></div>
+        <a class="btn" href="#/admin/money/edit/new">＋ 案件を追加</a><button class="btn sub" data-act="money-import">CSVを取り込む</button><button class="btn sub" data-act="money-order" title="Numbersの表と同じ並び順にします（金額などは変わりません）">並び順を取り込む</button><button class="btn sub" data-act="money-fill" title="Numbersにあって収支にない工事番号の案件だけを足します（今ある行は変えません）">Numbersと照らし合わせる</button><button class="btn sub" data-act="money-csv">CSVで書き出す</button></div></div>
     <form class="lsearch" data-form="lsearch" data-ki="${esc(ki)}" role="search"><input type="search" name="q" value="${esc(sheet === "検索" ? sub : "")}" placeholder="案件を探す（物件名・工事番号・管理会社・担当・業者）" aria-label="収支の案件を探す" enterkeyhint="search"><button class="btn sub">探す</button>${sheet === "検索" ? `<a class="textlink" href="${url(ki, "全体")}">やめる</a>` : ""}</form>
     <nav class="sheets" aria-label="シート">${["全体", ...companies, "個人成績"].map(s => `<a href="${url(ki, s)}" ${s === sheet ? 'aria-current="true"' : ""}>${esc(s)}</a>`).join("")}</nav>
     ${body}
@@ -6095,6 +6095,33 @@ const ACTIONS = {
   async "money-csv"(){
     const L = S.ledger; if(!L) return;
     saveBlob(new Blob([ledgerCsv(L.list)], {type:"text/csv"}), `${L.ki}期_${L.sheet}.csv`);
+  },
+  async "money-fill"(){
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
+    inp.onchange = async () => {
+      try {
+        const f = inp.files[0]; if(!f) return;
+        const data = JSON.parse(await f.text());
+        if(data.kind !== "numbersFill" || !data.sheets?.length) throw new Error("Numbersと照らし合わせるファイルではありません");
+        const {rows} = await ledgerData(), add = [], per = {};
+        for(const sh of data.sheets){
+          const mine = rows.filter(r => coSame(r.company, sh.co) || coKey(r.company) === coKey(sh.co));
+          const have = new Set(mine.map(r => normJobNo(r.jobNo)).filter(Boolean));
+          let k = -1;   // 並び順は「並び順を取り込む」と同じ数え方（区切りの行は数えない）
+          for(const r of ledgerFromCsv(sh.csv, sh.co, Number(sh.ki) || kiNow())){
+            if(!/下記から/.test(r.name)) k++;
+            r.ord = k;
+            const no = normJobNo(r.jobNo);
+            if(!no || !/\d/.test(no) || /下記から/.test(r.name) || have.has(no)) continue;
+            have.add(no); add.push({...r, ord:r.ord, createdAt:Date.now()}); per[sh.co] = (per[sh.co] || 0) + 1;
+          }
+        }
+        if(!add.length){ toast("収支にない工事番号の案件はありませんでした"); return; }
+        if(!await ask({title:`${add.length}件を収支に足しますか？`, body:`Numbersにあって、収支にない工事番号の案件です。今ある行は変えません。\n\n${Object.entries(per).map(([c, n]) => `・${c}：${n}件`).join("\n")}\n\n${add.slice(0, 15).map(r => `${r.jobNo}　${r.name}`).join("\n")}${add.length > 15 ? "\n…" : ""}`, ok:"足す"})) return;
+        await api().saveLedgerMany(add); S.ldCache = null; toast(`${add.length}件を収支に足しました`); route();
+      } catch(e) { toast(e.message || String(e)); }
+    };
+    inp.click();
   },
   async "money-order"(){
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
