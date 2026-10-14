@@ -1042,7 +1042,16 @@ const ITEM_LOCS = ["洋室", "洋室収納", "通路", "通路収納", "トイ�
 // 工事番号：収支一覧と同じ「略号-期の年-連番」（例：FT-2627-122）。期は8月始まり（2026年8月〜2027年7月＝2627）
 const JOBNO_PREFIX = {"FLEX TOKYO":"FT", "Nワークス":"NW", "nworks":"NW", "アイレントホーム":"A", "イデアルシーク":"IS", "ジェントリーブルーエージェント":"GBE",
   "ベストホームクリエイト":"BHC", "ベストホームクリエート":"BHC", "リアルエステート":"RE", "リアルホームエステート":"RE", "ファミリープロパティー":"FP", "その他":"O"};
-const jobNoPrefix = manager => { const m = String(manager || "").trim(); const k = Object.keys(JOBNO_PREFIX).find(k => k.replace(/\s/g, "") === m.replace(/\s/g, "")); return k ? JOBNO_PREFIX[k] : "O"; };
+const coLoose = s => String(s || "").normalize("NFKC").replace(/[\s　]/g, "").toLowerCase().replace(/株式会社|\(株\)|有限会社/g, "").replace("nワークス", "nworks").replace(/クリエイト/g, "クリエート");
+const jobNoPrefix = manager => { const m = coLoose(manager); if(!m) return "O";
+  const k = Object.keys(JOBNO_PREFIX).find(k => coLoose(k) === m) || Object.keys(JOBNO_PREFIX).find(k => k !== "その他" && Math.min(coLoose(k).length, m.length) >= 4 && (coLoose(k).startsWith(m) || m.startsWith(coLoose(k))));
+  return k ? JOBNO_PREFIX[k] : "O"; };
+function coSame(a, b){
+  const x = coLoose(a), y = coLoose(b); if(!x || !y) return false;
+  if(x === y) return true;
+  if(Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x))) return true;
+  const px = jobNoPrefix(a); return px !== "O" && px === jobNoPrefix(b);
+}
 const jobNoPeriod = (d = new Date()) => { const y = d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1; return String(y % 100).padStart(2, "0") + String((y + 1) % 100).padStart(2, "0"); };
 const normJobNo = v => String(v || "").normalize("NFKC").replace(/\s/g, "").replace(/[ー－―‐]/g, "-").toUpperCase();
 // 見積単価（アイレントホームの雛形「工事項目」の見積単価）。単価表の名前で結びつけ、単価表で見積単価を入れればそちらが優先
@@ -1920,7 +1929,7 @@ class DemoBackend {
   async getSeal(){ return this.sd().seal || ""; }
   async saveSeal(data){ this.sd().seal = data || ""; this.save(); }
   async getMatOrders(jobId){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone((this.data.matOrders || {})[jobId] || []); }
-  async saveMatOrders(jobId, orders){ S.ldCache = null; (this.data.matOrders ||= {})[jobId] = clone(orders); this.save(); }
+  async saveMatOrders(jobId, orders){ S.ldCache = null; JOB_ADMIN_CACHE.delete(jobId); (this.data.matOrders ||= {})[jobId] = clone(orders); this.save(); }
   async saveStaff(list){ this.sd().staff = clone(list); this.save(); }
   async savePrices(list){ this.sd().prices = clone(list); this.save(); }
   async wipeJobData(progress){
@@ -1973,7 +1982,7 @@ class DemoBackend {
     if(d && src) this.data.jobPdfSrc[id] = src; else delete this.data.jobPdfSrc[id];
     this.save();
   }
-  async setJobPrivate(id, d){ S.ldCache = null; this.data.jobPrivate[id] = {...d}; this.save(); }
+  async setJobPrivate(id, d){ S.ldCache = null; JOB_ADMIN_CACHE.delete(id); this.data.jobPrivate[id] = {...d}; this.save(); }
 
   async listApplications(f = {}){
     let a = Object.values(this.data.applications);
@@ -2096,6 +2105,10 @@ class FirebaseBackend {
     try { this.db.settings({ignoreUndefinedProperties:true, merge:true}); } catch(e) { console.warn(e); }
     this.db.enablePersistence({synchronizeTabs:true}).catch(e => console.warn("端末への保存は使いません：", e.code || e));
     this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.error(e));
+    // 書き込み（save・set・assign…）をしたら、覚えている全案件を捨てる
+    const proto = Object.getPrototypeOf(this);
+    Object.getOwnPropertyNames(proto).filter(k => typeof proto[k] === "function" && /^(save|set|assign|unassign|delete|update|accept|decline|request|cancel|confirm|wipe|apply|withdraw|submit|create|remove|add|send|ensure|mark|react|upload)/.test(k))
+      .forEach(k => { const f = proto[k]; this[k] = (...a) => { this._jl = null; return f.apply(this, a); }; });
   }
   col(n){ return this.db.collection(n); }
   docs(s){ return s.docs.map(d => ({id:d.id, ...d.data()})); }
@@ -2146,7 +2159,11 @@ class FirebaseBackend {
     if(f.audience) q = q.where("audience", "==", f.audience);
     // 既存業者（Refore）の「募集中」は Refore の案件だけを聞く（工務店の案件は下で別に読む）
     if(myRole() === "craftsman" && f.status === "open" && !f.audience) q = q.where("companyId", "==", COMPANY_ID);
-    let list = this.docs(await q.get());
+    const all = myRole() === "admin" && !f.status && !f.assignedTo && !f.audience;
+    if(all && this._jl && this._jl.cid === S.cid && Date.now() - this._jl.at < 8000) return [...await this._jl.p];
+    const pr = q.get().then(s => this.docs(s));
+    if(all) this._jl = {at:Date.now(), cid:S.cid, p:pr.catch(e => { this._jl = null; throw e; })};
+    let list = await pr;
     if(myRole() === "admin") return scopeList(list);
     // 職人：工務店が「既存業者のみ」に出した案件は、その工務店の既存業者だけに見える
     if(f.status === "open"){
@@ -2305,7 +2322,7 @@ class FirebaseBackend {
   async getSeal(){ const s = await this.smaster("seal").get(); return s.exists ? (s.data().data || "") : ""; }
   async saveSeal(data){ await this.smaster("seal").set({data:data || "", updatedAt:Date.now()}); }
   async getMatOrders(jobId){ const s = await this.col("jobs").doc(jobId).collection("admin").doc("matorders").get(); return s.exists ? (s.data().orders || []) : []; }
-  async saveMatOrders(jobId, orders){ S.ldCache = null; await this.col("jobs").doc(jobId).collection("admin").doc("matorders").set({orders, updatedAt:Date.now()}); }
+  async saveMatOrders(jobId, orders){ S.ldCache = null; JOB_ADMIN_CACHE.delete(jobId); await this.col("jobs").doc(jobId).collection("admin").doc("matorders").set({orders, updatedAt:Date.now()}); }
   // Reforeの担当者：master/staff にまとめて保存
   // プッシュ通知の端末（users/{uid}.pushTokens）と、Reforeあてメールのオン・オフ（master/notify）
   async addPushToken(uid, t){ await this.col("users").doc(uid).update({pushTokens:firebase.firestore.FieldValue.arrayUnion(t)}); }
@@ -2424,7 +2441,7 @@ class FirebaseBackend {
     for(let i = 0; i < chunks.length; i++) await files.doc(`src_${pad(i)}`).set({i, data:chunks[i]});
     await files.doc("pdf").set({name:d.name, addedAt:d.addedAt || Date.now(), pageCount:d.pages.length, srcChunks:chunks.length});
   }
-  async setJobPrivate(id, d){ S.ldCache = null;
+  async setJobPrivate(id, d){ S.ldCache = null; JOB_ADMIN_CACHE.delete(id);
     const {manager, ...rest} = d, j = this.col("jobs").doc(id);
     await j.collection("private").doc("detail").set(rest);
     if(manager !== undefined) await j.collection("admin").doc("info").set({manager}, {merge:true});
@@ -3073,6 +3090,12 @@ function calcLedger(r, cfg){
 }
 // ポータルの案件（発注先・分離発注・材料／外部発注から自動）＋手入力・取り込みの行
 // 収支の集計は、案件ごとに読む物が多いので、操作がないあいだ（20秒）は覚えておく
+const JOB_ADMIN_CACHE = new Map();
+function jobAdminCached(id){
+  const c = JOB_ADMIN_CACHE.get(id); if(c && Date.now() - c.at < 600000) return c.p;
+  const p = Promise.all([api().getAdminInfo(id).catch(() => ({})), api().getMatOrders(id).catch(() => [])]);
+  JOB_ADMIN_CACHE.set(id, {at:Date.now(), p}); return p;
+}
 async function ledgerData(){
   if(S.ldCache && Date.now() - S.ldCache.at < 20000) return S.ldCache.p;
   const p = ledgerDataLoad(); S.ldCache = {at:Date.now(), p}; p.catch(() => { S.ldCache = null; });
@@ -3084,7 +3107,7 @@ async function ledgerDataLoad(){
   const roots = jobs.filter(j => !j.parentId && !byJob.get(j.id)?.hidden && (["assigned", "working", "finished", "completed", "paid"].includes(j.status) || byJob.get(j.id)?.contract));
   const auto = await Promise.all(roots.map(async j => {
     const L = byJob.get(j.id) || {};
-    const [info, mos] = await Promise.all([api().getAdminInfo(j.id).catch(() => ({})), api().getMatOrders(j.id).catch(() => [])]);
+    const [info, mos] = await jobAdminCached(j.id);
     const fam = [j, ...jobs.filter(k => k.parentId === j.id)].filter(x => x.assignedTo && !x.declinedAt);
     const vendors = [...fam.map(x => ({name:craftName(x.assignedTo), amount:Number(x.price) || 0, auto:true})),
       ...mos.map(o => ({name:o.supplierName || "発注先", amount:moTotals(o).base, auto:true})), ...(L.extraVendors || [])];
@@ -4971,11 +4994,14 @@ function memoRowHtml(){
 }
 async function viewMemo(){
   [S.prices, S.props, S.staff] = await Promise.all([api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getProperties().catch(() => []), api().getStaff().catch(() => [])]);
-  const cos = [...new Set((S.props || []).map(p => String(p.company || "").trim()).filter(Boolean))];
+  // 管理会社は収支一覧のシートと同じ並び・書き方（物件マスタの「FLEX TOKYO」「Nワークス」なども同じ会社として扱う）
+  const {rows: lrows, cfg: lcfg, names: lnames} = await ledgerData().catch(() => ({rows:[], cfg:{}, names:new Map()}));
+  let cos = [...lnames.entries()].filter(([k]) => lrows.some(r => r.coKey === k) || Object.keys(lcfg.fees || {}).some(c => coKey(c) === k)).map(([, v]) => v);
+  if(!cos.length) cos = [...new Set((S.props || []).map(p => String(p.company || "").trim()).filter(Boolean))];
   return `${back("#/admin/home", "ホーム")}<div class="page-head"><div><h1>工事メモ</h1><p class="lead">現場でスマホから入れます。工事は単価表から選ぶので、そのまま見積の下書きになります。</p></div></div>
     <form class="panel memo" data-form="memo">
       <label class="field"><span>管理会社 <small>見積の宛先になります</small></span><select name="company" data-memo-co required>
-        <option value="">${cos.length ? `選んでください（物件マスタの${cos.length}社）` : "物件マスタに会社がまだありません"}</option>${cos.sort((a, b) => a.localeCompare(b, "ja")).map(c => `<option>${esc(c)}</option>`).join("")}<option value="__new">一覧にない会社（手で入れる）</option></select></label>
+        <option value="">${cos.length ? `選んでください（${cos.length}社）` : "会社がまだありません"}</option>${cos.sort((a, b) => a.localeCompare(b, "ja")).map(c => `<option>${esc(c)}</option>`).join("")}<option value="__new">一覧にない会社（手で入れる）</option></select></label>
       <label class="field" id="memo-co-new" hidden><span>管理会社の名前</span><input type="text" name="companyNew" placeholder="例：FLEX TOKYO"></label>
       <div class="field memo-q"><span>物件名 <small>打ち込むと物件マスタから候補が出ます。ない物件はそのまま入れれば物件マスタに覚えます</small></span>
         <input type="text" name="propName" data-memo-q required autocomplete="off" placeholder="例：サンプルハイツ" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="memo-ac">
@@ -5102,6 +5128,7 @@ function priorityPanel(list){
     <p class="small" style="margin:8px 0 0">押すと既存業者にする／外すを切り替えます。★が既存業者です。</p></section>`;
 }
 async function viewCraftsmen(){
+  if(!tenant()) syncPubCrafts([...S.crafts.values()]);
   const list = [...S.crafts.values()].sort((a, b) => ((a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)) || (b.createdAt - a.createdAt));
   const head = `<h1>協力業者</h1><p class="lead">${tenant() ? "Reforeが審査して登録された協力業者さんです。既存業者と評価は自社の中だけのもので、ほかの会社には見えません。" : "登録の審査と、登録情報の確認を行います。審査待ちの業者が上に表示されます。"}</p>${priorityPanel(list)}`;
   if(!list.length) return head + `<div class="empty">まだ登録はありません。<br>登録ページのURLを協力業者さまに送ってください。</div>`;
@@ -5444,7 +5471,6 @@ async function route(){
       if(!S.craftsAt || Date.now() - S.craftsAt > 30000){
         const [all, ratings] = await Promise.all([api().listCraftsmen(), api().listRatings().catch(() => [])]), crafts = all.filter(c => !c.employee);
         S.crafts = new Map(crafts.map(c => [c.uid, c])); S.allCrafts = all; S.ratings = ratings; S.craftsAt = Date.now();
-        if(!tenant()) syncPubCrafts(crafts);
       }
       const all = S.allCrafts || [], crafts = all.filter(c => !c.employee);
       S.empPending = all.filter(c => c.employee && c.status === "pending");
@@ -6880,7 +6906,10 @@ function pubCraftOf(u, company){
 // Refore の管理者が協力業者の一覧を開いたとき、公開用の登録情報（pubcrafts）を最新にしておく
 async function syncPubCrafts(crafts){
   if(api()?.mode !== "firebase" || S.pubSynced) return; S.pubSynced = true;
-  for(const c of crafts){ try { await api().upsertPubCraft(c.uid, c); } catch(e) { console.warn("pubcrafts", e); break; } }
+  const key = "refore_pubsync_" + todayIso(); try { if(localStorage.getItem(key)) return; } catch(e) {}
+  await new Promise(r => setTimeout(r, 2000));
+  for(const c of crafts){ try { await api().upsertPubCraft(c.uid, c); } catch(e) { console.warn("pubcrafts", e); return; } }
+  try { localStorage.setItem(key, "1"); } catch(e) {}
 }
 // 工務店の案件なら、応募・チャット・完了報告に会社を付ける（工務店はこの印で自社の分だけを読む）
 async function withCo(x){
@@ -7432,7 +7461,7 @@ document.addEventListener("change", e => {
     const co = t.value;
     $("#memo-co-new").hidden = co !== "__new";
     const cur = (S.props || []).find(x => x.id === f.elements.propId.value);
-    if(cur && String(cur.company || "").trim() !== co){ f.elements.propName.value = ""; f.elements.propId.value = ""; }
+    if(cur && !coSame(cur.company, co)){ f.elements.propName.value = ""; f.elements.propId.value = ""; }
     else if(cur) return;
     f.elements.address.value = ""; alSet(f, ""); evSet(f, ""); f.elements.mPk.checked = false; f.elements.mNote.value = "";
   }
@@ -7442,15 +7471,17 @@ function memoCo(f){ const v = f.elements.company.value; return v === "__new" ? "
 function memoAc(f){
   const box = $("#memo-ac"), q = f.elements.propName.value.trim(), co = memoCo(f);
   if(f.elements.company.value === "__new" || !q){ box.hidden = true; f.elements.propName.setAttribute("aria-expanded", "false"); return; }
-  const hits = searchProps(q, (S.props || []).map(p => ({...p, company:String(p.company || "").trim()})), 8, co);
+  const hits = searchProps(q, (S.props || []).filter(p => !co || coSame(p.company, co)), 8);
   box.innerHTML = hits.length ? hits.map((p, i) => `<li role="option" id="mac-${i}" data-pid="${esc(p.id)}"><b>${highlight(p.name, q)}</b><span>${esc(co ? p.address || "" : `${p.company}　${p.address || ""}`)}</span></li>`).join("")
     : `<li class="none">物件マスタにありません。このまま入れると新しい物件として覚えます</li>`;
   box.hidden = false; f.elements.propName.setAttribute("aria-expanded", "true"); S.macIdx = -1;
 }
 function memoPick(f, p){
   f.elements.propName.value = p.name; f.elements.propId.value = p.id;
-  const co = String(p.company || "").trim();
-  if(co && f.elements.company.value !== co){ if(![...f.elements.company.options].some(o => o.value === co)) f.elements.company.add(new Option(co, co), f.elements.company.options.length - 1); f.elements.company.value = co; $("#memo-co-new").hidden = true; }
+  const pc = String(p.company || "").trim(), opts = [...f.elements.company.options];
+  // 物件マスタの会社名は、収支一覧の同じ会社の書き方に合わせる
+  const co = (opts.find(o => o.value && o.value !== "__new" && coSame(o.value, pc)) || {}).value || pc;
+  if(co && !coSame(f.elements.company.value, co)){ if(!opts.some(o => o.value === co)) f.elements.company.add(new Option(co, co), f.elements.company.options.length - 1); f.elements.company.value = co; $("#memo-co-new").hidden = true; }
   f.elements.address.value = p.address || "";
   alSet(f, p.al); evSet(f, p.ev); f.elements.mPk.checked = hasFacility(p.pk); f.elements.mNote.value = p.note || "";
   $("#memo-ac").hidden = true; f.elements.propName.setAttribute("aria-expanded", "false");
