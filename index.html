@@ -923,6 +923,9 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .so-modal{max-width:460px}
 .home-scope{margin:-4px 0 10px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
 .price-row.only-co [name=p_note]{color:#2F6DB5;font-weight:600}
+.mon-box{margin:4px 0 16px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--surface)}
+.mon-box summary{cursor:pointer;display:flex;gap:10px;align-items:baseline;padding:2px 0 6px}
+.mon-box .tbl-wrap{margin-top:4px}
 </style>
 </head>
 <body>
@@ -3207,6 +3210,8 @@ const yoy = (a, b) => b ? `${(a / b * 100).toFixed(1)}%` : "";
 const sumLedger = rs => { const n = rs.filter(r => !r.lost).length, sales = rs.reduce((a, r) => a + (Number(r.contract) || 0), 0), net = rs.reduce((a, r) => a + r.net, 0), profit = rs.reduce((a, r) => a + r.profit, 0), refore = rs.reduce((a, r) => a + r.refore, 0);
   return {n, sales, net, profit, refore, avgS:n ? Math.round(sales / n) : 0, avgP:n ? Math.round(profit / n) : 0, rate:sales ? profit / sales : 0}; };
 // 月次（各シートの月次と同じ：前年同期比つき。手数料がある会社は「8%」の列も）
+const monOpen = () => { try { return localStorage.getItem("refore_mon_open") !== "0"; } catch(e) { return true; } };
+document.addEventListener("toggle", e => { if(e.target.classList?.contains("mon-box")) try { localStorage.setItem("refore_mon_open", e.target.open ? "1" : "0"); } catch(err) {} }, true);
 function monthlyTable(rs, prev, ki, fee){
   const months = kiMonths(ki), done = rs.filter(r => r.month), pdone = prev.filter(r => r.month);
   const pm = m => `${Number(m.slice(0, 4)) - 1}${m.slice(4)}`;
@@ -3328,8 +3333,9 @@ async function viewMoney(kiArg, sheetArg, subArg){
     list = sub ? all0.filter(r => stOf(r) === (sub === "none" ? "" : sub)) : all0;
     const chips = `<nav class="chips" aria-label="状態で絞り込む"><a href="${url(ki, sheet)}" ${sub ? "" : 'aria-current="true"'}>すべて ${all0.length}</a>${[["none", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注"], ["done", "完了"], ["tachiai", "立会のみ"], ["lost", "失注"]].map(([s2, l]) => { const n = all0.filter(r => stOf(r) === (s2 === "none" ? "" : s2)).length; return n ? `<a href="${url(ki, sheet, s2)}" ${sub === s2 ? 'aria-current="true"' : ""}>${l} ${n}</a>` : ""; }).join("")}</nav>`;
     const wait = list.filter(r => r.stage === "wait").length, before = list.filter(r => ["", "est"].includes(r.stage || "") && !r.jobId).length;
-    body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${chips}${ledgerTable(list, fee)}</section>
-      <section class="panel"><h2>月次</h2>${monthlyTable(list, prev.filter(r => r.coKey === k), ki, fee)}</section>`;
+    body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${chips}
+        <details class="mon-box" ${monOpen() ? "open" : ""}><summary><b>月次</b><span class="small">${esc(sheet)}・${ki}期の月ごとの件数・売上・利益</span></summary>${monthlyTable(all0, prev.filter(r => r.coKey === k), ki, fee)}</details>
+        ${ledgerTable(list, fee)}</section>`;
   }
   S.ledger = {ki, sheet, list, rows};
   return `<div class="page-head"><div><h1>収支 <small class="small">${esc(kiLabel(ki))}</small></h1></div>
