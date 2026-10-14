@@ -2077,6 +2077,7 @@ class FirebaseBackend {
     this.mode = "firebase";
     firebase.initializeApp(FIREBASE_CONFIG);
     this.auth = firebase.auth(); this.db = firebase.firestore();
+    try { this.db.settings({ignoreUndefinedProperties:true, merge:true}); } catch(e) { console.warn(e); }
     this.db.enablePersistence({synchronizeTabs:true}).catch(e => console.warn("端末への保存は使いません：", e.code || e));
     this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.error(e));
   }
@@ -2777,7 +2778,7 @@ function readEst(form){
   }).filter(r => r.name || r.loc || r.qty !== "" || r.price !== "");
   return {...(S.est || {}), no:normJobNo(g("no")), company:g("company"), honor:g("honor") || "御中", person:g("person"), building:g("building"), room:g("room"), kind:g("kind"),
     address:g("address"), autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), issuedAt:g("issuedAt"), validity:g("validity"), terms:g("terms"),
-    toEmail:g("toEmail"), showDiff:f.showDiff ? f.showDiff.checked : S.est?.showDiff,
+    toEmail:g("toEmail"), showDiff:f.showDiff ? f.showDiff.checked : S.est?.showDiff !== false,
     staff:staffName ? {name:staffName, phone:sp?.phone || S.est?.staff?.phone || ""} : null, periodStart:g("periodStart"), periodEnd:g("periodEnd"), status:g("status") || "draft", note:g("note"), rows};
 }
 async function viewEstEdit(id){
