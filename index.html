@@ -3183,7 +3183,7 @@ async function ledgerDataLoad(){
     const doneAt = j.completedAt || j.finishedAt;
     return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), monthSet:!!L.month, jobNo:j.jobNo || "", name:j.title, company:L.company || info.manager || "",
       contract:L.contract || 0, kind:L.kind || "", staff:L.staff ?? (j.staff?.name || ""), staff2:L.staff2 || "", vendors, extraVendors:L.extraVendors || [], note:L.note || "",
-      arranged:!!j.assignedTo, done:["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, stage:L.stage || "won", estimateId:L.estimateId || "", billId:L.billId || "", billedOutside:!!L.billedOutside};
+      arranged:!!j.assignedTo, done:["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, stage:L.stage || "won", estimateId:L.estimateId || "", billId:L.billId || "", billedOutside:!!L.billedOutside, ord:L.ord ?? null};
   }));
   const rows = [...auto, ...stored.filter(r => !r.jobId)].map(r => calcLedger(r, cfg));
   // 管理会社の表示名：取り込んだ表（Numbers）の書き方を優先
@@ -3241,7 +3241,9 @@ function ledgerTable(list, fee){
   // いちばん多い頭文字（そのシートの会社の番号）を先に
   const cnt = {}; list.forEach(r => { const k = jobNoKey(r.jobNo); if(k) cnt[k[0]] = (cnt[k[0]] || 0) + 1; });
   const pref = k => -(cnt[k] || 0);
-  const sorted = [...list].sort((a, b) => { const x = jobNoKey(a.jobNo), y = jobNoKey(b.jobNo);
+  const sorted = [...list].sort((a, b) => { const x = jobNoKey(a.jobNo), y = jobNoKey(b.jobNo), ao = a.ord ?? null, bo = b.ord ?? null;
+    if((ao !== null) !== (bo !== null)) return ao !== null ? -1 : 1;
+    if(ao !== null && ao !== bo) return ao - bo;
     if(!x || !y) return (x ? 0 : 1) - (y ? 0 : 1) || (a.createdAt || 0) - (b.createdAt || 0);
     return x[1] - y[1] || pref(x[0]) - pref(y[0]) || x[0].localeCompare(y[0]) || x[2] - y[2]; });
   const live = list.filter(r => r.month), sm = sumLedger(live), lostCost = list.filter(r => r.lost).reduce((a, r) => a + r.profit, 0);
@@ -3309,7 +3311,7 @@ async function viewMoney(kiArg, sheetArg, subArg){
   S.ledger = {ki, sheet, list, rows};
   return `<div class="page-head"><div><h1>収支 <small class="small">${esc(kiLabel(ki))}</small></h1></div>
       <div class="row"><a class="btn sub" href="${url(ki - 1)}" aria-label="前の期">‹ ${ki - 1}期</a><a class="btn sub" href="${url(ki + 1)}" aria-label="次の期">${ki + 1}期 ›</a>
-        <a class="btn" href="#/admin/money/edit/new">＋ 案件を追加</a><button class="btn sub" data-act="money-import">CSVを取り込む</button><button class="btn sub" data-act="money-csv">CSVで書き出す</button></div></div>
+        <a class="btn" href="#/admin/money/edit/new">＋ 案件を追加</a><button class="btn sub" data-act="money-import">CSVを取り込む</button><button class="btn sub" data-act="money-order" title="Numbersの表と同じ並び順にします（金額などは変わりません）">並び順を取り込む</button><button class="btn sub" data-act="money-csv">CSVで書き出す</button></div></div>
     <nav class="sheets" aria-label="シート">${["全体", ...companies, "個人成績"].map(s => `<a href="${url(ki, s)}" ${s === sheet ? 'aria-current="true"' : ""}>${esc(s)}</a>`).join("")}</nav>
     ${body}
     <details class="panel"><summary class="textlink">手数料・作業金額の設定</summary>
@@ -3383,7 +3385,7 @@ function ledgerFromCsv(text, company, ki){
     const cancel = /キャンセル/.test(g("請負金額"));
     // 完了月がある行（Numbersで完了済み）は請求済みとして扱う。完了月が空の行は進行中の案件
     const contract0 = cancel ? 0 : yenNum(g("請負金額"));
-    out.push({id:"l_" + newId(), manual:true, billedOutside:!!month, stage:month ? "" : (cancel ? "lost" : contract0 ? "won" : ""), ki, month:month || "", jobNo:g("工事番号"), name, company, contract:cancel ? 0 : yenNum(g("請負金額")), kind:g("工事種類"), staff:g("立会担当"),
+    out.push({id:"l_" + newId(), ord:out.length, manual:true, billedOutside:!!month, stage:month ? "" : (cancel ? "lost" : contract0 ? "won" : ""), ki, month:month || "", jobNo:g("工事番号"), name, company, contract:cancel ? 0 : yenNum(g("請負金額")), kind:g("工事種類"), staff:g("立会担当"),
       staff2:sCol >= 0 ? String(r[sCol] || "").replace(/　/g, " ").trim() : "", vendors, note:[cancel ? "キャンセル" : "", g("備考")].filter(Boolean).join(" "),
       arranged:/☑|✓|TRUE/i.test(g("手配")), done:/☑|✓|TRUE/i.test(g("完了")),
       ...(netCol >= 0 && num(r[netCol]) !== undefined ? {netOv:num(r[netCol])} : {}),
@@ -5955,6 +5957,33 @@ const ACTIONS = {
   async "money-csv"(){
     const L = S.ledger; if(!L) return;
     saveBlob(new Blob([ledgerCsv(L.list)], {type:"text/csv"}), `${L.ki}期_${L.sheet}.csv`);
+  },
+  async "money-order"(){
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
+    inp.onchange = async () => {
+      try {
+        const f = inp.files[0]; if(!f) return;
+        const data = JSON.parse(await f.text()), list = Array.isArray(data) ? data : data.rows || [];
+        if(!list.length || !list.every(x => x && x.co && Number.isFinite(x.ord))) throw new Error("並び順のファイルではありません");
+        const {rows} = await ledgerData(), docs = new Map((await api().listLedger()).map(r => [r.id, r]));
+        const nm = v => normKey(String(v || "").replace(/　/g, " "));
+        const used = new Set(), upd = [], miss = [];
+        for(const x of list){
+          const cands = rows.filter(r => !used.has(r.id) && coSame(r.company, x.co));
+          const r = (x.no && cands.find(r => normJobNo(r.jobNo) === normJobNo(x.no) && nm(r.name) === nm(x.name)))
+            || (x.no && cands.find(r => normJobNo(r.jobNo) === normJobNo(x.no)))
+            || (x.name && cands.find(r => nm(r.name) === nm(x.name)));
+          if(!r){ miss.push(x); continue; }
+          used.add(r.id);
+          const d = docs.get(r.id) || (r.jobId ? {id:r.jobId, jobId:r.jobId} : null); if(!d) continue;
+          if(d.ord !== x.ord) upd.push({...d, ord:x.ord});
+        }
+        if(!await ask({title:`${list.length - miss.length}件の並び順を合わせますか？`, body:`Numbersの表と同じ順に並べます。金額・状態などは変わりません。${miss.length ? `\n\nポータルに見つからなかった行 ${miss.length}件：\n` + miss.slice(0, 12).map(x => `・${x.co} ${x.no || ""} ${x.name || ""}`).join("\n") + (miss.length > 12 ? "\n…" : "") : ""}`, ok:"並び順を合わせる"})) return;
+        if(upd.length) await api().saveLedgerMany(upd);
+        S.ldCache = null; toast(`並び順を合わせました（${upd.length}件を更新）`); route();
+      } catch(e) { toast(e.message || String(e)); }
+    };
+    inp.click();
   },
   async "money-import"(){
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".csv,text/csv"; inp.multiple = true;
