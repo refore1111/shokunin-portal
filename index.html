@@ -875,6 +875,37 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
   .memo-row{grid-template-columns:minmax(0,1fr) 70px 64px 34px!important;grid-template-areas:"w w w x" "l q u u";padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
   .memo-row .memo-wq{grid-area:w}.memo-row [name=m_loc]{grid-area:l}.memo-row [name=m_qty]{grid-area:q}.memo-row [name=m_unit]{grid-area:u}.memo-row .i-x{grid-area:x}
 }
+
+.memo-dims,.memo-new{grid-column:1/-1;margin:2px 0 6px;padding:10px 12px;border-radius:8px;background:#F6F8FB;border:1px solid var(--line)}
+.memo-new{background:#FFF9EC;border-color:#F0D9A8}
+.md-head{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:8px;font-size:13px}
+.md-head span{font-size:12px;color:var(--sub)}
+.md-row{display:grid;grid-template-columns:minmax(0,78px) 14px minmax(0,78px) minmax(58px,auto) auto 30px;gap:6px;align-items:center;margin-bottom:6px;padding:2px 4px;border-radius:6px}
+.md-row i{font-style:normal;color:var(--sub);text-align:center}
+.md-row .md-a{font-variant-numeric:tabular-nums;font-size:13px;color:var(--sub);text-align:right}
+.md-row.acc{background:#FDEBF1}
+.md-row.acc .md-a{color:#B4235A;font-weight:600}
+.md-ck{display:flex;align-items:center;gap:4px;font-size:12.5px;white-space:nowrap;cursor:pointer}
+.md-foot{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:2px}
+.md-sum{font-size:13px}
+.md-sum b{font-size:15px;font-variant-numeric:tabular-nums}
+.md-sum b.acc{color:#B4235A}
+.md-acc{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12.5px;color:#B4235A}
+.btn.sm{padding:5px 10px;font-size:12.5px;min-height:0}
+.mn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mn-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--sub)}
+.mn-grid small{font-size:11px}
+.mn-save{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;cursor:pointer}
+.memo-wq{position:relative}
+.memo-wq .memo-wac{top:calc(100% + 2px);margin:0}
+.er input.is-acc{background:#FDEBF1;color:#B4235A;font-weight:600}
+@media (max-width:560px){
+  .memo-row{grid-template-areas:"w w w x" "l q u u" "d d d d" "n n n n"}
+  .memo-row .memo-dims{grid-area:d}.memo-row .memo-new{grid-area:n}
+  .mn-grid{grid-template-columns:1fr 1fr}
+  .md-row{grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 56px 30px;grid-template-areas:"h x l a r" "c c c c c"}
+  .md-row [name=d_h]{grid-area:h}.md-row i{grid-area:x}.md-row [name=d_l]{grid-area:l}.md-row .md-a{grid-area:a}.md-row .i-x{grid-area:r}.md-row .md-ck{grid-area:c}
+}
 </style>
 </head>
 <body>
@@ -2792,7 +2823,7 @@ function estRowHtml(r = {}){
   return `<div class="er" data-id="${esc(r.id || "r_" + newId())}" data-cost="${esc(r.cost ?? "")}" data-pid="${esc(r.priceId || "")}" data-cat="${esc(r.cat || "")}">${ER_GRIP}
     <input type="text" name="e_loc" list="est-locs" value="${esc(r.loc)}" placeholder="箇所" aria-label="箇所">
     <input type="text" name="e_name" list="est-items" value="${esc(r.name)}" placeholder="工事内容（文字を入れると候補）" aria-label="工事内容">
-    <input type="text" name="e_spec" value="${esc(r.spec)}" placeholder="仕様" aria-label="仕様">
+    <input type="text" name="e_spec" value="${esc(r.spec)}" placeholder="仕様" aria-label="仕様" class="${/アクセント/.test(r.spec || "") ? "is-acc" : ""}">
     <input type="number" name="e_qty" value="${esc(r.qty ?? "")}" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
     <input type="text" name="e_unit" list="est-units" value="${esc(r.unit || "")}" placeholder="単位" aria-label="単位">
     <input type="number" name="e_price" value="${esc(r.price ?? "")}" min="0" inputmode="numeric" placeholder="単価" aria-label="見積単価">
@@ -4990,8 +5021,59 @@ function memoRowHtml(){
     <div class="memo-wq"><input type="text" name="m_name" data-memo-w placeholder="工事内容（文字で探す）" aria-label="工事内容" autocomplete="off"><input type="hidden" name="m_pid"><ul class="memo-wac" hidden></ul></div>
     <input type="number" name="m_qty" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
     <input type="text" name="m_unit" list="est-units" placeholder="単位" aria-label="単位">
-    <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button></div>`;
+    <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
+    <div class="memo-dims" hidden>
+      <div class="md-head"><b>寸法をメモ（m）</b><span>入れた面積がそのまま数量に入ります</span></div>
+      <div class="md-list">${memoDimHtml()}</div>
+      <div class="md-foot"><button type="button" class="btn sub sm" data-act="md-add">＋ 面を足す</button><span class="md-sum"></span></div>
+      <label class="md-acc" hidden><span>アクセントクロスの品番・色</span><input type="text" name="m_accCode" placeholder="例：サンゲツ RE-51234（グレー）"></label>
+    </div>
+    <div class="memo-new" hidden>
+      <div class="md-head"><b>新しい工事</b><span>単価表にない工事です。業者に払う金額を入れてください</span></div>
+      <div class="mn-grid">
+        <label><span>業者の単価（円）</span><input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="例：1200"></label>
+        <label><span>見積の単価（円）<small>空なら見積で入れる</small></span><input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="例：1800"></label>
+        <label><span>分類</span><input type="text" name="m_cat" list="memo-cats" placeholder="例：表装工事"></label>
+      </div>
+      <label class="mn-save"><input type="checkbox" name="m_save" checked> 単価表に入れる（次から候補に出ます）</label>
+    </div></div>`;
 }
+// クロスの寸法：1面ずつ「高さ×長さ」（天井は「縦×横」）。アクセントにチェックした面は別の行（仕様：アクセントクロス）になる
+function memoDimHtml(){
+  return `<div class="md-row"><input type="number" name="d_h" min="0" step="0.01" inputmode="decimal" placeholder="高さ" aria-label="高さ（m）"><i>×</i><input type="number" name="d_l" min="0" step="0.01" inputmode="decimal" placeholder="長さ" aria-label="長さ（m）"><span class="md-a">—</span>
+    <label class="md-ck"><input type="checkbox" name="d_acc"> アクセント</label><button type="button" class="i-x" data-act="md-rm" aria-label="この面を消す">×</button></div>`;
+}
+const isCloth = name => /クロス|壁紙/.test(name || "") && !/クリーニング|襖|洗浄/.test(name || "");
+const r2 = n => Math.round(n * 100) / 100;
+function memoDims(row){
+  return [...row.querySelectorAll(".md-row")].map(d => ({h:Number(d.querySelector("[name=d_h]").value) || 0, l:Number(d.querySelector("[name=d_l]").value) || 0, acc:d.querySelector("[name=d_acc]").checked}))
+    .filter(d => d.h > 0 && d.l > 0).map(d => ({...d, a:r2(d.h * d.l)}));
+}
+// 工事内容が変わったら、クロスなら寸法の欄、単価表にない工事なら金額の欄を出す
+function memoRowState(row){
+  const name = row.querySelector("[name=m_name]").value.trim(), pid = row.querySelector("[name=m_pid]").value;
+  const inTable = !!estPrices().find(x => (pid && x.id === pid && x.name === name) || x.name === name);
+  const dims = row.querySelector(".memo-dims"), nw = row.querySelector(".memo-new"), cloth = isCloth(name);
+  dims.hidden = !cloth; nw.hidden = !name || inTable;
+  const ceil = /天井/.test(name);
+  dims.querySelectorAll("[name=d_h]").forEach(i => { i.placeholder = ceil ? "縦" : "高さ"; });
+  dims.querySelectorAll("[name=d_l]").forEach(i => { i.placeholder = ceil ? "横" : "長さ"; });
+  if(cloth) memoDimCalc(row);
+}
+function memoDimCalc(row){
+  const ds = memoDims(row), main = r2(ds.filter(d => !d.acc).reduce((a, d) => a + d.a, 0)), acc = r2(ds.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
+  row.querySelectorAll(".md-row").forEach(d => { const h = Number(d.querySelector("[name=d_h]").value) || 0, l = Number(d.querySelector("[name=d_l]").value) || 0;
+    d.querySelector(".md-a").textContent = h > 0 && l > 0 ? `${r2(h * l)}㎡` : "—"; d.classList.toggle("acc", d.querySelector("[name=d_acc]").checked); });
+  row.querySelector(".md-acc").hidden = !acc;
+  row.querySelector(".md-sum").innerHTML = ds.length ? `数量 <b>${main}㎡</b>${acc ? `　＋ アクセント <b class="acc">${acc}㎡</b>（別の行になります）` : ""}` : "";
+  if(ds.length){ row.querySelector("[name=m_qty]").value = main || ""; const u = row.querySelector("[name=m_unit]"); if(!u.value) u.value = "㎡"; }
+}
+document.addEventListener("input", e => {
+  const t = e.target, row = t.closest?.(".memo-row"); if(!row) return;
+  if(t.matches("[data-memo-w]")) memoRowState(row);
+  else if(t.closest(".md-row")) memoDimCalc(row);
+});
+document.addEventListener("change", e => { const t = e.target; if(t.matches?.("[name=d_acc]")) memoDimCalc(t.closest(".memo-row")); });
 async function viewMemo(){
   [S.prices, S.props, S.staff] = await Promise.all([api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getProperties().catch(() => []), api().getStaff().catch(() => [])]);
   // 管理会社は収支一覧のシートと同じ並び・書き方（物件マスタの「FLEX TOKYO」「Nワークス」なども同じ会社として扱う）
@@ -5020,7 +5102,7 @@ async function viewMemo(){
       <label class="field"><span>工事種類 <small>収支・見積に入ります</small></span><select name="kind">${LEDGER_KINDS.map(k => `<option ${k === "原状回復" ? "selected" : ""}>${k}</option>`).join("")}</select></label>
       <div class="field"><span>工事（箇所・工事・数量） <small>工事内容は文字を入れると単価表から候補が出ます。単価表にない工事もそのまま入れられます</small></span>
         <div class="memo-rhead" aria-hidden="true"><span>箇所</span><span>工事内容</span><span>数量</span><span>単位</span><span></span></div><div id="memo-rows">${memoRowHtml()}</div>
-        <datalist id="memo-locs">${EST_LOCS.map(l => `<option value="${esc(l)}">`).join("")}</datalist><datalist id="est-units">${UNITS.map(u => `<option value="${u}">`).join("")}<option value="ヶ所"></datalist>
+        <datalist id="memo-cats">${[...new Set(estPrices().map(x => x.cat).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist><datalist id="memo-locs">${EST_LOCS.map(l => `<option value="${esc(l)}">`).join("")}</datalist><datalist id="est-units">${UNITS.map(u => `<option value="${u}">`).join("")}<option value="ヶ所"></datalist>
         <button type="button" class="btn sub" data-act="memo-add" style="justify-self:start">＋ 行を足す</button></div>
       <button class="btn block big-action">見積の下書きを作る</button>
       <p class="small" style="margin:8px 0 0">収支一覧にも案件が入り、見積の画面が開きます。続けて単価や数量を直せます。</p></form>`;
@@ -5714,6 +5796,10 @@ const ACTIONS = {
     S.ldCache = null; S.props = null;
     toast(`「${name}」を消しました`); go("#/admin/money");
   },
+  async "md-add"(el){ const row = el.closest(".memo-row"); row.querySelector(".md-list").insertAdjacentHTML("beforeend", memoDimHtml()); memoRowState(row); row.querySelector(".md-row:last-child [name=d_h]").focus(); },
+  async "md-rm"(el){ const row = el.closest(".memo-row"), list = row.querySelector(".md-list");
+    if(list.children.length > 1) el.closest(".md-row").remove(); else el.closest(".md-row").querySelectorAll("input").forEach(i => { i.type === "checkbox" ? i.checked = false : i.value = ""; });
+    memoDimCalc(row); },
   async "memo-rm"(el){ const box = $("#memo-rows"); if(box.children.length > 1) el.closest(".memo-row").remove(); },
   async "craft-priority"(el){
     const on = el.dataset.on === "1";
@@ -6357,7 +6443,25 @@ const FORMS = {
     // 単価表の工事は単価・原価つき。単価表にない工事は名前と数量だけ（単価は見積で入れる）
     const rows = [...form.querySelectorAll(".memo-row")].map(r => { const v = n => (r.querySelector(`[name=${n}]`)?.value || "").trim(), name = v("m_name"), q = v("m_qty");
       const pp = ps.find(x => x.id === v("m_pid") && x.name === name) || ps.find(x => x.name === name);
-      return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:"", cost:0, cat:""}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp}; }).filter(x => x.p.name);
+      const num = n => v(n) === "" ? "" : Math.max(0, Math.round(Number(v(n)) || 0));
+      const dims = isCloth(name) ? memoDims(r) : [], acc = r2(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
+      return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
+        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode")}; }).filter(x => x.p.name);
+    // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
+    const adds = rows.filter(x => x.save && x.p.cost > 0);
+    if(adds.length){
+      const prices = await api().getPrices().catch(() => clone(S.prices || DEFAULT_PRICES));
+      let added = 0;
+      for(const x of adds){
+        const same = prices.find(y => y.name === x.p.name);
+        if(same){ x.p = {...x.p, id:same.id}; continue; }
+        const np = {id:"p_" + newId(), cat:x.p.cat || "未分類", name:x.p.name, unit:x.unit || "式", unitPrice:x.p.cost, ...(x.p.sell !== "" ? {sellPrice:x.p.sell} : {}), note:""};
+        prices.push(np); x.p = {...x.p, id:np.id, cat:np.cat}; added++;
+      }
+      if(added){ await api().savePrices(prices); S.prices = prices; }
+    }
+    // 寸法のメモは見積のメモ（Reforeだけ）に残す
+    const dimNote = rows.filter(x => x.dims.length).map(x => `${x.loc ? x.loc + " " : ""}${x.p.name}：${x.dims.map(d => `${d.h}×${d.l}${d.acc ? "（アクセント）" : ""}`).join("＋")}＝${r2(x.dims.reduce((a, d) => a + d.a, 0))}㎡`).join("\n");
     const company = g("company") === "__new" ? g("companyNew") : g("company");
     if(!company) throw new Error("管理会社を選んでください");
     const prop = g("propId") ? (S.props || []).find(p => p.id === g("propId")) || {} : {};
@@ -6381,7 +6485,10 @@ const FORMS = {
     await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:"", building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", master.note || ""].filter(Boolean).join("\n"), kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"), photoUrls:g("photoUrl") ? [g("photoUrl")] : [],
       issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, staff:staff ? {name:staff, phone:st?.phone || ""} : null,
-      rows:rows.map(x => ({id:"r_" + newId(), loc:x.loc, name:x.p.name, spec:"", qty:x.qty, unit:x.unit || x.p.unit, price:x.free ? "" : x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id || ""})), note:g("mFree"), createdAt:now, updatedAt:now});
+      rows:rows.flatMap(x => { const one = (spec, qty) => ({id:"r_" + newId(), loc:x.loc, name:x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id || ""});
+        if(!x.acc) return [one("", x.qty)];
+        return [...(Number(x.qty) > 0 ? [one("", x.qty)] : []), one(`アクセントクロス${x.accCode ? " " + x.accCode : ""}`, x.acc)]; }),
+      note:[g("mFree"), dimNote].filter(Boolean).join("\n"), createdAt:now, updatedAt:now});
     S.ldCache = null; toast(`見積の下書きを作り、収支に入れました（工事番号 ${jobNo}）`); go(`#/admin/est/edit/${eid}`);
   },
   async money(form){
@@ -7705,7 +7812,8 @@ function memoWorkPick(input, p){
   const row = input.closest(".memo-row");
   input.value = p.name; row.querySelector("[name=m_pid]").value = p.id;
   const u = row.querySelector("[name=m_unit]"); if(u) u.value = p.unit || u.value;
-  row.querySelector(".memo-wac").hidden = true; row.querySelector("[name=m_qty]").focus();
+  row.querySelector(".memo-wac").hidden = true; memoRowState(row);
+  (isCloth(p.name) ? row.querySelector("[name=d_h]") : row.querySelector("[name=m_qty]")).focus();
 }
 document.addEventListener("input", e => {
   const t = e.target; if(!t.matches?.("[data-memo-w]")) return;
