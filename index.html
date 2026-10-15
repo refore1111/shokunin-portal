@@ -666,6 +666,7 @@ body{font-size:17px}
 .mtbl td.stgc{white-space:nowrap}
 .sflow{display:inline-flex;gap:2px;vertical-align:middle;margin-right:6px}.sflow i{width:9px;height:6px;border-radius:2px;background:#DDE2EA}
 .sflow.sf1 i.on{background:#9AA3B0}.sflow.sf2 i.on{background:#1F78C1}.sflow.sf3 i.on{background:#C99A1C}.sflow.sf4 i.on{background:#5BA374}.sflow.sf5 i.on{background:#2A8C7A}.sflow.sf6 i.on{background:#2C7A4B}
+.stg-nx{margin-top:5px}.stg-nx .btn{padding:3px 10px;font-size:12px;min-height:0}
 .stg-arr{background:#E3F4F0;border-color:#2A8C7A;color:#1F6E60}
 .sfc{display:inline-flex;align-items:center;flex-direction:column;gap:3px}.sfc .sflow{margin:0}.sfc .stg{margin:0}
 .flow-chips{align-items:center}.flow-chips a{display:inline-flex;align-items:center;gap:6px}.flow-chips a .sflow{margin:0}.flow-chips b{font-weight:700}
@@ -1005,6 +1006,22 @@ const tradeGroupOf = t => TRADE_TREE[t] ? t : TRADE_ALIAS[t] || Object.keys(TRAD
 const tradeGroups = list => new Set((list || []).map(tradeGroupOf).filter(Boolean));
 // 細かい工種を選んだら大枠も入れる。前の名前は大枠に直す
 const expandTrades = list => { const out = []; (list || []).forEach(t => { const g = tradeGroupOf(t); if(g && !out.includes(g)) out.push(g); if(t !== g && !TRADE_ALIAS[t] && !out.includes(t)) out.push(t); }); return out; };
+// 工事の内容（工事名・分類）から工種を決める。案件の工種は作業内訳から自動で入る（選ぶ欄はない）
+const TRADE_RULES = [[/ロボ|お掃除機能/, /エアコン/, "ロボ付エアコン（お掃除機能付き）"], [/エアコン/, /洗浄|クリーニング/, "エアコンクリーニング"], [/換気扇|レンジフード/, /洗浄|クリーニング/, "換気扇・レンジフード"],
+  [/クリーニング|洗浄|WAX|ワックス|清掃/], [/クッションフロア|フロアタイル|ＣＦ|CF/, null, "床（CF・フロアタイル）"], [/カーペット/, null, "カーペット"], [/畳|襖|障子|天袋/, null, "畳・襖・障子"],
+  [/クロス|巾木|壁紙/, null, "クロス張替え"], [/鉄部|外部塗装|外壁/, null, "鉄部・外部塗装"], [/塗装|ペンキ/, null, "室内塗装"], [/浴槽|洗面台リペア|ホーロー/, /リペア|補修/, "浴槽・洗面台リペア"],
+  [/リペア|補修/, null, "床・建具リペア"], [/建付|建具|ドア調整/, null, "建具調整"], [/造作|棚/, null, "造作・棚"], [/下地/, null, "下地・床補修"],
+  [/給湯器/, null, "給湯器"], [/換気扇|レンジフード/, null, "キッチン・浴室設備"], [/キッチン|浴室|コンロ|ユニットバス/, null, "キッチン・浴室設備"], [/水栓|蛇口|シャワー|トイレ|便座|便器|ウォシュレット|洗面|パッキン|カートリッジ|コーキング|排水|トラップ/, null, "水栓・トイレ・洗面台"],
+  [/インターホン/, null, "インターホン"], [/エアコン/, null, "エアコン取付・交換"], [/照明|電球|蛍光灯|シーリング|スイッチ|コンセント|報知器|ライト|手元灯/, null, "照明・スイッチ・コンセント"],
+  [/網戸|鍵|シリンダー/, null, "網戸・鍵交換"], [/残置|残地|処分|撤去/, null, "残置物撤去"], [/立会/, null, "退去立会"]];
+const CAT_TRADE = {和室工事:"畳・襖・障子", クリーニング:"ハウスクリーニング", 表装工事:"クロス張替え", 塗装工事:"室内塗装", リペア工事:"床・建具リペア", 大工工事:"建具調整", 設備工事:"水栓・トイレ・洗面台", 電気工事:"照明・スイッチ・コンセント", 雑工事:"簡易修繕"};
+function tradeOfItem(i){
+  const n = String(i.name || "").normalize("NFKC");
+  if(i.parking || /駐車場|諸経費|交通費|立会費/.test(n) || i.noteRow) return "";
+  for(const [a, b, t] of TRADE_RULES) if(a.test(n) && (!b || b.test(n))) return t || "ハウスクリーニング";
+  return CAT_TRADE[i.cat] || "簡易修繕";
+}
+const tradesFromItems = items => { const t = [...new Set((items || []).filter(i => i.name).map(tradeOfItem).filter(Boolean))]; return expandTrades(t.length ? t : ["雑工事"]); };
 // 表示：細かい工種があればそれを、なければ大枠を
 const tradeLabels = list => { const x = expandTrades(list); return TRADES.flatMap(g => { if(!x.includes(g)) return []; const subs = x.filter(t => t !== g && tradeGroupOf(t) === g); return subs.length ? subs : [g]; }); };
 function tradeOk(jobTrades, craftTrades){
@@ -1478,6 +1495,7 @@ function syncItems(form){
   price.readOnly = used.length > 0;
   if(used.length) price.value = total;
   form.querySelector(".i-total").textContent = yenFull((used.length ? total : Number(price.value) || 0) + formParking(form));
+  const jt = form.querySelector("#job-trades"); if(jt && used.length) jt.textContent = tradeLabels(tradesFromItems(used)).join("・");
 }
 
 function buildOrderDoc(job, priv, c, extra = {}){
@@ -1813,6 +1831,7 @@ class DemoBackend {
   async getBilling(){ if(tenant()) return clone(this.sd().billing || {}); return clone(this.data.billing || {bank:"（デモ）サンプル銀行 本店（普通）0000000 名義；カ）リフォア", invoiceNumber:"T0000000000000"}); }
   async saveBilling(d){ this.sd().billing = clone(d); this.save(); }
   async listLedger(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().ledger || {})); }
+  async getLedgerRow(id){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone((this.sd().ledger || {})[id] || null); }
   async saveLedger(r){ S.ldCache = null; (this.sd().ledger ||= {})[r.id] = clone(r); this.save(); }
   async saveLedgerMany(rs){ S.ldCache = null; rs.forEach(r => { (this.sd().ledger ||= {})[r.id] = clone(r); }); this.save(); }
   async deleteLedger(id){ S.ldCache = null; delete (this.sd().ledger || {})[id]; this.save(); }
@@ -2214,6 +2233,7 @@ class FirebaseBackend {
   async saveBilling(d){ await this.smaster("billing").set(d); }
   // 収支（ledger/{案件ID か l_…}。管理者だけ）と、その設定（master/ledger）
   async listLedger(){ return this.docs(await this.scol("ledger").get()); }
+  async getLedgerRow(id){ const s = await this.scol("ledger").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
   async saveLedger(r){ S.ldCache = null; await this.scol("ledger").doc(r.id).set(r); }
   async saveLedgerMany(rs){ S.ldCache = null; for(let i = 0; i < rs.length; i += 400){ const b = this.db.batch(); rs.slice(i, i + 400).forEach(r => b.set(this.scol("ledger").doc(r.id), r)); await b.commit(); } }
   async deleteLedger(id){ S.ldCache = null; await this.scol("ledger").doc(id).delete(); }
@@ -2576,9 +2596,18 @@ const EST_TO_STAGE = {draft:"est", sent:"wait", ordered:"won", won:"won", self:"
 const stageTag = st => `<span class="stg stg-${st || "none"}">${LEDGER_STAGE[st || ""] || "見積前"}</span>`;
 // 状態の流れ：見積前 → 見積中 → 受注待ち（見積を提出） → 受注 → 完了。立会のみ・失注はイレギュラーなので流れに入れない
 const STAGE_FLOW = ["", "est", "wait", "won", "arr", "done"];
-// 見た目の状態：受注のあと業者を手配したら「完了待ち」（案件は業者に発注したとき、手入力の行は「完了待ち」にするか発注業者を入れたとき）
-const dispStage = r => (r.billedOutside && !r.stage) || (r.done && r.stage !== "tachiai") ? "done"
-  : ["won", "arr"].includes(r.stage) && (r.stage === "arr" || (r.jobId ? r.arranged : (r.vendors || []).some(v => v.name || v.amount))) ? "arr" : (r.stage || "");
+// 収支の進み方（ボタンで次へ）：見積中 →「見積を送信済み」→ 受注待ち →「受注」→ 受注 →（完了確認の予定を入れて）「手配済み」→ 完了待ち →「完了報告済み」→ 完了（完工月が入り、締め日に請求書へ）
+const dispStage = r => (r.billedOutside && !r.stage) || (r.done && r.stage !== "tachiai") ? "done" : (r.stage || "");
+function stageNextHtml(r, big = false){
+  const st = dispStage(r), cls = big ? "btn" : "btn sub sm stg-next";
+  const b = (step, label) => `<button type="button" class="${cls}" data-act="stage-next" data-id="${esc(r.id)}" data-step="${step}">${label}</button>`;
+  if(st === "") return r.manual && !r.estimateId ? `<a class="${cls}" href="#/admin/est/from/${esc(r.id)}">見積を作る</a>` : "";
+  if(st === "est") return b("wait", "見積を送信済み ›");
+  if(st === "wait") return b("won", "受注 ›");
+  if(st === "won") return r.doneCheck ? b("arr", "手配済み ›") : `<a class="${cls}" href="${r.jobId ? `#/admin/job/${esc(r.jobId)}` : `#/admin/money/edit/${esc(r.id)}`}">完了確認の予定を入れる</a>`;
+  if(st === "arr") return b("done", "完了報告済み ›");
+  return "";
+}
 const flowBar = (k, n = 6) => `<span class="sflow sf${n === 6 ? k + 1 : [1, 2, 4, 5, 6][k] || 0}" aria-hidden="true">${Array.from({length:n}, (_, i) => `<i class="${i <= k ? "on" : ""}"></i>`).join("")}</span>`;
 const stageCell = st => { const k = STAGE_FLOW.indexOf(st || ""); return k < 0 ? stageTag(st) : `<span class="sfc">${flowBar(k)}${stageTag(st)}</span>`; };
 // 案件の流れ：募集 → 発注（承諾待ち） → 承諾 → 作業中 → 完了
@@ -2915,16 +2944,15 @@ async function saveEst(e, quiet = false){
   return d;
 }
 // 受注：業者に発注する案件（実行単価）と、収支の請負金額を作る
-const EST_TRADE = {表装工事:"クロス張替え", クリーニング:"ハウスクリーニング", 設備工事:"設備交換", 電気工事:"設備交換", 雑工事:"簡易修繕"};
 const EST_LEDGER_KIND = {退去工事:"原状回復", 原状回復工事:"原状回復", 修繕工事:"修繕", フルリノベーション工事:"フルリノベ", リフォーム工事:"リフォーム", 入居前工事:"原状回復"};
 const LEDGER_EST_KIND = {原状回復:"退去工事", 修繕:"修繕工事", フルリノベ:"フルリノベーション工事", リフォーム:"リフォーム工事", その他:""};
 async function estToJob(e){
   const rows = (e.rows || []).filter(r => !r.noteRow && r.name && Number(r.cost) > 0 && !["和室工事", "諸経費"].includes(r.cat));
   const items = rows.map(r => ({iid:"i_" + newId(), cat:r.cat || "その他", loc:r.loc || "", name:r.name, qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.cost) || 0, note:r.spec || "", zai:false, ...(r.priceId && !String(r.priceId).startsWith("x_") ? {priceId:r.priceId} : {})}));
-  const trades = [...new Set(rows.map(r => /クッションフロア|フロアタイル|カーペット/.test(r.name) ? "床（CF・フロアタイル）" : /エアコン/.test(r.name) && r.cat === "クリーニング" ? "エアコンクリーニング" : EST_TRADE[r.cat] || "その他"))];
+  const trades = tradesFromItems(rows);
   const {pref, city} = splitAddress(e.address || "");
   const site = {address:e.address || "", building:e.building || "", room:e.room || "", autolock:e.autolock || "", elevator:e.elevator || ""};
-  const data = {title:estTitle(e) || "見積からの案件", trades:expandTrades(trades.length ? trades : ["その他"]), pref:pref || "", city:city || "", startDate:e.periodStart || "", endDate:e.periodEnd || e.periodStart || "",
+  const data = {title:estTitle(e) || "見積からの案件", trades, pref:pref || "", city:city || "", startDate:e.periodStart || "", endDate:e.periodEnd || e.periodStart || "",
     price:itemsTotal(items), taxMode:"税別", items, site, staff:e.staff || null, jobNo:e.no || "", description:"", priceNote:"", photos:[], status:"draft", audience:"all"};
   const jid = await api().saveJob(null, data);
   await api().setJobPrivate(jid, {...site, keyInfo:e.keyInfo || "", manager:e.company || "", contact:e.contact || "", masterId:e.masterId || "", photoUrls:e.photoUrls || [], items});
@@ -3082,7 +3110,7 @@ async function ledgerDataLoad(){
     const doneAt = j.completedAt || j.finishedAt;
     return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), monthSet:!!L.month, jobNo:j.jobNo || "", name:j.title, company:L.company || info.manager || "",
       contract:L.contract || 0, kind:L.kind || "", staff:L.staff ?? (j.staff?.name || ""), staff2:L.staff2 || "", vendors, extraVendors:L.extraVendors || [], note:L.note || "",
-      arranged:!!j.assignedTo, done:["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, ki:L.ki, stage:L.stage || (j.assignedTo || L.contract ? "won" : ""), estimateId:L.estimateId || "", billId:L.billId || "", billedOutside:!!L.billedOutside, ord:L.ord ?? null};
+      arranged:!!j.assignedTo, done:["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, ki:L.ki, stage:L.stage || (j.assignedTo || L.contract ? "won" : ""), estimateId:L.estimateId || "", doneCheck:L.doneCheck || "", billId:L.billId || "", billedOutside:!!L.billedOutside, ord:L.ord ?? null};
   }));
   const rows = [...auto, ...stored.filter(r => !r.jobId)].map(r => calcLedger(r, cfg));
   // 管理会社の表示名：取り込んだ表（Numbers）の書き方を優先
@@ -3171,7 +3199,7 @@ function ledgerTable(list, fee){
   const row = r => { const st = dispStage(r);
     return `<tr class="${r.lost ? "is-lost" : !r.month ? "is-open" : ""}"><td class="mo">${r.month && !r.lost ? `${Number(r.month.slice(5))}<small>月</small>` : ""}</td><td class="no">${esc(r.jobNo)}</td>
     <td class="name"><a href="${openOf(r)}">${esc(r.name)}</a><a class="edit-l" href="#/admin/money/edit/${esc(r.id)}" aria-label="収支を編集" title="収支を編集">✎</a></td>
-    <td class="stgc">${stageCell(st)}${r.billId ? `<span class="stg stg-billed">請求済</span>` : ""}${r.estAmount && ["est", "wait"].includes(r.stage) ? `<span class="est-amt">見積 ${yenFull(r.estAmount)}</span>` : ""}</td>
+    <td class="stgc">${stageCell(st)}${(n => n ? `<div class="stg-nx">${n}</div>` : "")(stageNextHtml(r))}${r.billId ? `<span class="stg stg-billed">請求済</span>` : ""}${r.estAmount && ["est", "wait"].includes(r.stage) ? `<span class="est-amt">見積 ${yenFull(r.estAmount)}</span>` : ""}</td>
     <td class="r amt">${r.lost ? yenFull(0) : r.contract ? yenFull(r.contract) : `<span class="dash">—</span>`}</td>${fee ? `<td class="r amt">${y(r.contract && r.net)}</td>` : ""}
     <td class="r profit ${r.profit < 0 ? "neg" : ""}">${r.contract || r.cost ? yenSign(r.profit) : ""}</td>
     <td class="r">${r.net ? `<span class="rate rate-${rateTier(r.rate, r.net)}">${pct(r.rate)}</span>` : ""}</td>
@@ -3249,7 +3277,7 @@ async function viewMoney(kiArg, sheetArg, subArg){
     const chips = `<nav class="chips flow-chips" aria-label="状態で絞り込む"><a href="${url(ki, sheet)}" ${sub ? "" : 'aria-current="true"'}>すべて <b>${all0.length}</b></a>
       ${[["none", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注"], ["arr", "完了待ち"], ["done", "完了"]].map(([s2, l], k) => chip(s2, l, k)).join(`<i class="fl-arr" aria-hidden="true">›</i>`)}
       ${odd.length ? `<span class="fl-odd">${odd.map(([s2, l]) => chip(s2, l)).join("")}</span>` : ""}</nav>
-      <p class="small" style="margin:-4px 0 10px">見積を先方に提出すると「受注待ち」、先方から発注があったら見積の画面で「受注」、業者を手配したら「完了待ち」、工事が終わると「完了」です。</p>`;
+      <p class="small" style="margin:-4px 0 10px">状態の下のボタンで次に進めます：見積を送信済み → 受注 → （完了確認の予定を入れて）手配済み → 完了報告済み。完了にすると完工月が入り、管理会社の締め日に請求書に入ります。</p>`;
     const wait = list.filter(r => r.stage === "wait").length, before = list.filter(r => ["", "est"].includes(r.stage || "") && !r.jobId).length;
     body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${fee ? `<p class="small fee-note">孫受け：元請手数料 <b>${esc(fee)}%</b> を請負金額から引いた金額（-${esc(fee)}%の列）で利益を出しています。<span>変えるときは下の「元請手数料（孫受け）・作業金額の設定」</span></p>` : ""}${chips}${ledgerTable(list, fee)}</section>
       <section class="panel"><h2>月次</h2>${monthlyTable(list, prev.filter(r => r.coKey === k), ki, fee)}</section>`;
@@ -3261,10 +3289,11 @@ async function viewMoney(kiArg, sheetArg, subArg){
     <form class="lsearch" data-form="lsearch" data-ki="${esc(ki)}" role="search"><input type="search" name="q" value="${esc(sheet === "検索" ? sub : "")}" placeholder="案件を探す（物件名・工事番号・管理会社・担当・業者）" aria-label="収支の案件を探す" enterkeyhint="search"><button class="btn sub">探す</button>${sheet === "検索" ? `<a class="textlink" href="${url(ki, "全体")}">やめる</a>` : ""}</form>
     <nav class="sheets" aria-label="シート">${["全体", ...companies, "個人成績"].map(s => `<a href="${url(ki, s)}" ${s === sheet ? 'aria-current="true"' : ""}>${esc(s)}</a>`).join("")}</nav>
     ${body}
-    <details class="panel"><summary class="textlink">管理会社の設定（元請手数料・取引終了）・作業金額</summary>
+    <details class="panel"><summary class="textlink">管理会社の設定（元請手数料・締め日・取引終了）・作業金額</summary>
       <form data-form="moneycfg" class="stack" style="margin-top:10px">
         <p class="small" style="margin:0">「取引終了」にした管理会社は、上のタブ・管理会社ごとの表・案件や見積の管理会社の候補に出なくなります。数字は全社の合計に入ったままです。</p>
         ${allCos.map(c => `<div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap"><label class="field" style="max-width:360px;margin:0"><span>${esc(c)} の元請手数料（%）<small>孫受けのとき。請負金額からこの%を引いて利益を出します</small></span><input type="number" step="0.1" min="0" name="fee" data-co="${esc(c)}" value="${esc(coFee(c, cfg) || "")}" placeholder="0（手数料なし）"></label>
+          <label class="field" style="max-width:160px;margin:0"><span>締め日 <small>請求書</small></span><select name="close" data-co="${esc(c)}">${[0, 5, 10, 15, 20, 25].map(d => `<option value="${d}" ${Number(cfg.close?.[coKey(c)] ?? 0) === d ? "selected" : ""}>${closeLabel(d)}</option>`).join("")}</select></label>
           <label class="toggle" style="margin:0 0 10px"><input type="checkbox" name="ended" data-co="${esc(c)}" ${coEnded(c, cfg) ? "checked" : ""}>取引終了</label></div>`).join("")}
         <label class="field" style="max-width:360px"><span>立会・完了雑工事の作業金額（請負金額の%）</span><input type="number" step="0.1" min="0" name="staffRate" value="${esc(cfg.staffRate ?? 0.5)}"></label>
         <button class="btn sub" style="align-self:flex-start">設定を保存</button></form></details>
@@ -3283,7 +3312,7 @@ async function viewMoneyEdit(id){
   const backTo = `#/admin/money/${r.month ? kiOfMonth(r.month) : (r.ki || kiNow())}/${encodeURIComponent(r.coName || r.company || "全体")}`;
   return `${back(backTo, "収支")}<h1>${auto ? "収支の入力" : id === "new" ? "案件を追加" : "案件を編集"}</h1>
     ${id === "new" ? `<p class="lead">工事番号・物件名・管理会社を入れて保存すると、この案件の見積を作れます。</p>` : ""}
-    ${r.id && !auto ? `<section class="panel est-link"><span>状態：${stageTag(r.stage)}</span>${r.estimateId ? `<a class="btn sub" href="#/admin/est/edit/${esc(r.estimateId)}">見積を開く${r.estAmount ? `（${yenFull(r.estAmount)}）` : ""}</a>` : !["tachiai", "lost"].includes(r.stage) ? `<a class="btn" href="#/admin/est/from/${esc(r.id)}">この案件の見積を作る</a>` : ""}</section>` : ""}
+    ${r.id && !auto ? `<section class="panel est-link"><span>状態：${stageCell(dispStage(r))}</span>${stageNextHtml(r, true)}${r.estimateId ? `<a class="btn sub" href="#/admin/est/edit/${esc(r.estimateId)}">見積を開く${r.estAmount ? `（${yenFull(r.estAmount)}）` : ""}</a>` : !["tachiai", "lost"].includes(r.stage) ? `<a class="btn" href="#/admin/est/from/${esc(r.id)}">この案件の見積を作る</a>` : ""}</section>` : ""}
     <form data-form="money" data-id="${esc(r.id)}" data-job="${esc(r.jobId || "")}" class="stack">
       <section class="panel">${auto ? `<p style="margin:0 0 12px"><b>${esc(r.name)}</b>　<span class="small">${esc(r.jobNo)}　<a href="#/admin/job/${esc(r.jobId)}">案件を開く</a></span></p>` : `
         <div class="two"><label class="field"><span>工事番号</span><input type="text" name="jobNo" value="${esc(r.jobNo)}" placeholder="例：FT-2627-122"></label>
@@ -3296,7 +3325,8 @@ async function viewMoneyEdit(id){
           <label class="field"><span>完了･雑工事 <small>作業金額 ${esc(cfg.staffRate ?? 0.5)}%</small></span><select name="staff2">${staffOpts(r.staff2)}</select></label></div>
         ${auto ? "" : `<div class="row" style="gap:16px">
           <label class="field" style="margin:0"><span>状態</span><select name="stage">${Object.entries(LEDGER_STAGE).map(([k, l]) => `<option value="${k}" ${(r.stage || "") === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-          <label class="field" style="margin:0"><span>期 <small>未完了の行をどの期に出すか</small></span><input type="number" name="ki" value="${esc(r.ki || kiNow())}" min="1" style="max-width:120px"></label></div>`}</section>
+          <label class="field" style="margin:0"><span>期 <small>未完了の行をどの期に出すか</small></span><input type="number" name="ki" value="${esc(r.ki || kiNow())}" min="1" style="max-width:120px"></label></div>`}
+        ${r.jobId ? "" : `<label class="field" style="max-width:260px;margin:12px 0 0"><span>完了確認の予定日 <small>入れると「手配済み」で完了待ちに進めます</small></span><input type="date" name="doneCheck" value="${esc(r.doneCheck || "")}"></label>`}</section>
       <section class="panel"><h2>発注業者・発注金額</h2>
         ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<p style="margin:0 0 6px">${esc(v.name)}　<b>${yenFull(v.amount)}</b> <span class="small">ポータルから自動</span></p>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
         <div id="vend-ed">${extra.map(vrow).join("")}</div><button type="button" class="btn sub" data-act="add-vend">＋ 発注業者を追加</button></section>
@@ -4006,7 +4036,8 @@ async function viewJobEdit(id){
         <label class="field"><span>作業内容 <small>募集中の案件として業者さまに表示されます。PDFを添付しない場合はここに内容を書いてください</small></span>
           <textarea name="description" rows="3" placeholder="例：1K 退去後のクロス張替え（壁・天井）と下地補修">${esc(job.description)}</textarea></label>
         <input type="hidden" name="pref" value="${esc(job.pref || "")}"><input type="hidden" name="city" value="${esc(job.city || "")}">
-        <fieldset class="field"><legend>工種 <small>大きな分け方を選びます。ロボ付エアコンなど、できる業者を絞りたいときは「細かく選ぶ」</small></legend>${tradePicker(job.trades, "job")}</fieldset>
+        <div class="field"><span>工種 <small>作業内訳の工事から自動で決まります（この工種ができる業者に公開されます）</small></span><p class="job-trades" id="job-trades" style="margin:4px 0 0">${esc(tradeLabels(usedItems.length ? tradesFromItems(usedItems) : job.trades || []).join("・") || "作業内訳を入れると決まります")}</p>
+          <input type="hidden" name="tradesOld" value="${esc((job.trades || []).join(","))}"></div>
         <div class="two">
           <label class="field"><span>開始日</span><input type="date" name="startDate" required value="${esc(job.startDate)}"></label>
           <label class="field"><span>終了日 <small>1日で終わる場合は空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
@@ -4055,6 +4086,7 @@ async function viewAdminJob(id){
   // 完了確認の予定：元の案件と分離発注の子案件の、発注した業者をまとめる
   const root = parentJob || job, calFam = [root, ...family.filter(j => j.parentId === root.id && j.id !== root.id)].map(j => j.id === job.id ? job : j).filter(j => j.assignedTo && !j.declinedAt);
   const cal = calFam.length ? doneCalUrl(root, priv, calFam) : null, calUrl = cal?.url || "";
+  const lrow = calUrl ? ((await ledgerData().catch(() => ({rows:[]}))).rows.find(r => r.jobId === root.id) || null) : null;
   // 完了確認の担当：メールのあるメンバーから選ぶ（案件の担当者を最初に選んでおく）。選んだ人は予定に招待される
   const calMembers = calUrl ? (await api().listAdmins().catch(() => [])).filter(m => m.email && m.status !== "suspended") : [];
   const calWho = (root.staff || job.staff)?.name || "";
@@ -4134,7 +4166,8 @@ async function viewAdminJob(id){
         </section>`}
         ${calUrl ? `<section class="panel"><h2>完了確認</h2>
           <p class="small" style="margin:0 0 10px">完了確認の日と担当を選んで、Googleカレンダーに入れます（会社のアドレスで作り、担当は招待されます）。最初の日付はUP日です。</p>
-          <div class="row" style="gap:8px;flex-wrap:wrap"><input type="date" data-caldate value="${esc(cal.up)}" aria-label="完了確認の日" style="max-width:180px">${calPick}<button class="btn" data-act="done-cal" data-url="${esc(calUrl)}">カレンダーに入れる</button></div></section>` : ""}
+          <div class="row" style="gap:8px;flex-wrap:wrap"><input type="date" data-caldate value="${esc(lrow?.doneCheck || cal.up)}" aria-label="完了確認の日" style="max-width:180px">${calPick}<button class="btn" data-act="done-cal" data-url="${esc(calUrl)}" data-root="${esc(root.id)}">カレンダーに入れる</button></div>
+          ${lrow ? `<div class="row" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><span>収支：${stageCell(dispStage(lrow))}</span>${lrow.doneCheck ? `<span class="small">完了確認 ${fmtDate(lrow.doneCheck)}</span>` : ""}${stageNextHtml(lrow, true)}</div>` : ""}</section>` : ""}
       </div></div>`;
 }
 
@@ -6291,6 +6324,10 @@ const ACTIONS = {
       completed:{title:"作業の完了を確認しましたか？", body:"完了確認にすると、業者さまの月末の請求に入ります。業者さまの「作業完了」や完了報告がまだの場合でも確定します。", ok:"完了を確認した"}
     }[status];
     if(conf && !await ask(conf)) return;
+    if(status === "open"){   // 収支とつながっていない案件は公開できない
+      const j = await api().getJob(id), lr = j ? await api().getLedgerRow(j.parentId || id).catch(() => null) : null;
+      if(!lr && (!tenant() || (await api().listLedger().catch(() => [])).length)) throw new Error("収支とつながっていない案件は公開できません。「編集」で工事番号と管理会社を収支の案件に合わせて保存してください");
+    }
     if(el.dataset.aud) await api().saveJob(id, {audience:el.dataset.aud, autoAllAt:null});
     await api().setJobStatus(id, status);
     if(status === "open" && el.dataset.aud){ const j = await api().getJob(id); if(j && !j.parentId) notifyNewJob(id, j); }
@@ -6351,10 +6388,38 @@ const ACTIONS = {
     S.delSel = new Set(); stopNotifier(); stopBadges(); route();
   },
   // 完了確認の予定を開く。担当に選んだメンバーを招待に入れる
+  async "stage-next"(el){
+    const {id, step} = el.dataset, {rows, cfg} = await ledgerData(), r = rows.find(x => x.id === id);
+    if(!r) throw new Error("収支の案件が見つかりません");
+    const now = Date.now(), cur = () => api().getLedgerRow(id).then(x => x || {id, ...(r.jobId ? {jobId:r.jobId} : {})});
+    if(step === "wait" || step === "won"){
+      const e = r.estimateId ? await api().getEstimate(r.estimateId).catch(() => null) : null;
+      if(step === "won" && !await ask({title:"受注にしますか？", body:e ? "先方から発注があった案件を受注にします。見積の内容で工事請書を作り、請書の金額が収支の請負金額になります。" : "先方から発注があった案件を受注にします。", ok:"受注にする"})) return;
+      let extra = {};
+      if(e){
+        const d = step === "wait" ? {...e, status:"sent", sentAt:now} : {...e, status:"ordered", estRows:(e.rows || []).map(x => ({...x})), orderedAt:now, ukeIssuedAt:todayIso()};
+        await api().saveEstimate({...d, updatedAt:now});
+        extra = {estimateId:e.id, estAmount:estTotals(e).sub, ...(step === "won" ? {contract:estTotals(e).sub} : {})};
+      }
+      await api().saveLedger({...await cur(), ...extra, stage:step, updatedAt:now});
+    } else if(step === "arr"){
+      if(!r.doneCheck) throw new Error("先に完了確認の予定を入れてください");
+      await api().saveLedger({...await cur(), stage:"arr", arranged:true, updatedAt:now});
+    } else if(step === "done"){
+      const day = cfg.close?.[coKey(r.company)] ?? 0, month = periodOf(now, day);
+      if(!await ask({title:"完了報告済みにしますか？", body:`完工月は ${Number(month.slice(5))}月（${closeLabel(day)}）になり、締め日に管理会社への請求書に入ります。${r.jobId ? "\n案件も「完了確認済み」にします（業者さまの請求に入ります）。" : ""}`, ok:"完了にする"})) return;
+      if(r.jobId){ const j = await api().getJob(r.jobId); if(j && !["completed", "paid"].includes(j.status)) await api().setJobStatus(r.jobId, "completed"); }
+      await api().saveLedger({...await cur(), stage:"done", done:true, doneAt:now, month, updatedAt:now});
+    }
+    S.ldCache = null; toast({wait:"受注待ちにしました", won:"受注にしました", arr:"完了待ちにしました", done:"完了にしました"}[step] || "進めました"); route();
+  },
   async "done-cal"(el){
     const box = el.parentElement, day = box.querySelector("[data-caldate]")?.value, to = box.querySelector("[data-calto]")?.value || "";
     if(!day) throw new Error("完了確認の日を選んでください");
     window.open(el.dataset.url + `&dates=${day.replace(/-/g, "")}/${addDays(day, 1).replace(/-/g, "")}` + (to ? "&add=" + encodeURIComponent(to) : ""), "_blank", "noopener");
+    // 完了確認の日を収支に入れる（これで「手配済み」ボタンが出る）
+    const rid = el.dataset.root;
+    if(rid){ const lr = await api().getLedgerRow(rid).catch(() => null); await api().saveLedger({...(lr || {id:rid, jobId:rid}), doneCheck:day, updatedAt:Date.now()}); S.ldCache = null; setTimeout(route, 300); }
   },
   async "job-delete"(el){
     const id = el.dataset.job, j = await api().getJob(id); if(!j) return;
@@ -6675,7 +6740,7 @@ const FORMS = {
   async money(form){
     const f = form.elements, id = form.dataset.id, jobId = form.dataset.job;
     const vend = [...form.querySelectorAll(".vend-row")].map(r => ({name:r.querySelector("[name=v_name]").value.trim(), amount:Number(r.querySelector("[name=v_amount]").value) || 0})).filter(v => v.name || v.amount);
-    const base = {company:f.company.value.trim(), contract:Number(f.contract.value) || 0, month:f.month.value || "", kind:f.kind.value.trim(), staff:f.staff.value, staff2:f.staff2.value, note:f.note.value.trim(), updatedAt:Date.now()};
+    const base = {...(f.doneCheck ? {doneCheck:f.doneCheck.value} : {}), company:f.company.value.trim(), contract:Number(f.contract.value) || 0, month:f.month.value || "", kind:f.kind.value.trim(), staff:f.staff.value, staff2:f.staff2.value, note:f.note.value.trim(), updatedAt:Date.now()};
     let row;
     const prevRow = (await api().listLedger()).find(x => x.id === (jobId || id)) || {};
     if(jobId) row = {...prevRow, id:jobId, jobId, ...base, extraVendors:vend};
@@ -6696,8 +6761,9 @@ const FORMS = {
     // 0（手数料なし）も保存する（決まりの8%を止められるように）。締め日・請求書の形などほかの設定は残す
     const cfg0 = await api().getLedgerCfg().catch(() => ({})), fees = {};
     form.querySelectorAll("[name=fee]").forEach(i => { const v = Math.max(0, Number(i.value) || 0); if(v || coFee(i.dataset.co, {}) || Object.keys(cfg0.fees || {}).some(k => coKey(k) === coKey(i.dataset.co))) fees[i.dataset.co] = v; });
-    const ended = [...form.querySelectorAll("[name=ended]:checked")].map(i => i.dataset.co);
-    await api().saveLedgerCfg({...cfg0, fees, ended, staffRate:Number(form.elements.staffRate.value) || 0}); toast("設定を保存しました"); route();
+    const ended = [...form.querySelectorAll("[name=ended]:checked")].map(i => i.dataset.co), close = {...(cfg0.close || {})};
+    form.querySelectorAll("[name=close]").forEach(i => { close[coKey(i.dataset.co)] = Number(i.value) || 0; });
+    await api().saveLedgerCfg({...cfg0, fees, ended, close, staffRate:Number(form.elements.staffRate.value) || 0}); toast("設定を保存しました"); route();
   },
   async rating(form){
     const stars = Number(form.elements.stars.value || 0);
@@ -6785,8 +6851,6 @@ const FORMS = {
     const id = form.dataset.id || null;
     const mode = e.submitter?.value || "keep";
     const g = k => String(fd.get(k) || "").trim();
-    const trades = fd.getAll("trades");
-    if(!trades.length) throw new Error("工種を1つ以上選んでください");
     const startDate = g("startDate"), endDate = g("endDate") || startDate;
     if(endDate < startDate) throw new Error("終了日が開始日より前になっています");
     const photoUrls = g("photoUrls").split(/\s+/).map(u => u.trim()).filter(Boolean);
@@ -6816,6 +6880,8 @@ const FORMS = {
     }
     items.forEach(i => { delete i.addPrice; delete i.addCat; });
     const parking = formParking(form);
+    // 工種は作業内訳から決める（内訳がないときは前の工種のまま）
+    const trades = items.length ? tradesFromItems(items) : g("tradesOld") ? g("tradesOld").split(",") : ["雑工事"];
     const price = (items.length ? itemsTotal(items) : Math.max(0, Math.round(Number(g("price")) || 0))) + parking;
     if(items.length && parking) items.push(parkingItem(parking));
     // 募集中に業者全員が見る作業内訳（単価・金額も見せる。住所・鍵などは発注先だけが読める private に保存）
@@ -6827,10 +6893,11 @@ const FORMS = {
     if(/^[A-Z]+-\d{4}-$/.test(jobNo)) jobNo = "";   // 頭だけで番号が入っていなければ空のまま保存
     if(jobNo && !/^[A-Z]+-\d{4}-\d+$/.test(jobNo)) throw new Error("工事番号は「FT-2627-122」の形で入力してください");
     if(jobNo && (S.jobNos || []).includes(jobNo)) throw new Error(`工事番号「${jobNo}」はほかの案件で使われています`);
-    // 収支の案件と同じ工事番号・管理会社でないと登録できない（収支をまだ使っていない会社は確かめない）
-    const manager = g("manager"), ledger = await api().listLedger().catch(() => []);
+    // 収支にある案件（同じ工事番号・管理会社）でないと保存・公開できない（ほかの工務店で収支をまだ使っていないときだけ確かめない）
+    const manager = g("manager"), ledger = await api().listLedger().catch(() => null);
+    if(!ledger) throw new Error("収支が読めませんでした。少し待ってからもう一度保存してください");
     let link = null;
-    if(ledger.length){
+    if(ledger.length || !tenant()){
       if(!jobNo) throw new Error("工事番号を入れてください（収支にある案件と同じ番号）");
       if(!manager) throw new Error("管理会社を選んでください");
       const cur = id ? await api().getJob(id) : null, coOk = r => !r.company || managerKey(r.company) === managerKey(manager);
