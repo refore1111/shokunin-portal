@@ -666,6 +666,14 @@ body{font-size:17px}
 .mtbl td.stgc{white-space:nowrap}
 .sflow{display:inline-flex;gap:2px;vertical-align:middle;margin-right:6px}.sflow i{width:9px;height:6px;border-radius:2px;background:#DDE2EA}
 .sflow.sf1 i.on{background:#9AA3B0}.sflow.sf2 i.on{background:#1F78C1}.sflow.sf3 i.on{background:#C99A1C}.sflow.sf4 i.on{background:#5BA374}.sflow.sf5 i.on{background:#2A8C7A}.sflow.sf6 i.on{background:#2C7A4B}
+.lots-sec{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.lots-sec h3{font-size:15px;margin:0 0 8px}.lots-sec h3 small{font-weight:400;color:var(--sub);font-size:12px;margin-left:6px}
+.lot-row{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--surface)}.lot-h{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:6px}
+.lot-f{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.lot-f label{display:flex;align-items:center;gap:6px;white-space:nowrap}.lot-f input[type=date]{max-width:160px}
+.gantt{border-collapse:collapse;font-size:12px;min-width:100%}.gantt th,.gantt td{border:1px solid var(--line);padding:0;text-align:center}.gantt thead th{padding:3px 2px;min-width:26px;font-weight:600}.gantt thead th small{display:block;color:var(--sub);font-weight:400}
+.gantt tbody th{text-align:left;padding:5px 8px;white-space:nowrap;font-weight:700;width:1%}.gantt tbody th small{display:block;color:var(--sub);font-weight:400}.gantt td{height:30px}.gantt td.on{background:#2F6DB5}.gantt .we{background:#F6F2EC}.gantt td.on.we{background:#2F6DB5}
+.self-sec{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.self-sec h3{font-size:15px;margin:0 0 8px}.self-sec h3 small{font-weight:400;color:var(--sub);font-size:12px;margin-left:6px}
+.self-row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 12px;border:1px dashed var(--line);border-radius:6px;margin-bottom:6px;background:#FAFAF7}
+.i-self{font-size:12.5px;margin-left:auto}.lot-self{font-size:12.5px;margin-left:auto}.self-ul{margin:0;padding-left:18px}
 .stg-nx{margin-top:5px}.stg-nx .btn{padding:3px 10px;font-size:12px;min-height:0}
 .stg-arr{background:#E3F4F0;border-color:#2A8C7A;color:#1F6E60}
 .sfc{display:inline-flex;align-items:center;flex-direction:column;gap:3px}.sfc .sflow{margin:0}.sfc .stg{margin:0}
@@ -1276,24 +1284,83 @@ const itemsTotal = items => (items || []).reduce((a, i) => a + itemAmount(i), 0)
 // 業者の駐車場代：案件ごとに最初から入れる（外したり金額を変えたりできる）。作業内訳の最後に「駐車場代」の行として載る
 const PARKING_FEE = 1500;
 const isParking = i => !!i?.parking;
-const formParking = f => f?.elements?.pkOn?.checked ? Math.max(0, Math.round(Number(f.elements.pkAmt?.value) || 0)) : 0;
+// 分離発注の単位（業者ごと）：作業内訳を工種の大枠で分ける。業者ごとに工期と駐車場代を決め、工期から工程表を作る
+const lotKeyOf = i => tradeGroupOf(tradeOfItem(i)) || "雑工事";
+function lotsFromItems(items, old = [], defPk = PARKING_FEE){
+  const m = new Map();
+  (items || []).filter(i => i.name && !isParking(i)).forEach(i => { const k = lotKeyOf(i); if(!m.has(k)) m.set(k, []); m.get(k).push(i); });
+  const list = m.size ? [...m] : [["全体", []]];
+  return list.map(([key, its]) => { const o = old.find(l => l.key === key) || {}; return {key, iids:its.map(i => i.iid), names:its.map(i => i.name), start:o.start || "", end:o.end || "", parking:o.parking ?? defPk, pkAmt:o.pkAmt || o.parking || defPk || PARKING_FEE}; });
+}
+function readLots(f){
+  const box = f?.querySelector?.("#lots-ed"); if(!box) return [];
+  const items = readItems(f).filter(i => i.name || i.unitPrice);
+  return lotsFromItems(items).map(l => { const r = box.querySelector(`.lot-row[data-key="${CSS.escape(l.key)}"]`), v = n => r?.querySelector(`[name=${n}]`);
+    const amt = Math.max(0, Math.round(Number(v("l_pka")?.value) || 0)), st = v("l_start")?.value || "", en = v("l_end")?.value || "";
+    return {key:l.key, iids:l.iids, start:st, end:en && en >= st ? en : st, parking:v("l_pk")?.checked ? amt : 0, pkAmt:amt, ...(r ? {} : {missing:true})}; });
+}
+const formParking = f => readLots(f).reduce((a, l) => a + l.parking, 0);
+function lotRowHtml(l){
+  return `<div class="lot-row" data-key="${esc(l.key)}"><div class="lot-h"><b>${esc(l.key)}</b><span class="small">${esc((l.names || []).join("・"))}</span>${(l.iids || []).length ? `<button type="button" class="textlink lot-self" data-act="lot-self" data-key="${esc(l.key)}">この工種を自社でやる</button>` : ""}</div>
+    <div class="lot-f"><label>工期 <input type="date" name="l_start" value="${esc(l.start)}" aria-label="${esc(l.key)}の開始日"></label><span>〜</span><input type="date" name="l_end" value="${esc(l.end !== l.start ? l.end : "")}" aria-label="${esc(l.key)}の終了日（1日なら空欄）">
+      <label class="toggle" style="margin:0"><input type="checkbox" name="l_pk" ${l.parking ? "checked" : ""}>駐車場代</label><input type="number" name="l_pka" min="0" step="1" inputmode="numeric" value="${esc(l.pkAmt)}" style="width:96px" aria-label="${esc(l.key)}の駐車場代（税抜）"><span class="small">円</span></div></div>`;
+}
+// 作業内訳が変わったら、業者ごとの欄を作り直す（入れた工期・駐車場代は工種ごとに残す）
+function renderLots(f){
+  const box = f?.querySelector?.("#lots-ed"); if(!box) return;
+  const cur = box.querySelector(".lot-row") ? readLots(f).filter(l => !l.missing) : JSON.parse(box.dataset.init || "[]");
+  const lots = lotsFromItems(readItems(f).filter(i => i.name || i.unitPrice), cur, cur.length ? 0 : Number(box.dataset.defpk || 0));
+  lots.forEach(l => { const o = cur.find(x => x.key === l.key); if(!o) { l.parking = Number(box.dataset.defpk || 0); l.pkAmt = Number(box.dataset.defpk) || PARKING_FEE; } });
+  const sig = JSON.stringify(lots.map(l => [l.key, l.names]));
+  if(box.dataset.sig !== sig){ box.dataset.sig = sig; box.innerHTML = lots.map(lotRowHtml).join(""); }
+  const g = f.querySelector("#lots-gantt"); if(g) g.innerHTML = ganttHtml(readLots(f));
+}
+// 自社でやる工事：案件（業者に出す作業内訳）から外して、管理者だけが見られる所に残す
+const selfOf = f => { try { return JSON.parse(f.elements.selfItems?.value || "[]"); } catch(e) { return []; } };
+function renderSelf(f){
+  const box = f.querySelector("#self-sec"); if(!box) return;
+  const list = selfOf(f); box.hidden = !list.length;
+  box.querySelector("#self-list").innerHTML = list.map((i, k) => `<div class="self-row"><span>${i.loc ? `<span class="small">${esc(i.loc)}</span> ` : ""}<b>${esc(i.name)}</b> <span class="small">${fmtQty(i.qty)}${esc(i.unit || "")}</span></span><button type="button" class="textlink" data-act="self-back" data-k="${k}">業者に出す工事に戻す</button></div>`).join("");
+}
+function moveToSelf(f, rows){
+  const all = [...f.querySelectorAll(".item-row")], items = readItems(f), list = selfOf(f);
+  rows.forEach(r => { const i = items[all.indexOf(r)]; if(i?.name) list.push(i); r.remove(); });
+  f.elements.selfItems.value = JSON.stringify(list);
+  if(!f.querySelector(".item-row")) f.querySelector("#items-ed").insertAdjacentHTML("beforeend", itemRowHtml());
+  renderSelf(f); syncItems(f);
+}
+// 工程表：業者（工種）ごとの工期を日付の表に並べる
+function ganttHtml(lots){
+  const L = (lots || []).filter(l => l.start);
+  if(!L.length) return `<p class="small" style="margin:0">工期を入れると、ここに工程表ができます。</p>`;
+  const from = L.reduce((a, l) => l.start < a ? l.start : a, L[0].start), to = L.reduce((a, l) => (l.end || l.start) > a ? (l.end || l.start) : a, L[0].end || L[0].start);
+  const days = []; for(let d = from; d <= to && days.length < 62; d = addDays(d, 1)) days.push(d);
+  const dow = d => "日月火水木金土"[new Date(d + "T00:00:00").getDay()], we = d => /[日土]/.test(dow(d)) ? " we" : "";
+  return `<div class="tbl-wrap"><table class="gantt"><thead><tr><th></th>${days.map(d => `<th class="${we(d)}">${Number(d.slice(8))}<small>${dow(d)}</small></th>`).join("")}</tr></thead><tbody>
+    ${L.map(l => `<tr><th>${esc(l.key)}${l.who ? `<small>${esc(l.who)}</small>` : ""}${l.parking ? `<small>駐車場 ${yenFull(l.parking)}</small>` : ""}</th>${days.map(d => `<td class="${d >= l.start && d <= (l.end || l.start) ? "on" : ""}${we(d)}"></td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    <p class="small" style="margin:6px 0 0">${fmtDate(from)}〜${fmtDate(to)}</p>`;
+}
 const parkingItem = (amt, iid = "pk_" + newId()) => ({iid, cat:"その他", loc:"", name:"駐車場代", qty:1, unit:"式", unitPrice:amt, note:"", zai:false, parking:true});
 const fmtQty = q => (Number(q) || 0).toLocaleString("ja-JP", {maximumFractionDigits:2});
 // 分離発注：選んだ工事を子案件に切り出して発注し、残りの工事は元の案件で募集を続ける
 async function splitAssign(jobD, priv, uid, name, ids, cd = {}){
   const pubAll = itemsWithId(jobD.items), privAll = itemsWithId(priv.items?.length ? priv.items : jobD.items);
-  const take = list => list.filter(i => ids.includes(i.iid) && !isParking(i)), keep = list => list.filter(i => !ids.includes(i.iid) || isParking(i));
-  // 駐車場代は業者ごとにかかるので、子案件にも同じ金額で入れる（元の案件にも残す）
-  const pk = privAll.find(isParking), pkNew = pk ? parkingItem(pk.unitPrice) : null;
+  // 業者ごとの駐車場代（工種の分け方 lots）は、選んだ工種の分を子案件に移す。前の案件の駐車場代（1つだけ）は子案件にも同じ金額で入れる
+  const lotOf = iid => (jobD.lots || []).find(l => (l.iids || []).includes(iid))?.key, selLots = new Set(ids.map(lotOf).filter(Boolean));
+  const take = list => list.filter(i => isParking(i) ? !!i.lot && selLots.has(i.lot) : ids.includes(i.iid)), keep = list => list.filter(i => !take([i]).length);
+  const pk = privAll.find(i => isParking(i) && !i.lot), pkNew = pk ? parkingItem(pk.unitPrice) : null;
+  const lotsC = (jobD.lots || []).filter(l => selLots.has(l.key)).map(l => ({...l, iids:(l.iids || []).filter(x => ids.includes(x))}));
+  const lotsP = (jobD.lots || []).map(l => ({...l, iids:(l.iids || []).filter(x => !ids.includes(x))})).filter(l => l.iids.length);
+  if(!cd.craftStart){ const ls = lotsC.filter(l => l.start); if(ls.length) cd = {...cd, craftStart:ls.reduce((a, l) => l.start < a ? l.start : a, ls[0].start), craftEnd:ls.reduce((a, l) => (l.end || l.start) > a ? (l.end || l.start) : a, ls[0].end || ls[0].start)}; }
   const selPriv = [...take(privAll), ...(pkNew ? [pkNew] : [])], cats = [...new Set(selPriv.map(i => i.cat).filter(c => c && c !== "その他"))];
   const work = selPriv.filter(i => !isParking(i)), label = cats.length ? cats.join("・") : work[0].name + (work.length > 1 ? " ほか" : "");
   const child = {title:`${jobD.title}（${label}）`, trades:jobD.trades || [], pref:jobD.pref || "", city:jobD.city || "", startDate:cd.craftStart || jobD.startDate, endDate:cd.craftEnd || jobD.endDate, ...cd,
-    price:itemsTotal(selPriv), parking:pkNew ? pkNew.unitPrice : 0, taxMode:jobD.taxMode || "税別", items:[...take(pubAll), ...(pkNew ? [pkNew] : [])], audience:jobD.audience || "all", site:jobD.site || null, staff:jobD.staff || null, jobNo:jobD.jobNo || "",
+    price:itemsTotal(selPriv), parking:selPriv.filter(isParking).reduce((a, i) => a + itemAmount(i), 0), lots:lotsC, taxMode:jobD.taxMode || "税別", items:[...take(pubAll), ...(pkNew ? [pkNew] : [])], audience:jobD.audience || "all", site:jobD.site || null, staff:jobD.staff || null, jobNo:jobD.jobNo || "",
     description:jobD.description || "", priceNote:"", photos:jobD.photos || [], parentId:jobD.id, status:"closed", publishedAt:jobD.publishedAt || Date.now(),
     allItems:jobD.allItems?.length ? jobD.allItems : pubAll};
   const cid = await api().saveJob(null, child);
   await api().setJobPrivate(cid, {...priv, items:selPriv});
-  await api().saveJob(jobD.id, {items:keep(pubAll), price:itemsTotal(keep(privAll)), allItems:jobD.allItems?.length ? jobD.allItems : pubAll});
+  await api().saveJob(jobD.id, {items:keep(pubAll), price:itemsTotal(keep(privAll)), allItems:jobD.allItems?.length ? jobD.allItems : pubAll, ...(jobD.lots ? {lots:lotsP} : {})});
   await api().setJobPrivate(jobD.id, {...priv, items:keep(privAll)});
   const c = S.crafts.get(uid) || await api().getProfile(uid), childJob = await api().getJob(cid);
   const how = await assignOrPrepay(cid, uid, buildOrderDoc(childJob, {...priv, items:selPriv}, c, await orderExtra(cid)));
@@ -1330,8 +1397,10 @@ async function unassignChild(job){
   if(!await ask({title:"発注を取り消しますか？", body:`${c ? `${c.name} さんへの` : ""}発注を取り消し、発注書を削除します。${back ? "この工事は元の案件に戻り、募集を続けます。" : "元の案件はすでに発注済みなので、この工事は別の案件として「募集中」に戻します。"}`, ok:"取り消す", danger:true})) return;
   if(!job.declinedAt && job.assignedTo) await notifyMail(job.id, "発注が取り消されました", `「${job.title}」の発注を取り消しました。`, {to:job.assignedTo});
   if(!back){ await api().unassign(job.id); toast("発注を取り消して募集に戻しました"); return route(); }
-  const pPub = itemsWithId(parent.items), pPriv = itemsWithId(ppriv.items?.length ? ppriv.items : parent.items), cPub = temaBack(itemsWithId(job.items)), cPriv = temaBack(itemsWithId(cpriv.items?.length ? cpriv.items : job.items));
-  const back1 = parent.allItems?.length ? {allItems:parent.allItems.map(i => cPub.some(x => x.iid === i.iid) ? temaBack([i])[0] : i)} : {};
+  const noCopy = list => list.filter(i => !(isParking(i) && !i.lot));   // 子案件にだけ入れた駐車場代（前の形）は戻さない
+  const pPub = itemsWithId(parent.items), pPriv = itemsWithId(ppriv.items?.length ? ppriv.items : parent.items), cPub = noCopy(temaBack(itemsWithId(job.items))), cPriv = noCopy(temaBack(itemsWithId(cpriv.items?.length ? cpriv.items : job.items)));
+  if(parent.lots || job.lots){ const m = new Map((parent.lots || []).map(l => [l.key, {...l}])); (job.lots || []).forEach(l => { const o = m.get(l.key); m.set(l.key, o ? {...o, iids:[...(o.iids || []), ...(l.iids || [])]} : l); }); back1.lots = [...m.values()]; }
+  let back1 = parent.allItems?.length ? {allItems:parent.allItems.map(i => cPub.some(x => x.iid === i.iid) ? temaBack([i])[0] : i)} : {};
   await api().saveJob(parent.id, {items:[...pPub, ...cPub], price:itemsTotal([...pPriv, ...cPriv]), status:parent.status === "closed" ? "open" : parent.status, ...back1});
   await api().setJobPrivate(parent.id, {...ppriv, items:[...pPriv, ...cPriv]});
   await api().setAppStatus(`${parent.id}_${job.assignedTo}`, job.declinedAt ? "declined" : "applied").catch(e => console.error(e));
@@ -1357,11 +1426,11 @@ function pickItemsHtml(items, selected = null, legend = "やる工事を選ん�
   </fieldset>`;
 }
 // 発注する工事と、その業者の工期を選ぶダイアログ。{ids:選んだ工事の目印, start, end}（キャンセルなら false）を返す
-function pickItemsDialog(title, body, items, selected, ok, period = ""){
+function pickItemsDialog(title, body, items, selected, ok, period = "", lots = []){
   return new Promise(res => {
     const bg = document.createElement("div"); bg.className = "modal-bg";
     bg.innerHTML = `<div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="pd-title"><h2 id="pd-title">${esc(title)}</h2><p style="white-space:pre-line">${esc(body)}</p>
-      <form class="pd-form">${pickItemsHtml(items, selected, "発注する工事", "チェックした工事だけを、この業者に発注します")}
+      <form class="pd-form">${lots.length > 1 ? `<div class="row pd-lots" style="gap:6px;flex-wrap:wrap;margin:0 0 10px"><span class="small">工種で選ぶ：</span>${lots.map((l, k) => `<button type="button" class="btn sub sm" data-lot="${k}">${esc(l.key)}${l.start ? `（${fmtRange(l.start, l.end || l.start)}）` : ""}</button>`).join("")}</div>` : ""}${pickItemsHtml(items, selected, "発注する工事", "チェックした工事だけを、この業者に発注します")}
         <div class="two"><label class="field"><span>この業者の工期（入る日） <small>任意。決めると業者が入る日を選ぶ手間がなくなり、完了確認の予定にも入ります${period ? `（案件の工期：${esc(period)}）` : ""}</small></span><input type="date" name="pdStart"></label>
           <label class="field"><span>終わりの日 <small>1日で終わるなら空欄</small></span><input type="date" name="pdEnd"></label></div></form>
       <p class="small pd-sum" style="margin:0 0 12px"></p>
@@ -1373,6 +1442,10 @@ function pickItemsDialog(title, body, items, selected, ok, period = ""){
     bg.querySelector(".m-no").onclick = () => close(false);
     bg.querySelector(".m-ok").onclick = () => close({ids:[...bg.querySelectorAll("[name=pick]:checked")].map(x => x.value), start:bg.querySelector("[name=pdStart]").value, end:bg.querySelector("[name=pdEnd]").value});
     bg.addEventListener("change", () => setTimeout(sum, 0));
+    // 工種のボタン：その工種の工事だけにチェックし、決めてある工期を入れる
+    bg.querySelectorAll("[data-lot]").forEach(b => b.onclick = () => { const l = lots[Number(b.dataset.lot)];
+      bg.querySelectorAll("[name=pick]").forEach(c => { c.checked = (l.iids || []).includes(c.value); });
+      bg.querySelector("[name=pdStart]").value = l.start || ""; bg.querySelector("[name=pdEnd]").value = l.end && l.end !== l.start ? l.end : ""; sum(); });
     bg.addEventListener("click", e => { if(e.target === bg) close(false); });
     document.addEventListener("keydown", key); document.body.appendChild(bg); sum();
     bg.querySelector(".m-ok").focus();
@@ -1444,7 +1517,8 @@ function itemRowHtml(i = {qty:1, unit:"式"}){
     <div class="i-checks"><label class="toggle" title="材料込み（材工）で発注する作業。発注書と職人さんの画面に「材工」と出ます"><input type="checkbox" name="i_zai" ${i.zai ? "checked" : ""}>材工</label>
       <label class="i-tema" title="材工ができない業者は、応募するときに手間のみに切り替えられます（空なら切り替えなし）">手間のみなら<input type="number" name="i_tema" value="${esc(i.temaPrice || "")}" min="0" inputmode="numeric" placeholder="単価" aria-label="手間のみの単価">円</label>
       ${i.tema ? `<span class="tema-on">業者の希望で手間のみに変更（材工 ${yenFull(i.zaiPrice)}）<button type="button" class="textlink" data-act="untema">材工に戻す</button></span>` : ""}
-      <label class="toggle i-add" title="案件を保存すると、この作業と単価が単価表に入り、次からプルダウンで選べます"><input type="checkbox" name="i_add">単価表に追加</label></div>
+      <label class="toggle i-add" title="案件を保存すると、この作業と単価が単価表に入り、次からプルダウンで選べます"><input type="checkbox" name="i_add">単価表に追加</label>
+      <button type="button" class="textlink i-self" data-act="item-self" title="誰もできない工事を自社でやるとき。案件から外し、業者には出しません">自社でやる</button></div>
     <button type="button" class="i-grip" aria-label="この作業の並び順を変える（つかんで上下に動かす。キーボードは上下の矢印キー）"><b aria-hidden="true">≡</b>移動</button></div>`;
 }
 function readItems(form){
@@ -1496,6 +1570,8 @@ function syncItems(form){
   if(used.length) price.value = total;
   form.querySelector(".i-total").textContent = yenFull((used.length ? total : Number(price.value) || 0) + formParking(form));
   const jt = form.querySelector("#job-trades"); if(jt && used.length) jt.textContent = tradeLabels(tradesFromItems(used)).join("・");
+  renderLots(form);
+  form.querySelector(".i-total").textContent = yenFull((used.length ? total : Number(price.value) || 0) + formParking(form));
 }
 
 function buildOrderDoc(job, priv, c, extra = {}){
@@ -3994,7 +4070,7 @@ async function viewJobEdit(id){
   const staffSel = id ? (job.staff?.name || "") : lastStaff;
   const staffOpts = [...S.staff.map(p => p.name), ...(staffSel && !S.staff.some(p => p.name === staffSel) && id ? [staffSel] : [])];
   S.jobNos = (await api().listJobs({}).catch(() => [])).filter(j => j.jobNo && j.id !== id && j.parentId !== id && j.id !== job.parentId && !(job.parentId && j.parentId === job.parentId)).map(j => j.jobNo);
-  setTimeout(() => { const f = document.querySelector("form[data-form=job]"); if(f) fillJobNo(f); }, 0);
+  setTimeout(() => { const f = document.querySelector("form[data-form=job]"); if(f){ fillJobNo(f); renderLots(f); renderSelf(f); } }, 0);
   S.editPhotos = [...(job.photos || [])];
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
   const isDraft = !id || job.status === "draft";
@@ -4003,7 +4079,9 @@ async function viewJobEdit(id){
   const editItems = usedItems.length ? usedItems : [{qty:1, unit:"式"}];
   // 駐車場代：新しい案件・下書きは最初から1,500円を入れておく
   const pkOn = pkIt ? true : job.parking != null ? Number(job.parking) > 0 : isDraft;
+  const lotsInit = job.lots?.length ? job.lots : lotsFromItems(usedItems, [], pkOn ? (pkIt?.unitPrice || pkAmt0()) : 0);
   const pkAmt = pkIt ? pkIt.unitPrice : Number(job.parking) > 0 ? Number(job.parking) : PARKING_FEE;
+  function pkAmt0(){ return Number(job.parking) > 0 ? Number(job.parking) : PARKING_FEE; }
   const workPrice = usedItems.length ? itemsTotal(usedItems) : Number(job.price) > 0 ? Number(job.price) - (pkIt ? 0 : Number(job.parking) || 0) : "";
   const buttons = isDraft
     ? `<div class="aud-pick" role="radiogroup" aria-label="公開する相手"><label><input type="radio" name="audience" value="priority" ${job.audience !== "all" ? "checked" : ""}>既存業者のみに公開（あとから全体に公開もできます）</label><label><input type="radio" name="audience" value="all" ${job.audience === "all" ? "checked" : ""}>最初から全体に公開${tenant() ? `（発注時に先払い・運営手数料${Math.round(opFee() * 100)}%）` : ""}</label>${tenant() ? coPostNote() : ""}
@@ -4020,9 +4098,12 @@ async function viewJobEdit(id){
         <datalist id="unit-list">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist>
         <datalist id="loc-list">${ITEM_LOCS.map(u => `<option value="${esc(u)}">`).join("")}</datalist>
         <div class="row between" style="margin-top:10px;flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-item">＋ 作業を追加</button>
-          <span>合計（税抜・駐車場代込み）<span class="i-total">${yenFull((Number(workPrice) || 0) + (pkOn ? pkAmt : 0))}</span></span></div>
-        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center"><label class="toggle" style="margin:0"><input type="checkbox" name="pkOn" ${pkOn ? "checked" : ""}>業者の駐車場代を入れる</label>
-          <input type="number" name="pkAmt" min="0" step="1" inputmode="numeric" value="${esc(pkAmt)}" style="width:110px" aria-label="駐車場代（税抜）"><span class="small">円（税抜）　いらないときはチェックを外します。作業内訳の最後に載ります</span></div>
+          <span>合計（税抜・駐車場代込み）<span class="i-total">${yenFull((Number(workPrice) || 0) + lotsInit.reduce((a, l) => a + (Number(l.parking) || 0), 0))}</span></span></div>
+        <div class="lots-sec"><h3>業者ごとの工期・駐車場代 <small>工種ごとに分けて発注できます（分離発注）。駐車場代は業者ごとに入れるか選べ、作業内訳の最後に載ります</small></h3>
+          <div id="lots-ed" data-init="${esc(JSON.stringify(lotsInit))}" data-defpk="${pkOn ? esc(pkAmt) : 0}"></div>
+          <h3 style="margin-top:14px">工程表</h3><div id="lots-gantt"></div></div>
+        <div class="self-sec" id="self-sec" hidden><h3>自社でやる工事 <small>誰もできないので自社でやる工事です。業者には出ず、発注書・支払金額にも入りません</small></h3>
+          <input type="hidden" name="selfItems" value="${esc(JSON.stringify(priv.selfItems || []))}"><div id="self-list"></div></div>
         <label class="field" style="margin:12px 0 0"><span>作業の支払金額（税抜・駐車場代は別） <small>作業内訳を入力すると合計が自動で入ります</small></span>
           <input type="number" name="price" min="0" step="1" inputmode="numeric" value="${esc(workPrice)}" placeholder="例：25000" ${usedItems.length ? "readonly" : ""}></label>
       </section>
@@ -4086,6 +4167,9 @@ async function viewAdminJob(id){
   // 完了確認の予定：元の案件と分離発注の子案件の、発注した業者をまとめる
   const root = parentJob || job, calFam = [root, ...family.filter(j => j.parentId === root.id && j.id !== root.id)].map(j => j.id === job.id ? job : j).filter(j => j.assignedTo && !j.declinedAt);
   const cal = calFam.length ? doneCalUrl(root, priv, calFam) : null, calUrl = cal?.url || "";
+  // 工程表：元の案件と分離発注の子案件の、工種ごとの工期（発注した業者の入る日があればそれ）
+  const ganttLots = [root, ...family.filter(j => j.parentId === root.id)].map(j => j.id === job.id ? job : j).flatMap(j => (j.lots || []).filter(l => (l.iids || []).length || j.lots.length === 1).map(l => ({...l,
+    start:(j.parentId || j.lots.length === 1) && j.craftStart ? j.craftStart : l.start, end:(j.parentId || j.lots.length === 1) && j.craftStart ? (j.craftEnd || j.craftStart) : l.end, who:j.assignedTo && !j.declinedAt ? craftName(j.assignedTo) : "未発注"})));
   const lrow = calUrl ? ((await ledgerData().catch(() => ({rows:[]}))).rows.find(r => r.jobId === root.id) || null) : null;
   // 完了確認の担当：メールのあるメンバーから選ぶ（案件の担当者を最初に選んでおく）。選んだ人は予定に招待される
   const calMembers = calUrl ? (await api().listAdmins().catch(() => [])).filter(m => m.email && m.status !== "suspended") : [];
@@ -4164,6 +4248,11 @@ async function viewAdminJob(id){
         : `<section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
           ${apps.length ? apps.map(applicantHtml).join("") : `<p class="small" style="margin:0">${job.status === "draft" ? "公開すると、協力業者からの応募がここに届きます。" : "まだ応募はありません。"}</p>`}
         </section>`}
+        ${ganttLots.some(l => l.start) ? `<section class="panel"><h2>工程表</h2>${ganttHtml(ganttLots)}</section>` : ""}
+        ${(() => { const L = !job.assignedTo && !["completed", "paid"].includes(job.status) ? (job.lots || []).filter(l => (l.iids || []).length) : [], self = priv.selfItems || [];
+          if(!L.length && !self.length) return "";
+          return `<section class="panel"><h2>自社でやる工事</h2>${L.length ? `<p class="small" style="margin:0 0 8px">誰もできない工種は、自社でやることにすると案件から外れ、業者には出ません。</p><div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:${self.length ? 12 : 0}px">${L.map(l => `<button class="btn sub sm" data-act="job-lot-self" data-job="${esc(job.id)}" data-key="${esc(l.key)}">${esc(l.key)}を自社でやる</button>`).join("")}</div>` : ""}
+            ${self.length ? `<ul class="self-ul">${self.map(i => `<li>${i.loc ? `${esc(i.loc)} ` : ""}<b>${esc(i.name)}</b> <span class="small">${fmtQty(i.qty)}${esc(i.unit || "")}</span></li>`).join("")}</ul><p class="small" style="margin:6px 0 0">業者に出す工事に戻すときは「編集」から。</p>` : ""}</section>`; })()}
         ${calUrl ? `<section class="panel"><h2>完了確認</h2>
           <p class="small" style="margin:0 0 10px">完了確認の日と担当を選んで、Googleカレンダーに入れます（会社のアドレスで作り、担当は招待されます）。最初の日付はUP日です。</p>
           <div class="row" style="gap:8px;flex-wrap:wrap"><input type="date" data-caldate value="${esc(lrow?.doneCheck || cal.up)}" aria-label="完了確認の日" style="max-width:180px">${calPick}<button class="btn" data-act="done-cal" data-url="${esc(calUrl)}" data-root="${esc(root.id)}">カレンダーに入れる</button></div>
@@ -5928,6 +6017,24 @@ const ACTIONS = {
     toast(`${add.length}件を追加しました。「単価表を保存」を押すと反映されます`);
   },
   async "rm-price"(el){ el.closest(".price-row").remove(); },
+  async "item-self"(el){ moveToSelf(el.closest("form"), [el.closest(".item-row")]); toast("自社でやる工事にしました（保存すると案件から外れます）"); },
+  async "lot-self"(el){ const f = el.closest("form"), key = el.dataset.key, items = readItems(f), rows = [...f.querySelectorAll(".item-row")];
+    moveToSelf(f, rows.filter((r, k) => items[k]?.name && lotKeyOf(items[k]) === key)); toast(`「${key}」を自社でやる工事にしました（保存すると案件から外れます）`); },
+  async "self-back"(el){ const f = el.closest("form"), list = selfOf(f), [i] = list.splice(Number(el.dataset.k), 1); if(!i) return;
+    const empty = [...f.querySelectorAll(".item-row")].filter(r => !r.querySelector("[name=i_name]").value.trim() && !r.querySelector("[name=i_price]").value); empty.forEach(r => r.remove());
+    f.querySelector("#items-ed").insertAdjacentHTML("beforeend", itemRowHtml(i)); f.elements.selfItems.value = JSON.stringify(list); renderSelf(f); syncItems(f); },
+  // 公開したあと：誰も応募しない工種を自社でやる（案件から外す）
+  async "job-lot-self"(el){
+    const id = el.dataset.job, key = el.dataset.key, [j, pv] = await Promise.all([api().getJob(id), api().getJobPrivate(id)]);
+    if(!j || j.assignedTo) throw new Error("発注済みの案件は変えられません");
+    if(!await ask({title:`「${key}」を自社でやりますか？`, body:"この工種の工事（と、その駐車場代）を案件から外し、業者には出さないようにします。外した工事は「自社でやる工事」に残ります。", ok:"自社でやる"})) return;
+    const L = (j.lots || []).find(l => l.key === key), inLot = i => isParking(i) ? i.lot === key : L ? (L.iids || []).includes(i.iid) : lotKeyOf(i) === key;
+    const pub = itemsWithId(j.items), prv = itemsWithId(pv.items?.length ? pv.items : j.items), moved = prv.filter(i => inLot(i) && !isParking(i));
+    const pub2 = pub.filter(i => !inLot(i)), prv2 = prv.filter(i => !inLot(i)), work = prv2.filter(i => !isParking(i));
+    await api().saveJob(id, {items:pub2, price:itemsTotal(prv2), parking:prv2.filter(isParking).reduce((a, i) => a + itemAmount(i), 0), lots:(j.lots || []).filter(l => l.key !== key), ...(work.length ? {trades:tradesFromItems(work)} : {})});
+    await api().setJobPrivate(id, {...pv, items:prv2, selfItems:[...(pv.selfItems || []), ...moved]});
+    toast(work.length ? `「${key}」を自社でやる工事にしました` : "業者に出す工事がなくなりました。募集を締め切ってください"); route();
+  },
   async "rm-item"(el){ const form = el.closest("form"); el.closest(".item-row").remove(); syncItems(form); },
   async "cal-job"(el){ const j = S.cal?.jobs.get(el.dataset.id); if(j) calPopup(j); },
   async "rm-photo"(el){ S.editPhotos.splice(Number(el.dataset.i), 1); $("#photo-edit").innerHTML = editPhotosHtml(); },
@@ -6342,11 +6449,12 @@ const ACTIONS = {
     let cd = {};
     if(all.length > 1){
       const want = JSON.parse(el.dataset.items || "null");
-      const r = await pickItemsDialog(`${name} さんに発注しますか？`, "発注する工事を選んでください。全部選べばこの案件をそのまま発注し、一部だけなら、その工事を別の案件（子案件）にして発注します。", all, want ? want.filter(x => all.some(i => i.iid === x)) : null, "発注する", jobD.startDate ? fmtRange(jobD.startDate, jobD.endDate) : "");
+      const r = await pickItemsDialog(`${name} さんに発注しますか？`, "発注する工事を選んでください。全部選べばこの案件をそのまま発注し、一部だけなら、その工事を別の案件（子案件）にして発注します。", all, want ? want.filter(x => all.some(i => i.iid === x)) : null, "発注する", jobD.startDate ? fmtRange(jobD.startDate, jobD.endDate) : "", jobD.lots || []);
       if(r === false) return;
       const ids = r.ids;
       if(!ids.length) throw new Error("発注する工事を1つ以上選んでください");
       if(r.start) cd = {craftStart:r.start, craftEnd:r.end && r.end >= r.start ? r.end : r.start};
+      else if(ids.length >= all.length){ const ls = (jobD.lots || []).filter(l => l.start); if(ls.length) cd = {craftStart:ls.reduce((a, l) => l.start < a ? l.start : a, ls[0].start), craftEnd:ls.reduce((a, l) => (l.end || l.start) > a ? (l.end || l.start) : a, ls[0].end || ls[0].start)}; }
       await applyTemaToJob(jobD, priv, tema.filter(x => ids.includes(x)));
       if(ids.length < all.length) return splitAssign(jobD, priv, uid, name, ids, cd);
     } else if(!await ask({title:`${name} さんに発注しますか？`, body:`発注内容（作業内訳）から発注書を自動で作成し、業者さまがダウンロードできるようになります。現場情報もこの業者に表示されます。ほかの応募者は「見送り」になります。${noItems ? "\n\n※作業内訳がまだ入力されていません。先に「編集」で作業ごとの金額を入力してください（あとから入力して発注書を作り直すこともできます）。" : `\n\n発注金額（税抜）：${yenFull(jobD.price)}`}`, ok:"発注する"})) return;
@@ -6879,14 +6987,14 @@ const FORMS = {
       if(added){ await api().savePrices(prices); S.prices = prices; }
     }
     items.forEach(i => { delete i.addPrice; delete i.addCat; });
-    const parking = formParking(form);
+    const lots = readLots(form), parking = lots.reduce((a, l) => a + l.parking, 0);
     // 工種は作業内訳から決める（内訳がないときは前の工種のまま）
     const trades = items.length ? tradesFromItems(items) : g("tradesOld") ? g("tradesOld").split(",") : ["雑工事"];
     const price = (items.length ? itemsTotal(items) : Math.max(0, Math.round(Number(g("price")) || 0))) + parking;
-    if(items.length && parking) items.push(parkingItem(parking));
+    if(items.length) lots.filter(l => l.parking).forEach(l => items.push({...parkingItem(l.parking), name:lots.length > 1 ? `駐車場代（${l.key}）` : "駐車場代", lot:l.key}));
     // 募集中に業者全員が見る作業内訳（単価・金額も見せる。住所・鍵などは発注先だけが読める private に保存）
     const publicItems = items.map(i => ({iid:i.iid, cat:i.cat || "その他", loc:i.loc || "", name:i.name, qty:i.qty, unit:i.unit, unitPrice:i.unitPrice, note:i.note || "", zai:!!i.zai,
-      ...(i.temaPrice ? {temaPrice:i.temaPrice} : {}), ...(i.tema ? {tema:true, zaiPrice:i.zaiPrice ?? 0} : {}), ...(i.parking ? {parking:true} : {})}));
+      ...(i.temaPrice ? {temaPrice:i.temaPrice} : {}), ...(i.tema ? {tema:true, zaiPrice:i.zaiPrice ?? 0} : {}), ...(i.parking ? {parking:true} : {}), ...(i.lot ? {lot:i.lot} : {})}));
     // 住所・物件名・オートロック・エレベーターは募集中の業者にも見せる（鍵・入室方法・連絡事項・写真URLは発注先だけ。管理会社は業者に見せない）
     const site = {address:g("address"), building:g("building"), room:g("room"), autolock:g("autolock"), elevator:g("elevator")};
     let jobNo = normJobNo(g("jobNo"));
@@ -6912,7 +7020,9 @@ const FORMS = {
     const staffName = g("staff"), sp = (S.staff || []).find(p => p.name === staffName);
     const staff = staffName ? {name:staffName, phone:sp ? sp.phone || "" : ""} : null;
     if(staffName){ try { localStorage.setItem("refore_last_staff", staffName); } catch(e) {} }
-    const data = {title, trades, pref:g("pref"), city:g("city"), startDate, endDate, price, parking, taxMode:"税別", items:publicItems, site, staff, jobNo, description:g("description")};
+    // 業者ごとの工期があれば、案件の工期はその最初〜最後まで広げる
+    const ls = lots.filter(l => l.start), sD = ls.reduce((a, l) => l.start < a ? l.start : a, startDate), eD = ls.reduce((a, l) => (l.end || l.start) > a ? (l.end || l.start) : a, endDate);
+    const data = {title, trades, pref:g("pref"), city:g("city"), startDate:sD, endDate:eD, price, parking, lots, taxMode:"税別", items:publicItems, site, staff, jobNo, description:g("description")};
     if(!id) Object.assign(data, {priceNote:"", photos:[]});
     if(mode === "open" || mode === "draft") data.status = mode;
     if(fd.get("audience")) data.audience = fd.get("audience") === "priority" ? "priority" : "all";
@@ -6922,7 +7032,7 @@ const FORMS = {
     if(!id && !data.status) data.status = "draft";
     const jid = await api().saveJob(id, data);
     await api().setJobPrivate(jid, {address:g("address"), building:g("building"), room:g("room"), keyInfo:g("keyInfo"), manager:g("manager"), contact:g("contact"),
-      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), moveIn:g("moveIn"), photoUrls, items});
+      autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), moveIn:g("moveIn"), photoUrls, items, selfItems:selfOf(form)});
     // 収支の手入力の行を、この案件の収支にまとめる（請負金額・完了月・担当などはそのまま。発注業者は「ポータル以外で払った分」に入れる）
     if(link) await mergeLedgerLink(link, ledger.find(r => r.id === jid), jid);
     toast((mode === "open" ? "公開しました" : "保存しました") + (added ? `（単価表に${added}件追加）` : ""));
@@ -7130,7 +7240,7 @@ document.addEventListener("input", e => {
   if(e.target.matches?.("form[data-form=job] [name=title]")) e.target.dataset.auto = "";
   if(e.target.matches?.("[data-delfilter=q]")){ S.delFilter.q = e.target.value; renderDelList(); }
   if(e.target.closest?.(".mo-row")) moSync(e.target.form);
-  if(e.target.matches?.("[data-propfilter=q]")){ S.propFilter.q = e.target.value; renderPropList(); } if(e.target.closest(".item-row") || e.target.matches?.("[name=pkOn],[name=pkAmt],form[data-form=job] [name=price]")) syncItems(e.target.form);  });
+  if(e.target.matches?.("[data-propfilter=q]")){ S.propFilter.q = e.target.value; renderPropList(); } if(e.target.closest(".item-row") || e.target.matches?.("#lots-ed input,form[data-form=job] [name=price]")) syncItems(e.target.form);  });
 // 業者が選んだ工事と、手間のみでやる工事
 function pickChoice(){
   const all = itemsWithId(S.pickItems || []), boxes = document.querySelectorAll(".witem [name=pick]");
