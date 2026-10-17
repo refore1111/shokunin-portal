@@ -1903,6 +1903,8 @@ class DemoBackend {
     let raw = null;
     try { raw = localStorage.getItem(this.key); } catch(e) {}
     try { this.data = raw ? JSON.parse(raw) : seedDemo(); } catch(e) { this.data = seedDemo(); }
+    // 前から使っているデモのデータにも、あとで足したデモのアカウント（工務店の従業員など）を補う（今のデータは消さない）
+    try { if(raw){ const sd = seedDemo(); Object.entries(sd.accounts || {}).forEach(([k, v]) => { if(!this.data.accounts[k] && !Object.values(this.data.accounts).some(x => x.email === v.email)){ this.data.accounts[k] = v; if(sd.users?.[k] && !this.data.users[k]) this.data.users[k] = sd.users[k]; } }); } } catch(e) {}
     // ログイン状態はタブごと（別タブで管理者と職人を同時に試せる）
     try { this.session = sessionStorage.getItem(this.key + "_session"); } catch(e) { this.session = null; }
     window.addEventListener("storage", e => { if(e.key !== this.key || !e.newValue) return; try { this.data = JSON.parse(e.newValue); this.fire(); } catch(err) {} });
