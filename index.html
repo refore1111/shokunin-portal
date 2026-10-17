@@ -5499,7 +5499,7 @@ function memoNextNo(co){
 }
 document.addEventListener("change", e => { const t = e.target; if(!t.matches?.("[data-cfpick]") || !t.value) return;
   const c = t.closest(".mcf"), row = c.querySelector(".memo-row"); if(c.classList.contains("all")) memoCfAll(c, false); c.dataset.cf = t.value; memoPreset(row, t.value); memoCalc(); });
-document.addEventListener("input", e => { if(e.target.closest?.("form[data-form=memo]")){ if(/^c_(rk|ac|wax|waxh)_n$/.test(e.target.name)){ const f = e.target.form, k = e.target.name.slice(2, -2), h = f.elements[`c_${k}`];
+document.addEventListener("input", e => { if(e.target.closest?.("form[data-form=memo]")){ if(/^c_(rk|ac|waxh)_n$/.test(e.target.name)){ const f = e.target.form, k = e.target.name.slice(2, -2), h = f.elements[`c_${k}`];
   if(h && e.target.value && !h.value){ h.value = "有"; h.closest(".mc-g").querySelectorAll(".mc").forEach(b => b.classList.toggle("on", b.dataset.v === "有")); } memoCheckSync(f); } else memoCalc(); } });
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) memoReprice(t.form); else if(t.closest?.("form[data-form=memo]")) memoCalc(); });
 // ---- 紙の工事メモと同じ並び：チェック（上の段）・クロス・床（真ん中の段） ----
@@ -5510,7 +5510,7 @@ const MEMO_CF = [["クロス貼替(壁)", true]];   // 天井・部分貼替・�
 const CF_ALL = {loc:"全室内", label:"クロス全張替え(天井・壁)", price:"クロス貼替(天井・壁)"};
 const DIM_LOCS = ["洋室", "洋室収納", "通路", "通路収納", "LDK", "DK", "キッチン", "洗面所", "トイレ", "洗濯機置場", "玄関", "和室", "浴室"];
 const MEMO_CK = [   // [キー, 名前, 選べるもの, 数の欄（単位）, 工事の名前（有のとき）]
-  ["rk", "ルークリ", null, "㎡", "ハウスクリーニング"], ["ac", "エアコン洗浄", ["有", "無"], "台", "エアコン内部洗浄"], ["wax", "WAX", ["有", "無"], "㎡", "WAX"],
+  ["rk", "ルークリ", null, "㎡", "ハウスクリーニング"], ["ac", "エアコン洗浄", ["有", "無"], "台", "エアコン内部洗浄"], ["wax", "WAX", ["有", "無"], "", null],   // WAXは工事にせず、クリーニングの仕様に「WAX有り／WAXフリー」
   ["waxh", "WAX剥離", ["有", "無"], "㎡", "WAX剥離"], ["cc", "クロスクリーニング", ["有", "無"], "", "クロスクリーニング"], ["mir", "浴室鏡水垢洗浄", ["有", "無"], "", "鏡水垢洗浄"]];
 const MEMO_CK2 = [   // 工事にはならず、業者さんへの連絡事項・案件に入るもの
   ["mb", "メールBOX", ["AL内", "外"], "番号"], ["light", "居室照明", ["有（リモコン有）", "有（リモコン無）", "無"], ""], ["park", "敷地内駐車", ["有", "無"], "場所"]];
@@ -5518,7 +5518,7 @@ const MEMO_CK2 = [   // 工事にはならず、業者さんへの連絡事項�
 function mcSet(f, k, v){ const h = f.elements[`c_${k}`]; if(!h) return; h.value = v || ""; h.closest(".mc-g").querySelectorAll(".mc").forEach(b => b.classList.toggle("on", !!v && b.dataset.v === v)); }
 const mcChips = (k, vs) => `<span class="mc-g" data-mc="${k}">${vs.map(v => `<button type="button" class="mq-b mc" data-act="mc" data-k="${k}" data-v="${esc(v)}">${esc(v)}</button>`).join("")}<input type="hidden" name="c_${k}"></span>`;
 function memoChecksHtml(){
-  return MEMO_CK.map(([k, l, vs, u]) => `<div class="mck"><b>${l}</b><span class="mck-v">${vs ? mcChips(k, vs) : ""}${u ? `<input type="number" name="c_${k}_n" min="0" step="0.01" inputmode="decimal" class="mck-n" placeholder="${u === "台" ? "1" : ""}" aria-label="${l}（${u}）"><span class="small">${u}</span>` : ""}</span></div>`).join("");
+  return MEMO_CK.map(([k, l, vs, u]) => `<div class="mck"><b data-cklabel="${k}">${l}</b><span class="mck-v">${vs ? mcChips(k, vs) : ""}${u ? `<input type="number" name="c_${k}_n" min="0" step="0.01" inputmode="decimal" class="mck-n" placeholder="${u === "台" ? "1" : ""}" aria-label="${l}（${u}）"><span class="small">${u}</span>` : ""}</span></div>`).join("");
 }
 function memoChecksHtml2(){
   return MEMO_CK2.map(([k, l, vs, u]) => `<div class="mck"><b>${l}</b><span class="mck-v">${u === "date" ? `<input type="date" name="c_${k}_n" class="mck-d" aria-label="${l}">` : u === "番号" ? `<input type="text" name="c_${k}_n" class="mck-n" placeholder="番号" aria-label="${l}の番号">` : ""}${mcChips(k, vs)}${u && u !== "date" && u !== "番号" ? `<input type="text" name="c_${k}_n" class="mck-t" placeholder="${u}" aria-label="${l}（${u}）">` : ""}</span></div>`).join("");
@@ -5551,7 +5551,8 @@ function memoSupFill(row, p){
   row.dataset.matId = p.matId || ""; row.dataset.matRate = p.matSup ? matRateOf(p) : "";
 }
 function memoPreset(row, k, area = 0){
-  const ps = estPrices().filter(p => !p.noteRow && p.name), nk = normKey(k);
+  const all = estPrices().filter(p => !p.noteRow && p.name), nk = normKey(k), cl = all.filter(p => p.cat === CK_CAT);
+  const ps = row.dataset.chk && cl.some(p => normKey(p.name).includes(nk)) ? cl : all;   // チェックの工事は、クリーニングの工事から選ぶ
   let hits = ps.filter(p => normKey(p.name) === nk); if(!hits.length) hits = ps.filter(p => normKey(p.name).includes(nk));
   if(k === "ハウスクリーニング" && area > 0){
     const tiers = ps.filter(p => /クリーニング（〜\s*(\d+)\s*㎡/.test(p.name)).map(p => ({p, n:Number(p.name.match(/〜\s*(\d+)/)[1])})).sort((a, b) => a.n - b.n);
@@ -5562,21 +5563,26 @@ function memoPreset(row, k, area = 0){
   else { inp.value = k; row.querySelector("[name=m_pid]").value = ""; }
   memoRowState(row); return p;
 }
-// チェックから工事の行を作る・直す・消す（行は「その他の工事」に出る。手で直してもよい）
+// チェックから工事の行を作る・直す・消す（行は「その他の工事」に出る。手で直してもよい）。チェックの工事は工種「クリーニング」
+const CK_CAT = "クリーニング";
 function memoCheckSync(f){
-  const box = f.querySelector("#memo-rows");
-  MEMO_CK.forEach(([k, l, vs, u, work]) => {
+  const box = f.querySelector("#memo-rows"), wax = f.elements.c_wax?.value || "";
+  const wl = f.querySelector('[data-cklabel="waxh"]'); if(wl) wl.textContent = wax === "無" ? "剥離" : "WAX剥離";   // WAX無しなら「剥離」
+  MEMO_CK.forEach(([k, l, vs, u, work]) => { if(!work) return;
     const v = f.elements[`c_${k}`]?.value || "", n = Number(f.elements[`c_${k}_n`]?.value) || 0, on = vs ? v === "有" : n > 0;
     let row = box.querySelector(`.memo-row[data-chk="${k}"]`);
     if(!on){ if(row){ row.remove(); if(!box.querySelector(".memo-row")) box.insertAdjacentHTML("beforeend", memoRowHtml()); } return; }
     if(!row){ row = [...box.querySelectorAll(".memo-row")].find(r => !r.querySelector("[name=m_name]").value.trim() && !r.dataset.chk);
       if(!row){ box.insertAdjacentHTML("beforeend", memoRowHtml()); row = box.lastElementChild; } row.dataset.chk = k; row.dataset.chkKey = ""; }
-    const key = `${work}|${k === "rk" ? n : ""}`;
-    if(row.dataset.chkKey !== key){ memoPreset(row, work, k === "rk" ? n : 0); row.dataset.chkKey = key; }
+    const key = `${work}|${k === "rk" ? n : ""}|${k === "waxh" ? wax : ""}`;
+    if(row.dataset.chkKey !== key){ delete row.dataset.alias; memoPreset(row, work, k === "rk" ? n : 0); row.dataset.chkKey = key;
+      // WAX無しの剥離は、見積・発注書の名前からもWAXをとる（単価はそのまま）
+      if(k === "waxh" && wax === "無"){ const nm = row.querySelector("[name=m_name]"); nm.value = nm.value.replace(/\s*WAX\s*/gi, "") || "剥離"; row.dataset.alias = "1"; memoRowState(row); } }
     const unit = row.querySelector("[name=m_unit]").value, q = row.querySelector("[name=m_qty]"), sp = row.querySelector("[name=m_spec]");
     if(k === "ac") q.value = n || 1;
     else if(n && /㎡/.test(unit)) q.value = n;
     else { q.value = 1; if(n && u === "㎡" && k !== "rk") sp.value = `約${n}㎡`; else if(k === "rk" && n) sp.value = `${n}㎡`; }
+    if(k === "rk") sp.value = [n ? `${n}㎡` : "", wax === "有" ? "WAX有り" : wax === "無" ? "WAXフリー" : ""].filter(Boolean).join("・");
   });
   memoCalc();
 }
@@ -6434,6 +6440,7 @@ const ACTIONS = {
     h.value = on ? el.dataset.v : ""; g.querySelectorAll(".mc").forEach(b => b.classList.toggle("on", on && b === el));
     const f = el.closest("form"); if(g.dataset.mc === "park" && f.elements.mPk && !f.elements.mPk.disabled) f.elements.mPk.checked = h.value === "有";
     const n = f.elements[`c_${g.dataset.mc}_n`]; if(on && el.dataset.v === "有" && n && !n.value && g.dataset.mc === "ac") n.value = 1;
+    if(on && el.dataset.v === "無" && n && g.dataset.mc !== "park") n.value = "";
     memoCheckSync(f); },
   // クロス・床の箇所：押した箇所を「・」でつないで箇所の欄に入れる（他は手で入れる）
   mloc(el){ const c = el.closest(".mcf"), inp = c.querySelector("[name=m_loc]");
@@ -7205,7 +7212,7 @@ const FORMS = {
       const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
       const dims = isCloth(name) ? memoDims(r) : [], acc = r2(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
-        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", sup:memoSupOf(v("m_ws"), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {})}; })
+        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", ccat:r.dataset.chk ? CK_CAT : "", sup:memoSupOf(v("m_ws"), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {})}; })
       .filter(x => x.p.name && !(x.fixed && (x.qty === "" || !x.qty) && !x.dims.length));   // クロス・床で数量のない行は入れない
     // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
     const adds = rows.filter(x => x.save && x.p.cost > 0);
@@ -7250,7 +7257,7 @@ const FORMS = {
     await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:g("person"), building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", ckText, g("orderNote")].filter(Boolean).join("\n"), checks, kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"), photoUrls:g("photoUrl") ? [g("photoUrl")] : [],
       issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, staff:staff ? {name:staff, phone:st?.phone || ""} : null,
-      rows:rows.flatMap(x => { const one = (spec, qty, more = {}) => ({id:"r_" + newId(), loc:x.loc, name:x.label || x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id || "", ...(x.sup ? {sup:x.sup} : {}), ...more});
+      rows:rows.flatMap(x => { const one = (spec, qty, more = {}) => ({id:"r_" + newId(), loc:x.loc, name:x.label || x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.ccat || x.p.cat || "", priceId:x.p.id || "", ...(x.sup ? {sup:x.sup} : {}), ...more});
         const dm = x.dims.filter(d => !d.acc), da = x.dims.filter(d => d.acc), dd = ds => ds.length ? {dims:ds.map(({h, l, a, acc, loc, part}) => ({h, l, a, ...(acc ? {acc:true} : {}), ...(loc ? {loc} : {}), ...(part ? {part} : {})}))} : {};
         if(!x.acc) return [one(x.spec, x.qty, dd(dm))];
         return [...(Number(x.qty) > 0 ? [one(x.spec, x.qty, dd(dm))] : []), one(`アクセントクロス${x.accCode ? " " + x.accCode : ""}`, x.acc, {...dd(da), accent:true})]; }),
