@@ -828,6 +828,7 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .wnote.acc{color:#B0285A;font-weight:700}
 .i-dim{grid-column:1/-1;font-size:12px;color:var(--sub)}
 /* 工事メモ：紙の工事メモと同じ並び */
+.home-st{flex:none;margin-left:auto;display:inline-flex;align-items:center}.home-st+.home-who{margin-left:10px!important}.home-st .pill{margin:0}
 .home-who{flex:none;font-size:12.5px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:2px 10px;margin:0 12px 0 auto;white-space:nowrap}.home-who.none{color:var(--sub);background:#F4F5F7;border-color:var(--line);font-weight:400}
 .price-sup{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:12px;color:var(--sub);margin:-2px 0 8px;padding:0 0 8px;border-bottom:1px dashed var(--line)}
 .price-sup select{width:auto;max-width:260px;padding:4px 6px!important;font-size:12.5px!important}.price-sup input{width:64px!important;padding:4px 6px!important;font-size:12.5px!important}
@@ -2738,6 +2739,9 @@ function estTotals(e){
 const estTitle = e => [e.building, e.room, e.kind].filter(Boolean).join(" ");
 // --- 書類（PDF）。見積書・発注請書は青い帯、御請求書はグレー（雛形と同じ） ---
 // 見積書は、寸法メモのあるクロスがあれば別紙「クロス張替え詳細」をつける（本紙のその行の仕様に「別紙参照」）
+// 宛先が「その他」のときだけ、宛名を手で書ける（書類の宛先はその宛名）
+const isOtherCo = c => normKey(c || "") === normKey("その他");
+const estToName = e => isOtherCo(e.company) && e.toName ? e.toName : e.company || "";
 function estDocHtml(e, type, seal, billing = {}){
   if(type !== "est") return estDocHtml0(e, type, seal, billing);
   const key = e.estRows?.length ? "estRows" : "rows", rows = e[key] || [];
@@ -2758,7 +2762,7 @@ function estDocHtml0(e, type, seal, billing = {}){
   const t = estTotals(e), c = coInfo(), rows = type === "est" ? estDiffRows(e) : (e.rows || []), n = Math.max(28, rows.length);
   const diffOn = type === "est" && rows !== e.rows && rows.some(r => r._del || r._add || r._ch);
   const staff = e.staff?.name ? `${esc(e.staff.name)}${e.staff.phone ? `（${esc(e.staff.phone)}）` : ""}` : "";
-  const to = `<div class="es-to"><span class="es-co">${esc(e.company || "")}</span><span class="es-hon">${esc(e.honor || "御中")}</span>${type === "invoice" ? "" : `<span class="es-tan">担当；</span><span class="es-person">${esc(e.person || "")}</span><span class="es-hon">様</span>`}</div>`;
+  const to = `<div class="es-to"><span class="es-co">${esc(estToName(e))}</span><span class="es-hon">${esc(e.honor || "御中")}</span>${type === "invoice" ? "" : `<span class="es-tan">担当；</span><span class="es-person">${esc(e.person || "")}</span><span class="es-hon">様</span>`}</div>`;
   const prop = `<table class="es-prop"><tr><th>物件名称${type === "invoice" ? "；" : "："}</th><td>${esc(e.building || "")}</td><td class="es-room">${esc(e.room || "")}</td><td class="es-kind">${esc(e.kind || "")}</td></tr>
     <tr><th>物件所在地${type === "invoice" ? "；" : "："}</th><td colspan="3">${esc(e.address || "")}</td></tr></table>`;
   const from = (big = false) => `<div class="es-from${big ? " big" : ""}">${seal ? `<img class="es-seal" src="${esc(seal)}" alt="">` : ""}
@@ -2897,7 +2901,7 @@ function readEst(form){
     return {id:el.dataset.id, loc:v("e_loc"), name:v("e_name"), spec:v("e_spec"), qty:v("e_qty") === "" ? "" : Number(v("e_qty")), unit:v("e_unit"),
       price:v("e_price") === "" ? "" : Number(v("e_price")), cost:Number(el.dataset.cost) || 0, cat:el.dataset.cat || "", priceId:el.dataset.pid || "", ...dimsOfEl(el)};
   }).filter(r => r.name || r.loc || r.qty !== "" || r.price !== "");
-  return {...(S.est || {}), no:normJobNo(g("no")), company:g("company"), honor:g("honor") || "御中", person:g("person"), building:g("building"), room:g("room"), kind:g("kind"),
+  return {...(S.est || {}), no:normJobNo(g("no")), company:g("company"), toName:isOtherCo(g("company")) ? g("toName") : "", honor:g("honor") || "御中", person:g("person"), building:g("building"), room:g("room"), kind:g("kind"),
     address:g("address"), autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), issuedAt:g("issuedAt"), validity:g("validity"), terms:g("terms"),
     toEmail:g("toEmail"), showDiff:f.showDiff ? f.showDiff.checked : S.est?.showDiff !== false,
     staff:staffName ? {name:staffName, phone:sp?.phone || S.est?.staff?.phone || ""} : null, periodStart:g("periodStart"), periodEnd:g("periodEnd"), status:g("status") || "draft", note:g("note"), rows};
@@ -2922,25 +2926,26 @@ async function viewEstEdit(id){
   const docType = ["tachiai", "self"].includes(e.status) || ["completed", "paid"].includes(jobSt) ? "invoice" : ["ordered", "won"].includes(e.status) ? "ukesho" : "est";
   const docLabel = {est:"見積書", ukesho:"工事請書", invoice:"御請求書"}[docType];
   S.estDoc = docType;
-  const canSubmit = !e.id || ["draft", "sent"].includes(e.status);
+  const canSubmit = !e.id || e.status === "draft";
   const opt = (arr, cur) => arr.map(x => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("");
   return `${estBack()}
     <div class="page-head"><div><h1>${["ordered", "won"].includes(e.status) ? "工事請書" : e.id ? "見積を編集" : "新しい見積"} ${e.id ? `<span class="pill est-${esc(e.status)}">${EST_STATUS[e.status] || "下書き"}</span>` : ""}</h1></div>
       <div class="row"><button class="btn sub" form="est-form">保存</button>
-        ${canSubmit ? `<button class="btn" data-act="est-submit">${e.status === "sent" ? "もう一度提出（メール）" : e.rev ? `訂正${e.rev}を提出（メール）` : "見積を提出（メール）"}</button>` : ""}
+        ${canSubmit ? `<button class="btn" data-act="est-submit">${e.rev ? `訂正${e.rev}を提出済みにする` : "見積を提出済みにする"}</button>` : ""}
         <button class="btn sub" data-act="est-pdf" data-type="${docType}">${docLabel}PDF</button></div></div>
     <details class="panel est-help"${e.id ? "" : " open"}><summary><b>使い方</b>（4ステップ）</summary><ol>
       <li><b>物件を選ぶ</b>：物件名を入れると物件マスタから候補が出ます。選ぶと住所・管理会社（宛先）・工事番号が入ります。</li>
       <li><b>工事を入れる</b>：工事内容に「クロス」などと入れると候補が出て、単位と見積単価が入ります。同じ工事をいくつかの箇所に入れるときは「箇所をまとめて追加」が早いです。</li>
       <li><b>数量を入れる</b>：金額・消費税・合計は自動。右（スマホは下）に見積書がそのまま出ます。原価と粗利はReforeだけに表示されます。</li>
-      <li><b>書類を出す</b>：「見積書PDF」で提出。受注したら「受注にして案件を作る」で、業者に発注する案件（実行単価）と収支ができます。発注請書・御請求書も同じ内容から出せます。</li></ol></details>
+      <li><b>書類を出す</b>：「見積書PDF」で出して管理会社に送り、「見積を提出済みにする」を押します（受注待ちになり、管理会社からの返事の欄が出ます）。受注したら「受注にして案件を作る」で、業者に発注する案件（実行単価）と収支ができます。発注請書・御請求書も同じ内容から出せます。</li></ol></details>
     <div class="est-cols"><form id="est-form" data-form="est" class="stack est-form" autocomplete="off">
       <section class="panel"><h2>宛先と物件</h2>
         <div class="two"><label class="field"><span>物件名 <small>物件マスタから選べます</small></span><input type="text" name="building" value="${esc(e.building)}" list="est-props" placeholder="例：サンプルハイツ" required></label>
           <div class="two"><label class="field"><span>号室</span><input type="text" name="room" value="${esc(e.room)}" placeholder="例：406号室"></label>
             <label class="field"><span>工事種類</span><input type="text" name="kind" value="${esc(e.kind)}" list="est-kinds"></label></div></div>
-        <div class="two"><label class="field"><span>宛先（管理会社）</span><input type="text" name="company" value="${esc(e.company)}" list="est-cos" placeholder="例：アイレントホーム株式会社"></label>
+        <div class="two"><label class="field"><span>宛先（管理会社）</span><input type="text" name="company" value="${esc(e.company)}" list="est-cos" placeholder="例：アイレントホーム株式会社" data-est-co></label>
           <label class="field"><span>敬称</span><select name="honor">${opt(["御中", "様"], e.honor || "御中")}</select></label></div>
+        <label class="field" id="est-toname" ${isOtherCo(e.company) ? "" : "hidden"}><span>宛名 <small>宛先が「その他」のときだけ。見積書・請求書の宛先になります（例：山田 太郎、〇〇不動産）</small></span><input type="text" name="toName" value="${esc(e.toName || "")}" placeholder="宛名を手で書く"></label>
         <label class="field"><span>先方のご担当 <small>様</small></span><input type="text" name="person" value="${esc(e.person)}"></label>
         <label class="field"><span>物件所在地</span><input type="text" name="address" value="${esc(e.address)}"></label>
         <label class="field"><span>提出先のメール <small>「見積を提出」でメールの宛先に入ります。同じ管理会社なら前回のメールが入ります</small></span><input type="email" name="toEmail" value="${esc(e.toEmail || (ests.find(x => x.id !== e.id && x.company && x.company === e.company && x.toEmail) || {}).toEmail || "")}" placeholder="例：genjyo@kanri.co.jp"></label>
@@ -2965,7 +2970,7 @@ async function viewEstEdit(id){
           <div class="two"><label class="field"><span>工事期間（発注請書）</span><input type="date" name="periodStart" value="${esc(e.periodStart)}"></label><label class="field"><span>まで</span><input type="date" name="periodEnd" value="${esc(e.periodEnd)}"></label></div></div>
         <label class="field"><span>メモ <small>Reforeだけ。書類には出ません</small></span><textarea name="note" rows="2">${esc(e.note)}</textarea></label>
         <div class="row end"><span class="row">${e.id ? `<button type="button" class="btn sub" data-act="est-copy">複製</button><button type="button" class="btn sub danger-text" data-act="est-del">削除</button>` : ""}</span></div></section>
-      <section class="panel est-result"><h2>管理会社からの返事</h2>${estResultHtml(e)}</section>
+      ${e.id && e.status !== "draft" ? `<section class="panel est-result"><h2>管理会社からの返事</h2>${estResultHtml(e)}</section>` : ""}
     </form>
     <aside class="est-pv" aria-label="書類のプレビュー"><div class="est-pv-bar"><b>プレビュー</b><span class="small">${docLabel}　このまま印刷・PDFになります</span></div><div class="est-pv-page"><style>${PDF_CSS}</style><div class="pv-zoom" id="est-pv">${estDocHtml(e, docType, seal, billing)}</div></div></aside></div>`;
 }
@@ -2981,7 +2986,7 @@ function estResultHtml(e){
   if(e.status === "tachiai") return `<p style="margin:0">${stageTag("tachiai")} 工事はなく、立会費 ${yenFull(itemsTotal((e.billRows || []).map(r => ({qty:r.qty, unitPrice:r.price}))))}（税抜）で完了にしました。御請求書は立会費だけで出ます。</p>
     <p style="margin:10px 0 0"><button type="button" class="textlink" data-act="est-reopen">返事の前に戻す</button></p>`;
   if(e.status === "lost") return `<p style="margin:0">${stageTag("lost")} 失注にしました。</p><p style="margin:10px 0 0"><button type="button" class="textlink" data-act="est-reopen">返事の前に戻す</button></p>`;
-  return `<p class="small" style="margin:0 0 12px">上の「見積を提出」を押すと、PDFを保存してメールの下書きを開き、状態が「提出済み（受注待ち）」になります。手で出したときは、状態を「提出済み（受注待ち）」にして保存してください。収支の状態も「受注待ち」になります。返事が来たら、下から選びます。</p>
+  return `<p class="small" style="margin:0 0 12px">提出済み（受注待ち）です。管理会社から返事が来たら、下から選びます。</p>
     <div class="est-btns">
       <button type="button" class="btn" data-act="est-order">受注 → 工事請書を作る</button>
       <button type="button" class="btn sub" data-act="est-revise">訂正見積を作る</button>
@@ -5245,22 +5250,23 @@ async function viewHome(){
   const me = S.profile?.employee ? S.profile.staffName || "" : "", mineOnly = !!me && !S.homeAll;
   const isMine = n => !!n && (staffKey(n) === staffKey(me) || staffCanon(n) === staffCanon(me));
   const jobMine = j => !mineOnly || isMine(j?.staff?.name), estMine = e => !mineOnly || isMine(e?.staff?.name);
-  const add = (t, what, href, cls = "", who) => todo.push({t, what, href, cls, who});   // who：Reforeの担当（undefined＝担当のない項目）
+  const add = (t, what, href, cls = "", who, st = "") => todo.push({t, what, href, cls, who, st});   // st：状態の札
+  const jst = j => j ? `<span class="pill ${pillClass(j)}">${esc(statusLabel(j))}</span>` : "", est = e => stageCell(EST_TO_STAGE[e.status] || "est");   // who：Reforeの担当（undefined＝担当のない項目）
   if(mineOnly && !S.staff?.length) S.staff = await api().getStaff().catch(() => []);
-  (await api().getMemoDrafts().catch(() => [])).filter(d => !mineOnly || isMine(d.staff)).forEach(d => add(d.title, "工事メモの下書き。続きを入れる", `#/admin/memo/${d.id}`, "", d.staff || ""));
-  ests.filter(e => estMine(e) && e.status === "draft" && e.fromMemo).forEach(e => add(estTitle(e) || "工事メモ", "工事メモから見積を仕上げる", `#/admin/est/edit/${e.id}`, "", e.staff?.name || ""));
-  ests.filter(e => estMine(e) && e.status === "ordered").forEach(e => add(estTitle(e), "受注しました。請書を確認して業者に公開する", `#/admin/est/edit/${e.id}`, "warn", e.staff?.name || ""));
+  (await api().getMemoDrafts().catch(() => [])).filter(d => !mineOnly || isMine(d.staff)).forEach(d => add(d.title, "工事メモの下書き。続きを入れる", `#/admin/memo/${d.id}`, "", d.staff || "", `<span class="stg stg-none">工事メモ</span>`));
+  ests.filter(e => estMine(e) && e.status === "draft" && e.fromMemo).forEach(e => add(estTitle(e) || "工事メモ", "工事メモから見積を仕上げる", `#/admin/est/edit/${e.id}`, "", e.staff?.name || "", est(e)));
+  ests.filter(e => estMine(e) && e.status === "ordered").forEach(e => add(estTitle(e), "受注しました。請書を確認して業者に公開する", `#/admin/est/edit/${e.id}`, "warn", e.staff?.name || "", est(e)));
   const cnt = {}; apps.forEach(a => { if(a.status === "applied") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
-  jobs.filter(j => jobMine(j) && ["open", "closed"].includes(j.status) && cnt[j.id]).forEach(j => add(j.title, `応募が${cnt[j.id]}件。業者を選んで発注する`, `#/admin/job/${j.id}`, "warn", j.staff?.name || ""));
-  jobs.filter(j => jobMine(j) && j.status === "assigned" && !j.acceptedAt && !j.declinedAt).forEach(j => add(j.title, `${S.crafts.get(j.assignedTo)?.name || "業者"}の承諾待ち`, `#/admin/job/${j.id}`, "", j.staff?.name || ""));
-  jobs.filter(j => jobMine(j) && j.declinedAt && j.status === "assigned").forEach(j => add(j.title, "発注が断られました。対応してください", `#/admin/job/${j.id}`, "danger", j.staff?.name || ""));
-  reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j) && !["completed", "paid"].includes(j.status)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn", j.staff?.name || ""); });
-  [...(S.threads?.values() || [])].filter(isUnread).filter(t => !mineOnly || !t.jobId || jobMine(jobs.find(j => j.id === t.jobId))).forEach(t => add(t.jobTitle || "チャット", `${peerName(t)}から新しいチャット`, chatHref(t), "", t.jobId ? jobs.find(j => j.id === t.jobId)?.staff?.name || "" : undefined));
+  jobs.filter(j => jobMine(j) && ["open", "closed"].includes(j.status) && cnt[j.id]).forEach(j => add(j.title, `応募が${cnt[j.id]}件。業者を選んで発注する`, `#/admin/job/${j.id}`, "warn", j.staff?.name || "", jst(j)));
+  jobs.filter(j => jobMine(j) && j.status === "assigned" && !j.acceptedAt && !j.declinedAt).forEach(j => add(j.title, `${S.crafts.get(j.assignedTo)?.name || "業者"}の承諾待ち`, `#/admin/job/${j.id}`, "", j.staff?.name || "", jst(j)));
+  jobs.filter(j => jobMine(j) && j.declinedAt && j.status === "assigned").forEach(j => add(j.title, "発注が断られました。対応してください", `#/admin/job/${j.id}`, "danger", j.staff?.name || "", jst(j)));
+  reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j) && !["completed", "paid"].includes(j.status)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn", j.staff?.name || "", jst(j)); });
+  [...(S.threads?.values() || [])].filter(isUnread).filter(t => !mineOnly || !t.jobId || jobMine(jobs.find(j => j.id === t.jobId))).forEach(t => add(t.jobTitle || "チャット", `${peerName(t)}から新しいチャット`, chatHref(t), "", t.jobId ? jobs.find(j => j.id === t.jobId)?.staff?.name || "" : undefined, jst(t.jobId && jobs.find(j => j.id === t.jobId))));
   if(S.pending && !mineOnly) add("協力業者の登録", `審査待ちが${S.pending}件あります`, "#/admin/craftsmen");
   return `<div class="page-head"><div><h1>ホーム</h1><p class="lead">今やることです。押すとその画面に移ります。</p></div><a class="btn" href="#/admin/memo">＋ 工事メモ・見積を作る</a></div>
     <div><section class="panel"><h2>やること <small>${todo.length}件</small></h2>
       ${me ? `<p class="small home-scope">${mineOnly ? `担当が<b>${esc(staffCanon(me) || me)}</b>の案件だけ出しています。` : "全員の案件を出しています。"}<button type="button" class="textlink" data-act="home-scope">${mineOnly ? "全部を見る" : "自分の担当だけにする"}</button></p>` : ""}
-      ${todo.length ? `<div class="list">${todo.map(x => `<a class="row-item" href="${x.href}"><span class="row-main"><b>${esc(x.t)}</b><span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span>${x.who === undefined ? "" : `<span class="home-who${x.who ? "" : " none"}">${x.who ? `担当：${esc(x.who)}` : "担当なし"}</span>`}<span class="small">開く ›</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今やることはありません。</p>`}</section>
+      ${todo.length ? `<div class="list">${todo.map(x => `<a class="row-item" href="${x.href}"><span class="row-main"><b>${esc(x.t)}</b><span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span>${x.st ? `<span class="home-st">${x.st}</span>` : ""}${x.who === undefined ? "" : `<span class="home-who${x.who ? "" : " none"}">${x.who ? `担当：${esc(x.who)}` : "担当なし"}</span>`}<span class="small">開く ›</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今やることはありません。</p>`}</section>
     </div>`;
 }
 
@@ -5529,9 +5535,11 @@ async function viewMemo(lid = ""){
     <form class="panel memo" data-form="memo" data-lid="${esc(L?.id || "")}"${D ? ` data-draft="${esc(D.id)}"` : ""}>
       <section class="mpaper"><h2>物件</h2>
       <label class="field"><span>管理会社 <small>見積の宛先になります</small></span><select name="company" data-memo-co required>
-        <option value="">${cos.length ? `選んでください（${cos.length}社）` : "会社がまだありません"}</option>${cos.sort((a, b) => a.localeCompare(b, "ja")).map(c => `<option>${esc(c)}</option>`).join("")}<option value="__new">一覧にない会社（手で入れる）</option></select></label>
+        <option value="">${cos.length ? `選んでください（${cos.length}社）` : "会社がまだありません"}</option>${cos.filter(c => !isOtherCo(c)).sort((a, b) => a.localeCompare(b, "ja")).map(c => `<option>${esc(c)}</option>`).join("")}<option>その他</option><option value="__new">一覧にない会社（手で入れる）</option></select></label>
       <p class="small" id="memo-no" style="margin:-6px 0 10px"></p>
       <label class="field" id="memo-co-new" hidden><span>管理会社の名前</span><input type="text" name="companyNew" placeholder="例：FLEX TOKYO"></label>
+      <div class="two" id="memo-co-other" hidden><label class="field"><span>宛名 <small>「その他」のときだけ。見積の宛先になります</small></span><input type="text" name="toName" placeholder="例：山田 太郎"></label>
+        <label class="field"><span>敬称</span><select name="honor"><option>御中</option><option>様</option></select></label></div>
       <label class="field"><span>先方のご担当者様 <small>見積の宛名に「様」をつけて入ります</small></span><input type="text" name="person" list="memo-persons" autocomplete="off" placeholder="例：山田"><datalist id="memo-persons"></datalist></label>
       <div class="field memo-q"><span>物件名 <small>打ち込むと物件マスタから候補が出ます。ない物件はそのまま入れれば物件マスタに覚えます</small></span>
         <input type="text" name="propName" data-memo-q required autocomplete="off" placeholder="例：サンプルハイツ" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="memo-ac">
@@ -6522,28 +6530,13 @@ const ACTIONS = {
     previewDoc(`${label}　${estTitle(e)}`, html, () => downloadPdf(html, `${label}・${fileSafe(estTitle(e))}.pdf`));
   },
   // 見積を提出：PDFを保存して、メールの下書きを開き、状態を「提出済み（受注待ち）」に
+  // 見積を提出済みにする（PDFは「見積書PDF」で出して、自分で送る）。状態は提出済み（受注待ち）、収支も受注待ちになり、返事の欄が出る
   async "est-submit"(){
     const f = $("#est-form"); let e = readEst(f);
     if(!e.rows.some(r => r.name)) throw new Error("工事の内容を入れてください");
-    const label = e.rev ? `訂正見積書（訂正${e.rev}）` : "御見積書";
-    if(!await ask({title:`${label}を提出しますか？`, body:"見積書のPDFを保存してから、メールの下書きを開きます。PDFをメールに添付して送ってください。状態は「提出済み（受注待ち）」になり、収支も「受注待ち」になります。", ok:"PDFを保存してメールを作る"})) return;
-    const to = e.toEmail || ((await api().listEstimates().catch(() => [])).find(x => x.company && x.company === e.company && x.toEmail) || {}).toEmail || "";
-    e = await saveEst({...e, toEmail:to, status:"sent", sentAt:Date.now()}, true);
-    const html = estDocHtml(e, "est", S.estSeal, {...BILLING_DEFAULT, ...S.billing});
-    toast("PDFを作成しています…");
-    try { await downloadPdf(html, `${todayIso().replace(/-/g, "")}・${label}・${fileSafe(estTitle(e))}.pdf`); }
-    catch(err) { console.warn(err); toast("PDFを保存できませんでした。メールのあとで「見積書PDF」から保存してください"); }
-    const t = estTotals(e), c = coInfo(), prev = e.rev && e.revs?.length ? e.revs[e.revs.length - 1] : null;
-    const subject = `【${label}】${estTitle(e)}${e.no ? `（${e.no}）` : ""}`;
-    const body = [`${e.company || ""} ${e.honor || "御中"}`, e.person ? `${e.person} 様` : "", "",
-      "いつもお世話になっております。", `${c.name}${e.staff?.name ? "の" + e.staff.name : ""}です。`, "",
-      `下記物件の${e.rev ? `訂正見積書（訂正${e.rev}）` : "御見積書"}をお送りいたします。`, "",
-      `物件：${[e.building, e.room].filter(Boolean).join(" ")}`, e.kind ? `工事：${e.kind}` : "", e.no ? `工事番号：${e.no}` : "",
-      `お見積金額：${yenFull(t.total)}（税込）`, prev ? `（訂正前：${yenFull(prev.total)}）` : "", "",
-      "ご確認のほど、よろしくお願いいたします。", "", "────────────", c.name, c.tel ? `TEL：${c.tel}` : "", c.email || ""]
-      .filter((l, i, a) => l !== "" || (a[i - 1] !== "" && i > 0)).join("\n");
-    location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    toast("提出済みにしました。PDFを添付して送ってください"); setTimeout(route, 400);
+    if(!await ask({title:`${e.rev ? `訂正${e.rev}を` : "見積を"}提出済みにしますか？`, body:"管理会社に見積書を送ったら押してください。状態が「提出済み（受注待ち）」になり、収支も「受注待ち」になります。下に「管理会社からの返事」の欄が出ます。", ok:"提出済みにする"})) return;
+    await saveEst({...e, status:"sent", sentAt:Date.now()}, true);
+    S.ldCache = null; toast("提出済み（受注待ち）にしました"); route();
   },
   async "er-sort"(){ const list = $("#er-list"), rank = l => { const i = EST_LOCS.indexOf(l); return i < 0 ? 999 : i; };
     [...list.children].map((el, k) => ({el, k, l:el.querySelector("[name=e_loc]")?.value.trim() || ""})).sort((a, b) => rank(a.l) - rank(b.l) || a.k - b.k).forEach(x => list.appendChild(x.el)); estSync(list.closest("form")); },
@@ -7173,7 +7166,7 @@ const FORMS = {
     const lid = L0 ? L0.id : "l_" + newId(), jobNo = L0?.jobNo || await nextJobNo(company);
     if(L0) await api().saveLedger({...L0, jobNo, estimateId:eid, stage:"est", staff:L0.staff || staff, kind:L0.kind || g("kind") || "原状回復", updatedAt:now});
     else await api().saveLedger({id:lid, manual:true, ki:kiNow(), month:"", jobNo, name, company, contract:0, kind:g("kind") || "原状回復", staff, staff2:"", vendors:[], note:"工事メモから", arranged:false, done:false, stage:"est", estimateId:eid, createdAt:now, updatedAt:now});
-    await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:g("person"), building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", ckText, g("orderNote")].filter(Boolean).join("\n"), checks, kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
+    await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, toName:isOtherCo(company) ? g("toName") : "", honor:isOtherCo(company) ? (g("honor") || "御中") : "御中", person:g("person"), building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", ckText, g("orderNote")].filter(Boolean).join("\n"), checks, kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"), photoUrls:g("photoUrl") ? [g("photoUrl")] : [],
       issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, staff:staff ? {name:staff, phone:st?.phone || ""} : null,
       rows:rows.flatMap(x => { const one = (spec, qty, more = {}) => ({id:"r_" + newId(), loc:x.loc, name:x.label || x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.ccat || x.p.cat || "", priceId:x.p.id || "", ...(x.sup ? {sup:x.sup} : {}), ...more});
@@ -8275,11 +8268,12 @@ document.addEventListener("change", e => {
 });
 
 // 工事メモ：管理会社を選ぶと、その会社の物件だけを物件名に出す。物件を選ぶと住所が入る
+document.addEventListener("input", e => { if(e.target.matches?.("[data-est-co]")){ const b = $("#est-toname"); if(b) b.hidden = !isOtherCo(e.target.value); } });
 document.addEventListener("change", e => {
   const t = e.target, f = t.form;
   if(t.matches?.("[data-memo-co]")){
     const co = t.value;
-    $("#memo-co-new").hidden = co !== "__new";
+    $("#memo-co-new").hidden = co !== "__new"; $("#memo-co-other").hidden = !isOtherCo(co);
     const cur = (S.props || []).find(x => x.id === f.elements.propId.value);
     if(cur && !coSame(cur.company, co)){ f.elements.propName.value = ""; f.elements.propId.value = ""; }
     else if(cur) return;
