@@ -844,7 +844,8 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mq-b.mc.on{background:var(--kon-text,#1B2A55);border-color:var(--kon-text,#1B2A55);color:#fff;font-weight:700}
 .mcf{background:#fff;border:1px solid #E4DDC3;border-radius:6px;padding:8px;margin-bottom:8px}.mcf-h{margin-bottom:5px}
 .mcf-locs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}.mcf-locs .mq-b{padding:3px 8px;font-size:12px}
-.mcf .memo-row [data-act=memo-rm]{visibility:hidden}
+.mcf .memo-row [data-act=memo-rm]{visibility:hidden}.mcf.added .memo-row [data-act=memo-rm]{visibility:visible}.mcf.added .memo-row [name=m_name]{background:#fff;font-weight:400}
+.cf-pick{width:100%;margin:0 0 6px;padding:7px 8px!important;font-weight:700}#memo-cf+.btn{margin-top:2px}
 .md-lp{display:none;grid-column:1/-1;order:-1;gap:6px}.md-lp select{width:auto;padding:5px 6px!important;font-size:13px!important}.mcf.all .md-lp{display:flex}
 .mcf.all .mcf-locs .mc:not([data-all]){display:none}.mcf.all{border-color:var(--kon-text,#1B2A55)}form.memo .mpaper>h2 small{display:block;margin:2px 0 0}.memo-price .mp-spec{flex-wrap:wrap}.mcf .memo-row [name=m_name]{background:#F4F6FA;font-weight:700}
 .emp-inv{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.emp-inv h3{margin:0 0 8px;font-size:15px}
@@ -5491,6 +5492,8 @@ function memoNextNo(co){
   const head = `${jobNoPrefix(co)}-${jobNoPeriod()}-`;
   return head + (Math.max(0, ...(S.memoNos || []).map(normJobNo).filter(n => n.startsWith(head)).map(n => Number(n.slice(head.length)) || 0)) + 1);
 }
+document.addEventListener("change", e => { const t = e.target; if(!t.matches?.("[data-cfpick]") || !t.value) return;
+  const c = t.closest(".mcf"), row = c.querySelector(".memo-row"); if(c.classList.contains("all")) memoCfAll(c, false); c.dataset.cf = t.value; memoPreset(row, t.value); memoCalc(); });
 document.addEventListener("input", e => { if(e.target.closest?.("form[data-form=memo]")){ if(/^c_(rk|ac|wax|waxh)_n$/.test(e.target.name)){ const f = e.target.form, k = e.target.name.slice(2, -2), h = f.elements[`c_${k}`];
   if(h && e.target.value && !h.value){ h.value = "有"; h.closest(".mc-g").querySelectorAll(".mc").forEach(b => b.classList.toggle("on", b.dataset.v === "有")); } memoCheckSync(f); } else memoCalc(); } });
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) memoReprice(t.form); else if(t.closest?.("form[data-form=memo]")) memoCalc(); });
@@ -5516,8 +5519,11 @@ function memoChecksHtml(){
 function memoChecksHtml2(){
   return MEMO_CK2.map(([k, l, vs, u]) => `<div class="mck"><b>${l}</b><span class="mck-v">${u === "date" ? `<input type="date" name="c_${k}_n" class="mck-d" aria-label="${l}">` : u === "番号" ? `<input type="text" name="c_${k}_n" class="mck-n" placeholder="番号" aria-label="${l}の番号">` : ""}${mcChips(k, vs)}${u && u !== "date" && u !== "番号" ? `<input type="text" name="c_${k}_n" class="mck-t" placeholder="${u}" aria-label="${l}（${u}）">` : ""}</span></div>`).join("");
 }
-function memoCfHtml([name, cloth]){
-  return `<div class="mcf" data-cf="${esc(name)}">
+const CF_CAT = "表装工事";
+const cfPrices = () => estPrices().filter(p => !p.noteRow && p.name && p.cat === CF_CAT);
+function memoCfHtml([name, cloth], added = false){
+  return `<div class="mcf${added ? " added" : ""}" data-cf="${esc(name)}">
+    ${added ? `<select class="cf-pick" data-cfpick aria-label="表装工事の工事を選ぶ"><option value="">表装工事の工事を選ぶ</option>${cfPrices().map(p => `<option value="${esc(p.name)}">${esc(p.name)}${p.sell ? `（${yenFull(p.sell)}／${esc(p.unit)}）` : ""}</option>`).join("")}</select>` : ""}
     <div class="mcf-locs"><button type="button" class="mq-b mc" data-act="mloc" data-all="1">全</button>${MEMO_LOCS.map(([s, v]) => `<button type="button" class="mq-b mc" data-act="mloc" data-v="${esc(v)}">${s}</button>`).join("")}</div>
     ${memoRowHtml().replace('<div class="memo-row">', `<div class="memo-row" data-fixed="1"${cloth ? ' data-sp="1"' : ""}>`)}</div>`;
 }
@@ -5526,7 +5532,7 @@ function memoCfAll(c, on){
   c.classList.toggle("all", on); c.querySelector(".mc[data-all]").classList.toggle("on", on);
   c.querySelectorAll(".mcf-locs .mc:not([data-all])").forEach(b => b.classList.remove("on"));
   if(on){ memoPreset(row, CF_ALL.price); row.querySelector("[name=m_name]").value = CF_ALL.label; row.dataset.alias = "1"; inp.value = CF_ALL.loc; }
-  else { delete row.dataset.alias; memoPreset(row, c.dataset.cf); inp.value = ""; }
+  else { delete row.dataset.alias; if(c.dataset.cf) memoPreset(row, c.dataset.cf); else { row.querySelector("[name=m_name]").value = ""; row.querySelector("[name=m_pid]").value = ""; } inp.value = ""; }
   memoRowState(row); memoCalc();
 }
 // 工事の名前から単価表の工事を選んで、その行に入れる（候補がいくつかあれば最初の。ルークリは広さで選ぶ）
@@ -5635,8 +5641,9 @@ async function viewMemo(lid = ""){
         ${memoChecksHtml2()}<input type="checkbox" name="mPk" hidden>
       <label class="field"><span>備考 <small>物件マスタに覚えます（例：管理人 平日9-17時）</small></span><textarea name="mNote" rows="2"></textarea></label>
       </section>
-      <section class="mpaper"><h2>クロス・床 <small>箇所を押して、品番と数量（寸法）を入れます。数量のない行は見積に入りません</small></h2>
-        <div id="memo-cf">${MEMO_CF.map(memoCfHtml).join("")}</div></section>
+      <section class="mpaper"><h2>表装工事 <small>単価表の「表装工事」の工事から選びます。箇所を押して、品番と数量（寸法）を入れます。数量のない行は見積に入りません</small></h2>
+        <div id="memo-cf">${MEMO_CF.map(x => memoCfHtml(x)).join("")}</div>
+        <button type="button" class="btn sub" data-act="cf-add">＋ 行を足す</button></section>
       <section class="mpaper"><h2>その他の工事</h2>
       <div class="field"><span>工事（箇所・工事・数量・単価） <small>工事内容は文字を入れると単価表から候補が出ます。単価は管理会社ごとの単価が入り、直すこともできます</small></span>
         <div class="memo-rhead" aria-hidden="true"><span>箇所</span><span>工事内容</span><span>数量</span><span>単位</span><span></span></div><div id="memo-rows">${memoRowHtml()}</div>
@@ -6457,7 +6464,9 @@ const ACTIONS = {
   async "md-rm"(el){ const row = el.closest(".memo-row"), list = row.querySelector(".md-list");
     if(list.children.length > 1) el.closest(".md-row").remove(); else el.closest(".md-row").querySelectorAll("input").forEach(i => { i.type === "checkbox" ? i.checked = false : i.value = ""; });
     memoDimCalc(row); },
-  async "memo-rm"(el){ const box = $("#memo-rows"); if(box.children.length > 1) el.closest(".memo-row").remove(); memoCalc(); },
+  async "cf-add"(){ const box = $("#memo-cf"); box.insertAdjacentHTML("beforeend", memoCfHtml(["", true], true)); const c = box.lastElementChild;
+    c.querySelector(".memo-row").dataset.cfrow = "1"; const cat = c.querySelector("[name=m_cat]"); if(cat) cat.value = CF_CAT; c.querySelector("[data-cfpick]").focus(); },
+  async "memo-rm"(el){ const ad = el.closest(".mcf.added"); if(ad){ ad.remove(); memoCalc(); return; } const box = $("#memo-rows"); if(box.children.length > 1) el.closest(".memo-row").remove(); memoCalc(); },
   async "craft-priority"(el){
     const on = el.dataset.on === "1";
     if(tenant()){ await coSetPriority(el.dataset.uid, on); const c0 = S.crafts.get(el.dataset.uid); if(c0) c0.priority = on; toast(on ? "既存業者にしました" : "既存業者から外しました"); return route(); }
@@ -8583,7 +8592,8 @@ function estRevHistory(e){
 function memoWork(input){
   const box = input.parentElement.querySelector(".memo-wac"), q = normKey(input.value);
   if(!q){ box.hidden = true; return; }
-  const hits = estPrices().filter(p => !p.noteRow && p.name).map(p => { const n = normKey(p.name), c = normKey(p.cat || ""); return [n.startsWith(q) ? 0 : n.includes(q) ? 1 : c.includes(q) ? 2 : -1, p]; })
+  const only = input.closest(".mcf") ? CF_CAT : "";   // 表装工事の欄では表装工事の工事だけ
+  const hits = estPrices().filter(p => !p.noteRow && p.name && (!only || p.cat === only)).map(p => { const n = normKey(p.name), c = normKey(p.cat || ""); return [n.startsWith(q) ? 0 : n.includes(q) ? 1 : c.includes(q) ? 2 : -1, p]; })
     .filter(x => x[0] >= 0).sort((a, b) => a[0] - b[0] || a[1].name.length - b[1].name.length).slice(0, 10).map(x => x[1]);
   box.innerHTML = hits.length ? hits.map(p => `<li data-pid="${esc(p.id)}"><b>${highlight(p.name, input.value.trim())}</b><span>${esc(p.cat || "")}${p.sell ? `　${yenFull(p.sell)}／${esc(p.unit)}` : ""}</span></li>`).join("")
     : `<li class="none">単価表にありません。このまま入れられます（単価は見積で入れます）</li>`;
