@@ -74,7 +74,7 @@ h2{font-size:16px;line-height:1.5;margin:0 0 12px}
 .badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:var(--caution);color:#1d1600;font-size:12px;font-weight:700;text-align:center;line-height:20px;margin-left:4px}
 
 /* 職人用タブ（スマホは下、PCは上） */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 .tabbar a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 10px;font-size:11px;text-decoration:none;color:var(--sub)}
 .tabbar svg{width:22px;height:22px}
 .tabbar a[aria-current="page"]{color:var(--kon-text);font-weight:700}
@@ -1025,6 +1025,30 @@ form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled
 .lsr mark{background:#FFF1B8;color:inherit}
 .fee-note{margin:-4px 0 10px;padding:6px 10px;background:#FFF7E6;border-left:3px solid #C99A1C;border-radius:4px}
 .fee-note span{color:var(--sub);margin-left:8px}
+
+/* スマホ：下のメニュー。バッジはアイコンの右上に重ねる（文字の長さでずれない） */
+@media (max-width:719px){
+  .tabbar a{position:relative;min-width:0}
+  .tabbar a > span{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:clip;text-align:center}
+  .tabbar .badge{position:absolute;top:3px;left:calc(50% + 5px);margin:0;min-width:18px;height:18px;line-height:18px;padding:0 5px;font-size:10px;border-radius:9px;box-shadow:0 0 0 2px var(--surface);font-variant-numeric:tabular-nums}
+}
+@media (max-width:359px){ .tabbar a{font-size:9.5px;padding-left:0;padding-right:0;letter-spacing:-.02em} }
+/* スマホ：請求書の案件の行。案件名を横いっぱいに出し、「この案件だけ発行」はその下に */
+@media (max-width:560px){
+  .inv-line{flex-wrap:wrap}
+  .inv-line > label{flex:1 1 100% !important;flex-wrap:nowrap !important;align-items:flex-start}
+  .inv-line > label input{margin-top:2px}
+  .inv-line > label .row-main{flex:1 1 0;min-width:0}
+  .inv-line > .btn{flex:1 1 auto;margin-left:30px;min-height:44px}
+  .panel h2:has(> small){flex-wrap:wrap}
+  .panel h2 small{display:block;flex:1 1 100%;margin:2px 0 0}
+}
+/* タブレット・PC：上のメニュー。バッジは文字の右に、縦の位置をそろえる */
+@media (min-width:720px){
+  .tabbar a{align-items:center;white-space:nowrap}
+  .tabbar a > span{display:inline-flex;align-items:center;gap:4px}
+  .tabbar .badge{margin-left:0;min-width:18px;height:18px;line-height:18px;padding:0 5px;font-size:11px;font-variant-numeric:tabular-nums}
+}
 </style>
 </head>
 <body>
@@ -5055,10 +5079,10 @@ const isUnread = t => { const r = myRole(), other = r === "admin" ? "craftsman" 
 const unreadCount = () => [...S.threads.values()].filter(isUnread).length;
 const chatHref = t => (myRole() === "admin" ? "#/admin/chat/" : "#/chat/") + t.id;
 const peerName = t => myRole() === "admin" ? (S.crafts.get(t.craftsmanId)?.name || t.craftsmanName || "業者") : (t.coName || "Refore");
-const chatBadge = () => { const n = unreadCount(); return `<span class="badge" data-badge="chat" ${n ? "" : "hidden"} aria-label="未読">${n}</span>`; };
+const chatBadge = () => { const n = unreadCount(); return `<span class="badge" data-badge="chat" ${n ? "" : "hidden"} aria-label="未読">${badgeNum(n)}</span>`; };
 function updateChatBadges(){
   const n = unreadCount();
-  document.querySelectorAll("[data-badge=chat]").forEach(el => { el.textContent = n; el.hidden = !n; });
+  document.querySelectorAll("[data-badge=chat]").forEach(el => { el.textContent = badgeNum(n); el.hidden = !n; });
   document.title = BASE_TITLE;   // タブの名前に未読の数は出さない（チャットのタブにだけ出す）
 }
 /* ---------- タブのバッジ（案件の進行） ---------- */
@@ -5071,11 +5095,12 @@ function badgeTitle(k){
   const sum = {}; (S.notices?.[k] || []).forEach(it => it.reasons.forEach(r => { sum[r.key] = (sum[r.key] || 0) + 1; }));
   return Object.entries(sum).map(([t, c]) => `${t}：${c}件`).join("\n");
 }
-function badge(k){ const n = S.badges[k] || 0; return `<span class="badge" data-badge="${k}" ${n ? "" : "hidden"} title="${esc(badgeTitle(k))}" aria-label="${esc(badgeTitle(k) || (BADGE_LABEL[k] || "") + n + "件")}">${n}</span>`; }
+const badgeNum = n => n > 99 ? "99+" : String(n);
+function badge(k){ const n = S.badges[k] || 0; return `<span class="badge" data-badge="${k}" ${n ? "" : "hidden"} title="${esc(badgeTitle(k))}" aria-label="${esc(badgeTitle(k) || (BADGE_LABEL[k] || "") + n + "件")}">${badgeNum(n)}</span>`; }
 function updateBadges(){
   document.querySelectorAll("[data-badge]").forEach(el => {
     const k = el.dataset.badge; if(k === "chat") return;
-    const n = S.badges[k] || 0; el.textContent = n; el.hidden = !n;
+    const n = S.badges[k] || 0; el.textContent = badgeNum(n); el.hidden = !n;
     el.title = badgeTitle(k);
   });
 }
