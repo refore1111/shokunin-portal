@@ -830,6 +830,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .wnote.acc{color:#B0285A;font-weight:700}
 .i-dim{grid-column:1/-1;font-size:12px;color:var(--sub)}
 /* 工事メモ：紙の工事メモと同じ並び */
+.mp-sup{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding-top:4px;border-top:1px dashed #E4DDC3}.mp-sup select{width:auto;max-width:180px;padding:5px 6px!important;font-size:13px!important}
+.mp-ws{color:var(--kon-text,#1B2A55);font-weight:700}.mp-ms{color:#8A5A00;font-weight:700}
 form.memo .mpaper{background:#FBF8EC;border:1px solid #E4DDC3;border-radius:8px;padding:10px 12px;margin:0 0 12px}
 form.memo .mpaper>h2{font-size:15px;margin:0 0 8px;border-left:4px solid var(--kon-text,#1B2A55);padding-left:8px}form.memo .mpaper>h2 small{font-weight:400;font-size:11.5px;color:var(--sub);margin-left:6px}
 form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
@@ -839,7 +841,9 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mq-b.mc.on{background:var(--kon-text,#1B2A55);border-color:var(--kon-text,#1B2A55);color:#fff;font-weight:700}
 .mcf{background:#fff;border:1px solid #E4DDC3;border-radius:6px;padding:8px;margin-bottom:8px}.mcf-h{margin-bottom:5px}
 .mcf-locs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}.mcf-locs .mq-b{padding:3px 8px;font-size:12px}
-.mcf .memo-row [data-act=memo-rm]{visibility:hidden}form.memo .mpaper>h2 small{display:block;margin:2px 0 0}.memo-price .mp-spec{flex-wrap:wrap}.mcf .memo-row [name=m_name]{background:#F4F6FA;font-weight:700}
+.mcf .memo-row [data-act=memo-rm]{visibility:hidden}
+.md-lp{display:none;grid-column:1/-1;order:-1;gap:6px}.md-lp select{width:auto;padding:5px 6px!important;font-size:13px!important}.mcf.all .md-lp{display:flex}
+.mcf.all .mcf-locs .mc:not([data-all]){display:none}.mcf.all{border-color:var(--kon-text,#1B2A55)}form.memo .mpaper>h2 small{display:block;margin:2px 0 0}.memo-price .mp-spec{flex-wrap:wrap}.mcf .memo-row [name=m_name]{background:#F4F6FA;font-weight:700}
 .emp-inv{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.emp-inv h3{margin:0 0 8px;font-size:15px}
 .emp-inv-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
 .mo-cloth{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 10px;padding:8px 10px;border-radius:6px;background:#F3F6FB;border:1px solid #D8E0EE;font-size:13px}
@@ -968,6 +972,7 @@ form.memo .mq-g{gap:5px;margin-bottom:5px}form.memo .memo-row{margin-bottom:4px}
   .mn-grid{grid-template-columns:1fr 1fr}
   .md-row{grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 56px 30px;grid-template-areas:"h x l a r" "c c c c c"}
   .md-row [name=d_h]{grid-area:h}.md-row i{grid-area:x}.md-row [name=d_l]{grid-area:l}.md-row .md-a{grid-area:a}.md-row .i-x{grid-area:r}.md-row .md-ck{grid-area:c}
+  .mcf.all .md-row{grid-template-areas:"p p p p p" "h x l a r" "c c c c c"}.mcf.all .md-lp{grid-area:p}
 }
 
 .price-co{display:flex;flex-direction:column;gap:4px;padding:10px 12px;margin-bottom:10px;background:#F6F8FB;border:1px solid var(--line);border-radius:8px}
@@ -1481,9 +1486,9 @@ const zaiTag = i => i.zai ? `<span class="zai">材工</span>` : i.tema ? `<span 
 const zaiWord = i => i.zai ? "材工" : i.tema ? "手間のみ" : "";
 // クロスの寸法（工事メモで入れた面ごとの 高さ×長さ）。業者さんの画面と発注書に出す
 const CLOTH_ANY = "材工 白 織物";   // 品番がなんでもいいとき
-const dimFace = (i, k) => `${/天井/.test(i.name || "") ? "天井" : "壁"}${k + 1}`;
+const dimFace = (i, k) => i.dims?.[k]?.loc || i.dims?.[k]?.part ? [i.dims[k].loc, i.dims[k].part].filter(Boolean).join(" ") : `${/天井/.test(i.name || "") ? "天井" : "壁"}${k + 1}`;
 const dimSum = ds => Math.round((ds || []).reduce((a, d) => a + (Number(d.a) || 0), 0) * 100) / 100;
-const dimsText = ds => ds?.length ? `${ds.map(d => `${d.h}×${d.l}`).join("＋")}＝${dimSum(ds)}㎡` : "";
+const dimsText = ds => ds?.length ? `${ds.map(d => `${d.loc || d.part ? [d.loc, d.part].filter(Boolean).join("") + " " : ""}${d.h}×${d.l}`).join("＋")}＝${dimSum(ds)}㎡` : "";
 function dimsBox(i){
   if(!i.dims?.length) return "";
   return `<span class="wdim"><span class="wdim-t">寸法（m）</span>${i.dims.map((d, k) => `<span class="wdim-r${d.acc ? " acc" : ""}"><span>${dimFace(i, k)}${d.acc ? "（アクセント）" : ""}　${d.h} × ${d.l}</span><span>${d.a}㎡</span></span>`).join("")}${i.dims.length > 1 ? `<span class="wdim-s">合計 ${dimSum(i.dims)}㎡</span>` : ""}</span>`;
@@ -2796,7 +2801,16 @@ function estTotals(e){
 }
 const estTitle = e => [e.building, e.room, e.kind].filter(Boolean).join(" ");
 // --- 書類（PDF）。見積書・発注請書は青い帯、御請求書はグレー（雛形と同じ） ---
+// 見積書は、寸法メモのあるクロスがあれば別紙「クロス張替え詳細」をつける（本紙のその行の仕様に「別紙参照」）
 function estDocHtml(e, type, seal, billing = {}){
+  if(type !== "est") return estDocHtml0(e, type, seal, billing);
+  const key = e.estRows?.length ? "estRows" : "rows", rows = e[key] || [];
+  if(!clothDetailRows(rows).length) return estDocHtml0(e, type, seal, billing);
+  const mark = list => (list || []).map(r => r.dims?.length && !r.noteRow ? {...r, spec:[r.spec, "別紙参照"].filter(Boolean).join("・")} : r);
+  const e2 = {...e, [key]:mark(rows), ...(e.baseRows ? {baseRows:mark(e.baseRows)} : {})};
+  return `<div class="pdfwrap">${estDocHtml0(e2, type, seal, billing)}${clothDetailHtml({...e, rows})}</div>`;
+}
+function estDocHtml0(e, type, seal, billing = {}){
   if(type === "invoice" && !e.noFee){
     const fee = e.feePct ?? coFee(e.company || "", S.ledgerCfg || S.bills?.cfg || {});
     if(fee){ const base = (type === "invoice" && e.status === "tachiai" && e.billRows?.length) ? e.billRows : e.rows || [], sub = estTotals({rows:base}).sub, fa = Math.round(sub * fee / 100);
@@ -2852,6 +2866,28 @@ function estDocHtml(e, type, seal, billing = {}){
     ${table}
     ${type === "ukesho" ? `<div class="es-ukefoot"><div class="es-ukeleft"><div>工事概要：${esc(e.kind || "")}</div><div>支払条件：${esc(e.terms || BILLING_DEFAULT.terms)}</div><div>有効期限：発行後30日</div></div>${from(true)}</div>${staff ? `<div class="es-ukestaff">工事担当；　${staff}</div>` : ""}`
       : `<div class="es-order"><div class="es-order-h"><b>【工事発注書】</b><span>令和　　年　　月　　日</span></div><p>上記工事内容、金額を了承し工事を発注致します。</p><div class="es-sign"><span>御社名　；</span><i></i><span>担当者　；</span><i class="s"></i></div></div>`}
+    <div class="es-endline"></div></div>`;
+}
+// 見積書の別紙「クロス張替え詳細」：寸法メモから、箇所ごと・天井/壁ごとに足した㎡と金額
+function clothDetailRows(rows){
+  const g = new Map();
+  (rows || []).filter(r => !r.noteRow && !r._del && r.dims?.length).forEach(r => {
+    const nm = String(r.name || ""), base = /天井/.test(nm) && !/壁/.test(nm) ? "天井" : /壁/.test(nm) && !/天井/.test(nm) ? "壁" : "";
+    r.dims.forEach(d => { const part = d.part || base, loc = d.loc || r.loc || "", name = `クロス貼替${part ? `(${part})` : ""}${d.acc || r.accent ? "（アクセント）" : ""}`, k = [loc, name, r.price].join("|");
+      if(!g.has(k)) g.set(k, {loc, name, qty:0, unit:"㎡", price:r.price}); g.get(k).qty += Number(d.a) || 0; }); });
+  return [...g.values()].map(x => ({...x, qty:Math.round(x.qty * 100) / 100}));
+}
+function clothDetailHtml(e){
+  const list = clothDetailRows(e.rows); if(!list.length) return "";
+  const sum = list.reduce((a, r) => a + estAmt(r), 0), n = Math.max(20, list.length);
+  return `<div class="pdfdoc es">
+    <div class="es-bar">クロス張替え詳細</div>
+    <div class="es-sub"><span>NO：　　${esc(e.no || "")}　（別紙）</span><span>発行日　${e.issuedAt ? fmtDate(e.issuedAt) : ""}</span></div>
+    <table class="es-prop"><tr><th>物件名称：</th><td>${esc(e.building || "")}</td><td class="es-room">${esc(e.room || "")}</td><td class="es-kind">${esc(e.kind || "")}</td></tr></table>
+    <table class="es-items"><thead><tr><th class="no">No</th><th>箇所</th><th>施 工 内 容</th><th>仕様</th><th>数 量</th><th>単価</th><th>金額</th></tr></thead><tbody>
+      ${Array.from({length:n}, (_, k) => { const r = list[k]; return `<tr><td class="no">${k + 1}</td>${r ? `<td>${esc(r.loc)}</td><td>${esc(r.name)}</td><td></td><td class="c">${fmtQty(r.qty)}　㎡</td><td class="r">${r.price !== "" && r.price != null ? yenFull(r.price) : ""}</td><td class="r">${r.price !== "" && r.price != null ? yenFull(estAmt(r)) : ""}</td>` : "<td></td><td></td><td></td><td></td><td></td><td></td>"}</tr>`; }).join("")}
+    </tbody><tfoot><tr><td class="no"></td><td colspan="6" class="r">${yenFull(sum)}</td></tr></tfoot></table>
+    <p class="es-greet" style="margin-top:8px">※寸法から計算した、箇所ごとのクロス張替えの内訳です（金額は税抜）。</p>
     <div class="es-endline"></div></div>`;
 }
 // 管理会社のシステムに取り込む用（雛形の「エクセル」シートと同じ列）
@@ -2914,8 +2950,8 @@ function estRowHtml(r = {}){
     <span class="e-cost">${Number(r.cost) ? `原価 ${yenFull(r.cost)}／${esc(r.unit || "")}` : ""}</span></div>`;
 }
 // 工事メモの寸法・アクセントを、見積や案件の行（画面の要素）に持たせておく
-const dimsOfEl = el => { let d = null; try { d = JSON.parse(el.dataset.dims || "null"); } catch(e) {} return {...(d?.length ? {dims:d} : {}), ...(el.dataset.acc ? {accent:true} : {})}; };
-const dimsAttr = i => `${i.dims?.length ? ` data-dims="${esc(JSON.stringify(i.dims))}"` : ""}${i.accent ? ` data-acc="1"` : ""}`;
+const dimsOfEl = el => { let d = null, u = null; try { d = JSON.parse(el.dataset.dims || "null"); u = JSON.parse(el.dataset.sup || "null"); } catch(e) {} return {...(d?.length ? {dims:d} : {}), ...(el.dataset.acc ? {accent:true} : {}), ...(u ? {sup:u} : {})}; };
+const dimsAttr = i => `${i.dims?.length ? ` data-dims="${esc(JSON.stringify(i.dims))}"` : ""}${i.accent ? ` data-acc="1"` : ""}${i.sup ? ` data-sup="${esc(JSON.stringify(i.sup))}"` : ""}`;
 function readEst(form){
   const f = form.elements, g = k => (f[k]?.value || "").trim();
   const staffName = g("staff"), sp = (S.staff || []).find(p => p.name === staffName);
@@ -3116,7 +3152,7 @@ async function estToJob(e){
   const rows = (e.rows || []).filter(r => !r.noteRow && r.name && Number(r.cost) > 0 && !["和室工事", "諸経費"].includes(r.cat));
   // 仕様が「材工 …」なら材工の工事にして、残り（白 織物 など）を備考・品番に
   const items = rows.map(r => ({iid:"i_" + newId(), cat:r.cat || "その他", loc:r.loc || "", name:r.name, qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.cost) || 0, note:/^材工/.test(r.spec || "") ? r.spec.replace(/^材工[\s・]*/, "") : r.spec || "", zai:/^材工/.test(r.spec || ""),
-    ...(r.dims?.length ? {dims:r.dims} : {}), ...(r.accent ? {accent:true} : {}), ...(r.priceId && !String(r.priceId).startsWith("x_") ? {priceId:r.priceId} : {})}));
+    ...(r.dims?.length ? {dims:r.dims} : {}), ...(r.accent ? {accent:true} : {}), ...(r.sup ? {sup:r.sup} : {}), ...(r.priceId && !String(r.priceId).startsWith("x_") ? {priceId:r.priceId} : {})}));
   const trades = tradesFromItems(rows);
   const {pref, city} = splitAddress(e.address || "");
   const site = {address:e.address || "", building:e.building || "", room:e.room || "", autolock:e.autolock || "", elevator:e.elevator || ""};
@@ -5289,13 +5325,26 @@ async function viewHome(){
 }
 
 /* ---------- 管理：工事メモ（スマホで入れて、そのまま見積の下書きにする） ---------- */
+// 工事ごとの発注先：業者（協力業者・外部の工事の発注先）と材料（タキザワなど）は別々に選ぶ
+function memoWorkSupOpts(){
+  const cr = [...(S.crafts?.values() || [])].filter(c => c.status === "approved").sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0) || String(a.tradeName || a.name).localeCompare(String(b.tradeName || b.name), "ja"));
+  const ws = (S.suppliers || []).filter(x => x.kind === "work");
+  return `<option value="">未定（募集する）</option>${cr.length ? `<optgroup label="協力業者">${cr.map(c => `<option value="c:${esc(c.uid)}">${esc(c.tradeName || c.name)}</option>`).join("")}</optgroup>` : ""}${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}">${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self">自社でやる</option>`;
+}
+function memoMatSupOpts(){
+  return `<option value="">なし（業者の材工）</option>${(S.suppliers || []).filter(x => x.kind !== "work").map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}`;
+}
+const memoSupOf = (ws, ms, mp) => ws || ms || mp !== "" ? {...(ws ? {work:ws, workName:supNameOf(ws)} : {}), ...(ms ? {mat:ms, matName:supNameOf(ms)} : {}), ...(mp !== "" && mp != null ? {matPrice:Number(mp) || 0} : {})} : null;
+const supNameOf = v => !v ? "" : v === "self" ? "自社" : v.startsWith("c:") ? (S.crafts?.get(v.slice(2))?.tradeName || S.crafts?.get(v.slice(2))?.name || "") : ((S.suppliers || []).find(x => x.id === v.replace(/^s:/, ""))?.name || "");
 function memoRowHtml(){
   return `<div class="memo-row"><input type="text" name="m_loc" list="memo-locs" placeholder="箇所" aria-label="箇所" autocomplete="off">
     <div class="memo-wq"><input type="text" name="m_name" data-memo-w placeholder="工事内容（文字で探す）" aria-label="工事内容" autocomplete="off"><input type="hidden" name="m_pid"><ul class="memo-wac" hidden></ul></div>
     <input type="number" name="m_qty" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
     <input type="text" name="m_unit" list="est-units" placeholder="単位" aria-label="単位">
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
-    <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="SP2823" hidden>SP2823</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span></div>
+    <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="SP2823" hidden>SP2823</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span>
+      <span class="mp-sup"><label class="mp-ws">業者の発注先<select name="m_ws">${memoWorkSupOpts()}</select></label>
+        <label class="mp-ms">材料の発注先<select name="m_ms">${memoMatSupOpts()}</select></label><label class="mp-mp">材料単価<input type="number" name="m_mp" min="0" inputmode="numeric" placeholder="円"></label></span></div>
     <div class="memo-dims" hidden>
       <div class="md-head"><b>寸法をメモ（m）</b><span>入れた面積がそのまま数量に入ります</span></div>
       <div class="md-list">${memoDimHtml()}</div>
@@ -5312,19 +5361,21 @@ function memoRowHtml(){
 }
 // クロスの寸法：1面ずつ「高さ×長さ」（天井は「縦×横」）。アクセントにチェックした面は別の行（仕様：アクセントクロス）になる
 function memoDimHtml(){
-  return `<div class="md-row"><input type="number" name="d_h" min="0" step="0.01" inputmode="decimal" placeholder="高さ" aria-label="高さ（m）"><i>×</i><input type="number" name="d_l" min="0" step="0.01" inputmode="decimal" placeholder="長さ" aria-label="長さ（m）"><span class="md-a">—</span>
+  return `<div class="md-row"><span class="md-lp"><select name="d_loc" aria-label="この面の箇所"><option value="">箇所</option>${DIM_LOCS.map(l => `<option>${l}</option>`).join("")}</select><select name="d_part" aria-label="天井か壁"><option>壁</option><option>天井</option></select></span><input type="number" name="d_h" min="0" step="0.01" inputmode="decimal" placeholder="高さ" aria-label="高さ（m）"><i>×</i><input type="number" name="d_l" min="0" step="0.01" inputmode="decimal" placeholder="長さ" aria-label="長さ（m）"><span class="md-a">—</span>
     <label class="md-ck"><input type="checkbox" name="d_acc"> アクセント</label><button type="button" class="i-x" data-act="md-rm" aria-label="この面を消す">×</button></div>`;
 }
 const isCloth = name => /クロス|壁紙/.test(name || "") && !/クリーニング|襖|洗浄/.test(name || "");
 const r2 = n => Math.round(n * 100) / 100;
 function memoDims(row){
-  return [...row.querySelectorAll(".md-row")].map(d => ({h:Number(d.querySelector("[name=d_h]").value) || 0, l:Number(d.querySelector("[name=d_l]").value) || 0, acc:d.querySelector("[name=d_acc]").checked}))
+  const all = !!row.closest(".mcf.all");
+  return [...row.querySelectorAll(".md-row")].map(d => ({h:Number(d.querySelector("[name=d_h]").value) || 0, l:Number(d.querySelector("[name=d_l]").value) || 0, acc:d.querySelector("[name=d_acc]").checked,
+    ...(all ? {loc:d.querySelector("[name=d_loc]")?.value || "", part:d.querySelector("[name=d_part]")?.value || "壁"} : {})}))
     .filter(d => d.h > 0 && d.l > 0).map(d => ({...d, a:r2(d.h * d.l)}));
 }
 // 工事内容が変わったら、クロスなら寸法の欄、単価表にない工事なら金額の欄を出す
 function memoRowState(row){
   const name = row.querySelector("[name=m_name]").value.trim(), pid = row.querySelector("[name=m_pid]").value;
-  const inTable = !!estPrices().find(x => (pid && x.id === pid && x.name === name) || x.name === name);
+  const inTable = !!estPrices().find(x => (pid && x.id === pid && (x.name === name || row.dataset.alias)) || x.name === name);
   const dims = row.querySelector(".memo-dims"), nw = row.querySelector(".memo-new"), cloth = isCloth(name);
   dims.hidden = !cloth; nw.hidden = !name || inTable;
   row.querySelectorAll(".mp-any").forEach(b => { b.hidden = !cloth || (b.dataset.v && !row.dataset.sp); b.classList.toggle("on", row.querySelector("[name=m_spec]").value.trim() === (b.dataset.v || CLOTH_ANY)); });
@@ -5359,15 +5410,15 @@ function memoQuickMark(){
 }
 function memoCalc(){ memoQuickMark();
   const f = document.querySelector("form[data-form=memo]"); if(!f) return;
-  let sell = 0, cost = 0;
+  let sell = 0, cost = 0, mat = 0;
   f.querySelectorAll(".memo-row").forEach(r => {
     const v = n => Number(r.querySelector(`[name=${n}]`)?.value) || 0, name = r.querySelector("[name=m_name]").value.trim();
     const acc = isCloth(name) ? memoDims(r).filter(d => d.acc).reduce((a, d) => a + d.a, 0) : 0, q = v("m_qty") + acc;
-    const a = Math.round(q * v("m_sell")), b = Math.round(q * v("m_cost")); sell += a; cost += b;
-    r.querySelector(".mp-amt").innerHTML = name && q ? `見積 <b>${yenFull(a)}</b>　業者 ${yenFull(b)}` : "";
+    const a = Math.round(q * v("m_sell")), b = Math.round(q * v("m_cost")), m = Math.round(q * v("m_mp")); sell += a; cost += b; mat += m;
+    r.querySelector(".mp-amt").innerHTML = name && q ? `見積 <b>${yenFull(a)}</b>　業者 ${yenFull(b)}${m ? `　材料 ${yenFull(m)}` : ""}` : "";
   });
-  const fee = coFee(S.estCo, S.ledgerCfg || {}), net = Math.round(sell * (1 - fee / 100)), profit = net - cost;
-  $("#memo-sum").innerHTML = `<span>見積金額（税抜）<b>${yenFull(sell)}</b></span>${fee ? `<span>手数料${fee}%引き後 <b>${yenFull(net)}</b></span>` : ""}<span>業者金額 <b>${yenFull(cost)}</b></span>
+  const fee = coFee(S.estCo, S.ledgerCfg || {}), net = Math.round(sell * (1 - fee / 100)), profit = net - cost - mat;
+  $("#memo-sum").innerHTML = `<span>見積金額（税抜）<b>${yenFull(sell)}</b></span>${fee ? `<span>手数料${fee}%引き後 <b>${yenFull(net)}</b></span>` : ""}<span>業者金額 <b>${yenFull(cost)}</b></span>${mat ? `<span>材料 <b>${yenFull(mat)}</b></span>` : ""}
     <span>利益 <b class="${profit < 0 ? "danger-text" : ""}">${yenFull(profit)}</b></span><span>利益率 <b>${net ? (profit / net * 100).toFixed(1) : "0.0"}%</b></span>`;
 }
 // 管理会社が変わったら、単価表から選んだ行の単価をその会社の単価にする
@@ -5401,8 +5452,11 @@ document.addEventListener("input", e => { if(e.target.closest?.("form[data-form=
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) memoReprice(t.form); else if(t.closest?.("form[data-form=memo]")) memoCalc(); });
 // ---- 紙の工事メモと同じ並び：チェック（上の段）・クロス・床（真ん中の段） ----
 // チェックは「有・無」などを押すだけ。工事になるもの（ルークリ・エアコン・WAX・鏡など）は、その他の工事に行が入る
-const MEMO_LOCS = [["全", "全室"], ["洋", "洋室"], ["洋収", "洋室収納"], ["通路", "通路"], ["通収", "通路収納"], ["洗面", "洗面所"], ["WC", "トイレ"], ["洗置", "洗濯機置場"]];
-const MEMO_CF = [["クロス貼替(壁)", true], ["クロス貼替(天井)", true], ["クロス部分貼替", false], ["フロアタイル上貼", false], ["ソフト巾木貼替", false], ["クッションフロア貼替", false]];
+const MEMO_LOCS = [["洋", "洋室"], ["洋収", "洋室収納"], ["通路", "通路"], ["通収", "通路収納"], ["洗面", "洗面所"], ["WC", "トイレ"], ["洗置", "洗濯機置場"]];
+const MEMO_CF = [["クロス貼替(壁)", true], ["クロス貼替(天井)", true], ["クロス部分貼替", true]];   // 床などは「その他の工事」で足す
+// 「全」を押すと：箇所は「全室内」、工事は「クロス全張替え(天井・壁)」（単価はクロス貼替(天井・壁)）。寸法メモに面ごとの箇所・天井/壁が出る
+const CF_ALL = {loc:"全室内", label:"クロス全張替え(天井・壁)", price:"クロス貼替(天井・壁)"};
+const DIM_LOCS = ["洋室", "洋室収納", "通路", "通路収納", "LDK", "DK", "キッチン", "洗面所", "トイレ", "洗濯機置場", "玄関", "和室", "浴室"];
 const MEMO_CK = [   // [キー, 名前, 選べるもの, 数の欄（単位）, 工事の名前（有のとき）]
   ["rk", "ルークリ", null, "㎡", "ハウスクリーニング"], ["ac", "エアコン洗浄", ["有", "無"], "台", "エアコン内部洗浄"], ["wax", "WAX", ["有", "無"], "㎡", "WAX"],
   ["waxh", "WAX剥離", ["有", "無"], "㎡", "WAX剥離"], ["cc", "クロスクリーニング", ["有", "無"], "", "クロスクリーニング"], ["mir", "浴室鏡水垢洗浄", ["有", "無"], "", "鏡水垢洗浄"]];
@@ -5420,8 +5474,16 @@ function memoChecksHtml2(){
 }
 function memoCfHtml([name, cloth]){
   return `<div class="mcf" data-cf="${esc(name)}">
-    <div class="mcf-locs">${MEMO_LOCS.map(([s, v]) => `<button type="button" class="mq-b mc" data-act="mloc" data-v="${esc(v)}">${s}</button>`).join("")}<button type="button" class="mq-b mc" data-act="mloc" data-v="">他</button></div>
+    <div class="mcf-locs"><button type="button" class="mq-b mc" data-act="mloc" data-all="1">全</button>${MEMO_LOCS.map(([s, v]) => `<button type="button" class="mq-b mc" data-act="mloc" data-v="${esc(v)}">${s}</button>`).join("")}</div>
     ${memoRowHtml().replace('<div class="memo-row">', `<div class="memo-row" data-fixed="1"${cloth ? ' data-sp="1"' : ""}>`)}</div>`;
+}
+function memoCfAll(c, on){
+  const row = c.querySelector(".memo-row"), inp = row.querySelector("[name=m_loc]");
+  c.classList.toggle("all", on); c.querySelector(".mc[data-all]").classList.toggle("on", on);
+  c.querySelectorAll(".mcf-locs .mc:not([data-all])").forEach(b => b.classList.remove("on"));
+  if(on){ memoPreset(row, CF_ALL.price); row.querySelector("[name=m_name]").value = CF_ALL.label; row.dataset.alias = "1"; inp.value = CF_ALL.loc; }
+  else { delete row.dataset.alias; memoPreset(row, c.dataset.cf); inp.value = ""; }
+  memoRowState(row); memoCalc();
 }
 // 工事の名前から単価表の工事を選んで、その行に入れる（候補がいくつかあれば最初の。ルークリは広さで選ぶ）
 function memoPreset(row, k, area = 0){
@@ -5480,7 +5542,7 @@ function memoQuick(k){
 }
 async function viewMemo(lid = ""){
   S.estCo = "";   // 前に開いた見積の管理会社の単価が残らないように
-  [S.prices, S.props, S.staff] = await Promise.all([api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getProperties().catch(() => []), api().getStaff().catch(() => [])]);
+  [S.prices, S.props, S.staff, S.suppliers] = await Promise.all([api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getProperties().catch(() => []), api().getStaff().catch(() => []), api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS))]);
   const cos = await ledgerCosLoad();
   // 工事番号の見本（収支・見積で使った番号の続き）と、先方のご担当者様の候補
   const [{rows: lrows}, ests] = await Promise.all([ledgerData().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
@@ -5521,7 +5583,6 @@ async function viewMemo(lid = ""){
       <section class="mpaper"><h2>クロス・床 <small>箇所を押して、品番と数量（寸法）を入れます。数量のない行は見積に入りません</small></h2>
         <div id="memo-cf">${MEMO_CF.map(memoCfHtml).join("")}</div></section>
       <section class="mpaper"><h2>その他の工事</h2>
-      <div class="field"><span>よくある工事 <small>押すと下に工事の行が入ります</small></span><div class="memo-quick">${MEMO_QUICK.map(([g, ks]) => `<div class="mq-g"><b>${g}</b>${ks.map(k => `<button type="button" class="mq-b" data-act="memo-quick" data-k="${esc(k)}">${esc(k)}</button>`).join("")}</div>`).join("")}</div></div>
       <div class="field"><span>工事（箇所・工事・数量・単価） <small>工事内容は文字を入れると単価表から候補が出ます。単価は管理会社ごとの単価が入り、直すこともできます</small></span>
         <div class="memo-rhead" aria-hidden="true"><span>箇所</span><span>工事内容</span><span>数量</span><span>単位</span><span></span></div><div id="memo-rows">${memoRowHtml()}</div>
         <datalist id="memo-cats">${[...new Set(estPrices().map(x => x.cat).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist><datalist id="memo-locs">${EST_LOCS.map(l => `<option value="${esc(l)}">`).join("")}</datalist><datalist id="est-units">${UNITS.map(u => `<option value="${u}">`).join("")}<option value="ヶ所"></datalist>
@@ -6309,8 +6370,8 @@ const ACTIONS = {
     memoCheckSync(f); },
   // クロス・床の箇所：押した箇所を「・」でつないで箇所の欄に入れる（他は手で入れる）
   mloc(el){ const c = el.closest(".mcf"), inp = c.querySelector("[name=m_loc]");
-    if(!el.dataset.v){ inp.focus(); return; }
-    el.classList.toggle("on"); inp.value = [...c.querySelectorAll(".mcf-locs .mc.on")].map(b => b.dataset.v).join("・"); memoCalc(); },
+    if(el.dataset.all){ memoCfAll(c, !c.classList.contains("all")); return; }
+    el.classList.toggle("on"); inp.value = [...c.querySelectorAll(".mcf-locs .mc.on:not([data-all])")].map(b => b.dataset.v).join("・"); memoCalc(); },
   // クロスの品番がなんでもいいとき：「材工 白 織物」を入れる（もう一度押すと消す）
   "memo-any"(el){ const r = el.closest(".memo-row"), i = r.querySelector("[name=m_spec]"), v = el.dataset.v || CLOTH_ANY; i.value = i.value.trim() === v ? "" : v;
     r.querySelectorAll(".mp-any").forEach(b => b.classList.toggle("on", i.value.trim() === (b.dataset.v || CLOTH_ANY))); },
@@ -7071,11 +7132,11 @@ const FORMS = {
     // 単価表の工事は単価・原価つき。単価表にない工事は名前と数量だけ（単価は見積で入れる）
     const rows = [...form.querySelectorAll(".memo-row")].map(r => { const v = n => (r.querySelector(`[name=${n}]`)?.value || "").trim(), name = v("m_name"), q = v("m_qty");
       const num = n => v(n) === "" ? "" : Math.max(0, Math.round(Number(v(n)) || 0));
-      const p0 = ps.find(x => x.id === v("m_pid") && x.name === name) || ps.find(x => x.name === name);
+      const p0 = ps.find(x => x.id === v("m_pid") && (x.name === name || r.dataset.alias)) || ps.find(x => x.name === name);
       const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
       const dims = isCloth(name) ? memoDims(r) : [], acc = r2(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
-        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed}; })
+        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", sup:memoSupOf(v("m_ws"), v("m_ms"), num("m_mp"))}; })
       .filter(x => x.p.name && !(x.fixed && (x.qty === "" || !x.qty) && !x.dims.length));   // クロス・床で数量のない行は入れない
     // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
     const adds = rows.filter(x => x.save && x.p.cost > 0);
@@ -7120,8 +7181,8 @@ const FORMS = {
     await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:g("person"), building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", ckText, master.note || ""].filter(Boolean).join("\n"), checks, moveIn:checks.movein?.n || "", kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"), photoUrls:g("photoUrl") ? [g("photoUrl")] : [],
       issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, staff:staff ? {name:staff, phone:st?.phone || ""} : null,
-      rows:rows.flatMap(x => { const one = (spec, qty, more = {}) => ({id:"r_" + newId(), loc:x.loc, name:x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id || "", ...more});
-        const dm = x.dims.filter(d => !d.acc), da = x.dims.filter(d => d.acc), dd = ds => ds.length ? {dims:ds.map(({h, l, a, acc}) => ({h, l, a, ...(acc ? {acc:true} : {})}))} : {};
+      rows:rows.flatMap(x => { const one = (spec, qty, more = {}) => ({id:"r_" + newId(), loc:x.loc, name:x.label || x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id || "", ...(x.sup ? {sup:x.sup} : {}), ...more});
+        const dm = x.dims.filter(d => !d.acc), da = x.dims.filter(d => d.acc), dd = ds => ds.length ? {dims:ds.map(({h, l, a, acc, loc, part}) => ({h, l, a, ...(acc ? {acc:true} : {}), ...(loc ? {loc} : {}), ...(part ? {part} : {})}))} : {};
         if(!x.acc) return [one(x.spec, x.qty, dd(dm))];
         return [...(Number(x.qty) > 0 ? [one(x.spec, x.qty, dd(dm))] : []), one(`アクセントクロス${x.accCode ? " " + x.accCode : ""}`, x.acc, {...dd(da), accent:true})]; }),
       note:[g("mFree"), dimNote].filter(Boolean).join("\n"), createdAt:now, updatedAt:now});
