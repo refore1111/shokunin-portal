@@ -2702,6 +2702,17 @@ const stageTag = st => `<span class="stg stg-${st || "none"}">${LEDGER_STAGE[st 
 const STAGE_FLOW = ["", "est", "wait", "won", "arr", "done"];
 // 収支の進み方（ボタンで次へ）：見積中 →「見積を送信済み」→ 受注待ち →「受注」→ 受注 →（完了確認の予定を入れて）「手配済み」→ 完了待ち →「完了報告済み」→ 完了（完工月が入り、締め日に請求書へ）
 const dispStage = r => (r.billedOutside && !r.stage) || (r.done && r.stage !== "tachiai") ? "done" : (r.stage || "");
+// 完了確認したら：届いている完了報告を確認済みにし、分離発注の全部が完了確認済みなら収支を「完了待ち」へ（次は「完了報告済み」）
+async function afterJobCompleted(id){
+  const reps = await api().listReports({jobId:id}).catch(() => []);
+  await Promise.all(reps.filter(r => r.status === "submitted").map(r => api().setReportStatus(r.id, "approved", "")));
+  const j = await api().getJob(id), rootId = j?.parentId || id;
+  const fam = (await api().listJobs({}).catch(() => [])).filter(x => (x.id === rootId || x.parentId === rootId) && x.assignedTo && !x.declinedAt);
+  if(fam.some(x => !["completed", "paid"].includes(x.id === id ? "completed" : x.status))) return;
+  const lr = (await api().getLedgerRow(rootId).catch(() => null)) || {id:rootId, jobId:rootId};
+  if(["", "est", "wait", "won"].includes(dispStage(lr))) await api().saveLedger({...lr, stage:"arr", arranged:true, updatedAt:Date.now()});
+  S.ldCache = null;
+}
 function stageNextHtml(r, big = false){
   const st = dispStage(r), cls = big ? "btn" : "btn sub sm stg-next";
   const b = (step, label) => `<button type="button" class="${cls}" data-act="stage-next" data-id="${esc(r.id)}" data-step="${step}">${label}</button>`;
@@ -3214,7 +3225,7 @@ async function ledgerDataLoad(){
     const doneAt = j.completedAt || j.finishedAt;
     return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), monthSet:!!L.month, jobNo:j.jobNo || "", name:j.title, company:L.company || info.manager || "",
       contract:L.contract || 0, kind:L.kind || "", staff:L.staff ?? (j.staff?.name || ""), staff2:L.staff2 || "", vendors, extraVendors:L.extraVendors || [], note:L.note || "",
-      arranged:!!j.assignedTo, done:["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, ki:L.ki, stage:L.stage || (j.assignedTo || L.contract ? "won" : ""), estimateId:L.estimateId || "", doneCheck:L.doneCheck || "", billId:L.billId || "", billedOutside:!!L.billedOutside, ord:L.ord ?? null};
+      arranged:!!j.assignedTo, done:L.stage === "arr" && !L.done ? false : ["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, ki:L.ki, stage:L.stage || (j.assignedTo || L.contract ? "won" : ""), estimateId:L.estimateId || "", doneCheck:L.doneCheck || "", billId:L.billId || "", billedOutside:!!L.billedOutside, ord:L.ord ?? null};
   }));
   const rows = [...auto, ...stored.filter(r => !r.jobId)].map(r => calcLedger(r, cfg));
   // 管理会社の表示名：取り込んだ表（Numbers）の書き方を優先
@@ -4224,7 +4235,7 @@ async function viewAdminJob(id){
   const act = (st, l, cls = "sub", aud = "") => `<button class="btn ${cls}" data-act="job-status" data-id="${esc(id)}" data-status="${st}"${aud ? ` data-aud="${aud}"` : ""}>${l}</button>`;
   const acts = {draft:act("open", "既存業者に先に公開", "", "priority") + act("open", "全体に公開", "sub", "all"),
     open:(job.audience === "priority" ? `<button class="btn" data-act="aud-all" data-id="${esc(id)}">全体に公開する</button>` : "") + act("closed", "募集を締め切る"), closed:act("open", "募集を再開する"),
-    assigned:job.acceptedAt ? act("completed", "完了を確認する") : "", working:act("completed", "完了を確認する"), finished:act("completed", "完了を確認する")}[job.status] || "";
+    assigned:job.acceptedAt ? act("completed", "完了を確認する") : "", working:act("completed", "完了を確認する"), finished:act("completed", "完了を確認する"), completed:lrow ? stageNextHtml(lrow, true) : "", paid:lrow ? stageNextHtml(lrow, true) : ""}[job.status] || "";
   const assigned = S.crafts.get(job.assignedTo);
   const jobItems = itemsWithId(priv.items?.length ? priv.items : job.items);
   // 応募者が選んだ工事：分類ごとに丸ごと選んでいれば「クリーニング」のように分類名で見せる
@@ -4296,7 +4307,7 @@ async function viewAdminJob(id){
         ${calUrl ? `<section class="panel"><h2>完了確認</h2>
           <p class="small" style="margin:0 0 10px">完了確認の日と担当を選んで、Googleカレンダーに入れます（会社のアドレスで作り、担当は招待されます）。最初の日付はUP日です。</p>
           <div class="row" style="gap:8px;flex-wrap:wrap"><input type="date" data-caldate value="${esc(lrow?.doneCheck || cal.up)}" aria-label="完了確認の日" style="max-width:180px">${calPick}<button class="btn" data-act="done-cal" data-url="${esc(calUrl)}" data-root="${esc(root.id)}">カレンダーに入れる</button></div>
-          ${lrow ? `<div class="row" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><span>収支：${stageCell(dispStage(lrow))}</span>${lrow.doneCheck ? `<span class="small">完了確認 ${fmtDate(lrow.doneCheck)}</span>` : ""}${stageNextHtml(lrow, true)}</div>` : ""}</section>` : ""}
+          ${lrow ? `<div class="row" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><span>収支：${stageCell(dispStage(lrow))}</span>${lrow.doneCheck ? `<span class="small">完了確認 ${fmtDate(lrow.doneCheck)}</span>` : ""}${["completed", "paid"].includes(job.status) ? "" : stageNextHtml(lrow, true)}</div>` : ""}</section>` : ""}
       </div></div>`;
 }
 
@@ -4971,7 +4982,7 @@ function buildNotices(seenJobs, seenApplied){
     Object.entries(napp).forEach(([id, n]) => add("jobs", `#/admin/job/${id}`, jobs.get(id).title, `応募 ${n}件・発注先を選んでください`, "blue", "応募あり（発注先の選定待ち）"));
     (d.jobs || []).filter(j => j.status === "finished").forEach(j => add("jobs", `#/admin/job/${j.id}`, j.title, "作業完了・完了確認をしてください", "orange"));
     (d.jobs || []).filter(j => j.status === "selected").forEach(j => add("jobs", `#/admin/job/${j.id}`, j.title, "先払い待ち・振込をお願いします", "orange", "先払い待ち"));
-    (d.reports || []).forEach(r => add("jobs", `#/admin/job/${r.jobId}`, r.jobTitle || jobs.get(r.jobId)?.title || "案件", "完了報告が届きました", "orange"));
+    (d.reports || []).filter(r => !["completed", "paid"].includes(jobs.get(r.jobId)?.status)).forEach(r => add("jobs", `#/admin/job/${r.jobId}`, r.jobTitle || jobs.get(r.jobId)?.title || "案件", "完了報告が届きました", "orange"));
     (d.invoices || []).sort((a, b) => a.issuedAt - b.issuedAt).forEach(v => add("invoices", `#/admin/invoices/${v.month}`, `${v.from?.name || "業者"}　${fmtMonth(v.month)}分 ${yenFull(v.total)}`, "支払待ち", "orange"));
   } else {
     const appliedIds = new Set((d.myApps || []).map(a => a.jobId));
@@ -5158,7 +5169,7 @@ async function viewHome(){
   jobs.filter(j => jobMine(j) && ["open", "closed"].includes(j.status) && cnt[j.id]).forEach(j => add(j.title, `応募が${cnt[j.id]}件。業者を選んで発注する`, `#/admin/job/${j.id}`, "warn"));
   jobs.filter(j => jobMine(j) && j.status === "assigned" && !j.acceptedAt && !j.declinedAt).forEach(j => add(j.title, `${S.crafts.get(j.assignedTo)?.name || "業者"}の承諾待ち`, `#/admin/job/${j.id}`));
   jobs.filter(j => jobMine(j) && j.declinedAt && j.status === "assigned").forEach(j => add(j.title, "発注が断られました。対応してください", `#/admin/job/${j.id}`, "danger"));
-  reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn"); });
+  reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j) && !["completed", "paid"].includes(j.status)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn"); });
   [...(S.threads?.values() || [])].filter(isUnread).filter(t => !mineOnly || !t.jobId || jobMine(jobs.find(j => j.id === t.jobId))).forEach(t => add(t.jobTitle || "チャット", `${peerName(t)}から新しいチャット`, chatHref(t)));
   if(S.pending && !mineOnly) add("協力業者の登録", `審査待ちが${S.pending}件あります`, "#/admin/craftsmen");
   const today = todayIso(), wk = addDays(today, 6);
@@ -6477,9 +6488,10 @@ const ACTIONS = {
     }
     if(el.dataset.aud) await api().saveJob(id, {audience:el.dataset.aud, autoAllAt:null});
     await api().setJobStatus(id, status);
+    if(status === "completed") await afterJobCompleted(id);
     if(status === "open" && el.dataset.aud){ const j = await api().getJob(id); if(j && !j.parentId) notifyNewJob(id, j); }
     if(status === "completed"){ const j = await api().getJob(id); if(j?.assignedTo) notifyMail(id, "完了確認されました", `${meName()}が作業の完了を確認しました。${!tenant() ? "月末に「請求書」タブからまとめて請求してください。" : j.pay ? "「請求書」タブから、この案件の請求書をReforeに発行してください。" : "締め日に「請求書」タブからまとめて請求してください。"}`, {to:j.assignedTo}); }
-    toast({open:"公開しました", closed:"締め切りました", completed:"完了確認にしました。業者さんの評価をつけてください"}[status]); route();
+    toast({open:"公開しました", closed:"締め切りました", completed:"完了確認にしました。管理会社に完了報告したら「完了報告済み」を押してください"}[status]); route();
   },
   async assign(el){ S.ldCache = null;
     const {job, uid, name} = el.dataset, tema = JSON.parse(el.dataset.tema || "[]");
@@ -6738,7 +6750,7 @@ const ACTIONS = {
     await api().setReportStatus(el.dataset.id, "approved", "");
     const j = await api().getJob(el.dataset.job);
     const done = await ask({title:"完了報告を確認済みにしました", body:"続けて、この案件を「完了確認済み」にしますか？", ok:"完了確認にする"});
-    if(done) await api().setJobStatus(el.dataset.job, "completed");
+    if(done){ await api().setJobStatus(el.dataset.job, "completed"); await afterJobCompleted(el.dataset.job); }
     if(j?.assignedTo) notifyMail(el.dataset.job, done ? "完了報告を確認し、完了確認しました" : "完了報告を確認しました",
       done ? "月末に「請求書」タブからまとめて請求してください。" : "", {to:j.assignedTo});
     route();
