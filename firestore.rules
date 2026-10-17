@@ -108,7 +108,8 @@ service cloud.firestore {
       allow update: if isAdmin() || isOp()
         // 工務店の管理者：自社の設定（利用状態は運営だけ）
         // お試しの期限は変えられず、お試しプランに戻すこともできない
-        || (isCoAdmin() && cid == myCid() && noChange(['status', 'createdAt', 'id', 'ownerEmail', 'trialEnds'])
+        // プラン・オプション・追加枠・カード・次回請求日は、Stripe の入金を確かめた運営だけが変える（工務店が自分で変えられない）
+        || (isCoAdmin() && cid == myCid() && noChange(['status', 'createdAt', 'id', 'ownerEmail', 'trialEnds', 'plan', 'opts', 'money', 'extra', 'card', 'nextBill'])
             && (request.resource.data.get('plan', '') != 'trial' || resource.data.get('plan', '') == 'trial'))
         // 担当者も、既存業者の登録は変えられる
         || (isCo() && cid == myCid() && onlyKeys(['priority']));
