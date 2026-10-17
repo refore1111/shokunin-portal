@@ -7557,9 +7557,11 @@ document.addEventListener("change", e => {
 //  links：「支払いリンク（Payment Links）」の URL。プラン・オプションごとに1つ（月額のサブスクで作る。追加枠 extra は1回払い）
 //  portal：「カスタマーポータル」のログインリンク（カードの変更・領収書・解約は Stripe の画面で）
 //  支払いが済んだら、運営画面の工務店のページで「入金を確認して反映」を押すとプランが切り替わる（Stripe の Webhook を作れば自動にもできる）
+//  prepay：全体に公開した案件の先払い（工事代金＋運営手数料）用。「お客様が金額を指定する」で作った支払いリンク
+//  ※ 運営の「設定」→「Stripe」で入れた URL があれば、そちらを使う（コードを書き換えなくてよい）
 const STRIPE = {
   links:{beginner:"", pro:"", master:"", calendar:"", money:"", docs:"", staff:"", extra:""},
-  portal:"",
+  portal:"", prepay:"",
 };
 const SUBSCRIPTION_ON = false;   // サブスク（プラン・月額のカード決済・投稿数の上限・オプション）を使うときは true に
 // プラン（税別）。incl = 追加料金なしで使えるオプション（staff は従業員追加が無制限）
@@ -7568,9 +7570,10 @@ const OP_DEFAULT = {
     pro:{name:"プロプラン", price:4980, limit:15, incl:["calendar", "money", "docs"]}, master:{name:"マスタープラン", price:14800, limit:30, incl:["calendar", "money", "docs", "staff"]}},
   trial:{name:"お試しプラン", limit:5, days:30},
   fee:0.1, memberFee:1000, moneyFee:1000, extraFee:1000,
-  bank:"", opName:"株式会社Refore（GENPUKU Pro 運営）", opInvoiceNumber:""
+  bank:"", opName:"株式会社Refore（GENPUKU Pro 運営）", opInvoiceNumber:"",
+  stripe:{links:{}, portal:"", prepay:""}
 };
-const opCfg = () => ({...OP_DEFAULT, ...(S.opCfg || {}), plans:Object.fromEntries(Object.entries(OP_DEFAULT.plans).map(([k, p]) => [k, {...p, ...(((S.opCfg || {}).plans || {})[k] || {}), incl:p.incl}])), trial:{...OP_DEFAULT.trial, ...((S.opCfg || {}).trial || {})}});
+const opCfg = () => ({...OP_DEFAULT, ...(S.opCfg || {}), plans:Object.fromEntries(Object.entries(OP_DEFAULT.plans).map(([k, p]) => [k, {...p, ...(((S.opCfg || {}).plans || {})[k] || {}), incl:p.incl}])), trial:{...OP_DEFAULT.trial, ...((S.opCfg || {}).trial || {})}, stripe:{...OP_DEFAULT.stripe, ...((S.opCfg || {}).stripe || {}), links:{...(((S.opCfg || {}).stripe || {}).links || {})}}});
 const opFee = () => Number(opCfg().fee) || 0.1;
 // お試しプラン：運営が招待するときに選ぶ。期間中は月額が無料（全体公開の案件の運営手数料はかかる）。終わると新しい案件を公開できない
 const isTrial = c => SUBSCRIPTION_ON && c?.plan === "trial";
@@ -7579,17 +7582,22 @@ const PLAN_KEYS = ["free", "beginner", "pro", "master"];
 const DAY_MS = 86400000;
 // 次回の請求日（カード決済の日）。プラン・オプションを下げる手続きは、この日の前日まで今の内容で使える
 // 本番で Stripe の URL が入っているときだけ、Stripe の画面に進む（デモはこれまでどおりその場で切り替える）
-const stripeLive = () => SUBSCRIPTION_ON && !FORCE_DEMO && api().mode !== "demo" && Object.values(STRIPE.links).some(Boolean);
+const stripeCfg = () => { const o = opCfg().stripe || {}; const links = {...STRIPE.links}; Object.entries(o.links || {}).forEach(([k, v]) => { if(v) links[k] = v; }); return {links, portal:o.portal || STRIPE.portal, prepay:o.prepay || STRIPE.prepay || ""}; };
+const stripeTest = () => Object.values(stripeCfg().links).concat([stripeCfg().portal, stripeCfg().prepay]).some(u => /\/test_/.test(u || ""));
+// Stripe の URL が1つでも入っていれば Stripe の画面に進む（入っていなければ、デモのようにその場で切り替える）
+const stripeLive = () => SUBSCRIPTION_ON && Object.values(stripeCfg().links).some(Boolean);
+// 新しいタブで開く（スマホ・埋め込み表示でも開けるように a タグで）
+function openTab(url){ const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); }
 const STRIPE_LABEL = k => ({extra:"追加枠（1件）", staff:"従業員追加（1人分）"})[k] || opCfg().plans[k]?.name || OPTS[k]?.name || k;
 async function stripeGo(key){
   if(!stripeLive()) return false;
-  const url = STRIPE.links[key];
+  const url = stripeCfg().links[key];
   if(!url) throw new Error(`「${STRIPE_LABEL(key)}」の Stripe の支払いリンクがまだ設定されていません。運営にお問い合わせください`);
   const q = new URLSearchParams({client_reference_id:`${S.cid}__${key}`, prefilled_email:S.user?.email || ""});
-  window.open(`${url}${url.includes("?") ? "&" : "?"}${q}`, "_blank", "noopener");
+  const full = `${url}${url.includes("?") ? "&" : "?"}${q}`; openTab(full);
   const pend = {...(S.company.pendingPay || {}), [key]:{at:Date.now(), by:S.user?.email || "", ym:curMonth()}};
   await api().updateCompany(S.cid, {pendingPay:pend}); S.company.pendingPay = pend;
-  await ask({title:"Stripe の画面でお支払いください", body:`新しいタブで Stripe の支払い画面を開きました。お支払いが済むと、運営が入金を確認して「${STRIPE_LABEL(key)}」に切り替えます（ふつうは当日中）。`, ok:"閉じる"});
+  await ask({title:"Stripe の画面でお支払いください", body:`新しいタブで Stripe の支払い画面を開きました。お支払いが済むと、運営が入金を確認して「${STRIPE_LABEL(key)}」に切り替えます（ふつうは当日中）。${stripeTest() ? "\n\n【テストモード】カード番号 4242 4242 4242 4242・有効期限は未来の日付・セキュリティコードは好きな3桁で払えます（本当の請求はされません）。" : ""}\n\n画面が開かないときは、このURLを開いてください：\n${full}`, ok:"閉じる"});
   route(); return true;
 }
 // 支払い（またはオプション）を反映する中身。運営の「入金を確認して反映」と、デモの即時切り替えで同じものを使う
@@ -7747,7 +7755,9 @@ async function prepayPanel(job){
     <p style="margin:0 0 10px">${esc(c?.tradeName || c?.name || p.craftsmanName)}さんを発注先に選びました。下の金額をReforeの口座に振り込んでください。運営が入金を確認すると発注が確定し、職人さんに現場情報と発注書が届きます。</p>
     <div class="sumbox"><span>職人への工事代金（税込）</span><span>${yenFull(p.amount)}</span><span>運営手数料（${Math.round(opFee() * 100)}%）</span><span>${yenFull(p.fee)}</span><span class="big">お振込金額</span><span class="big">${yenFull(p.total)}</span></div>
     <dl class="kv"><dt>振込先</dt><dd>${bank ? esc(bank) : "（運営が振込先を登録すると、ここに表示されます）"}</dd><dt>振込名義</dt><dd>${esc(S.company?.name || "")}（工事番号 ${esc(job.jobNo || job.id.slice(-6))}）</dd><dt>状態</dt><dd><span class="pill ${p.status === "reported" ? "approved" : "pending"}">${esc(PAY_STATUS[p.status] || p.status)}</span>${p.reportedAt ? `　${fmtTime(p.reportedAt)} に振込の連絡` : ""}</dd></dl>
-    <div class="row" style="margin-top:10px">${p.status === "waiting" ? `<button class="btn" data-act="pp-reported" data-id="${esc(p.id)}">振り込みました（運営に知らせる）</button>` : ""}<button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></div>
+    ${p.status === "waiting" && SUBSCRIPTION_ON && stripeCfg().prepay ? `<div class="note" style="margin-top:10px"><b>カードでも払えます（Stripe）</b><br><span class="small">Stripe の画面で金額の欄に <b>${yenFull(p.total)}</b> を入れてお支払いください。運営が入金を確認すると発注が確定します。</span>
+      <div class="row" style="margin-top:8px"><button class="btn" data-act="pp-stripe" data-id="${esc(p.id)}">カードで払う（${yenFull(p.total)}）</button></div></div>` : ""}
+    <div class="row" style="margin-top:10px">${p.status === "waiting" ? `<button class="btn ${SUBSCRIPTION_ON && stripeCfg().prepay ? "sub" : ""}" data-act="pp-reported" data-id="${esc(p.id)}">振り込みました（運営に知らせる）</button>` : ""}<button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></div>
     <p class="small" style="margin:8px 0 0">発注が確定すると、運営手数料の領収書が「請求書」の画面からダウンロードできます。</p></section>`;
 }
 function feeReceiptHtml(p){
@@ -8108,7 +8118,7 @@ async function viewOpHome(cos, pays){
 function opPayRow(p){
   const btn = ["waiting", "reported"].includes(p.status) ? `<button class="btn" data-act="op-confirm" data-id="${esc(p.id)}">入金を確認して発注を確定</button>`
     : p.status === "refund" ? `<button class="btn sub" data-act="op-refunded" data-id="${esc(p.id)}">返金した</button>` : "";
-  return `<div class="doc-row"><span class="row-main"><b>${esc(p.coName)}　${yenFull(p.total)}</b><span class="small">${esc(p.jobTitle)}　職人：${esc(p.craftsmanName)}　工事代金 ${yenFull(p.amount)}＋手数料 ${yenFull(p.fee)}</span><span class="small">${fmtTime(p.createdAt)} 選定${p.reportedAt ? `　${fmtTime(p.reportedAt)} 振込の連絡` : ""}${p.confirmedAt ? `　${fmtTime(p.confirmedAt)} 入金確認` : ""}</span></span>
+  return `<div class="doc-row"><span class="row-main"><b>${esc(p.coName)}　${yenFull(p.total)}</b><span class="small">${esc(p.jobTitle)}　職人：${esc(p.craftsmanName)}　工事代金 ${yenFull(p.amount)}＋手数料 ${yenFull(p.fee)}</span><span class="small">${fmtTime(p.createdAt)} 選定${p.reportedAt ? `　${fmtTime(p.reportedAt)} ${p.method === "stripe" ? "<b>カード（Stripe）で支払い</b>：Stripe の「支払い」で金額を確かめてください" : "振込の連絡"}` : ""}${p.confirmedAt ? `　${fmtTime(p.confirmedAt)} 入金確認` : ""}</span></span>
     <span class="row"><span class="pill ${["held", "billed", "sent", "refunded"].includes(p.status) ? "approved" : "pending"}">${esc(PAY_STATUS[p.status] || p.status)}</span>${btn}</span></div>`;
 }
 function viewOpCos(cos){
@@ -8184,6 +8194,12 @@ function viewOpSettings(){
     <p class="small" style="margin:-6px 0 0">「収支オプションの月額」は、オプション（予定表・収支・工事メモ等）1つあたりの月額です。「メンバー1人の月額」は従業員追加の1人あたりの月額です（マスタープランは無料）。</p>
     <h2>お試しプラン <small>運営が招待するときに選べます。期間中は月額が無料です</small></h2>
     <div class="two"><label class="field"><span>プラン名</span><input name="tn" value="${esc(o.trial.name)}"></label><div class="two"><label class="field"><span>日数</span><input name="td" type="number" min="1" value="${o.trial.days}"></label><label class="field"><span>月の公開件数</span><input name="tl" type="number" min="1" value="${o.trial.limit}"></label></div></div>
+    <h2>Stripe <small>支払いリンクの URL を貼るだけでつながります（テスト用の URL でも試せます）</small></h2>
+    ${SUBSCRIPTION_ON ? "" : `<p class="small warn" style="margin:0">今はサブスクを使っていない設定（SUBSCRIPTION_ON = false）なので、URL を入れても工務店の画面には出ません。</p>`}
+    <p class="small" style="margin:0">Stripe の管理画面 →「商品カタログ」で商品と料金を作り、「支払いリンク」で URL を作って貼ります。月額のものは「継続」、追加枠は「1回限り」、先払いは「お客様が金額を指定する」で作ります。完了後のページは「確認ページを表示」のままで大丈夫です。</p>
+    ${[["beginner", "ビギナープラン（月額）"], ["pro", "プロプラン（月額）"], ["master", "マスタープラン（月額）"], ["calendar", "予定表カレンダー（月額）"], ["money", "収支閲覧（月額）"], ["docs", "工事メモ・見積・請求書（月額）"], ["staff", "従業員追加 1人（月額）"], ["extra", "追加枠 1件（1回払い）"]].map(([k, l]) => `<label class="field"><span>${esc(l)}</span><input name="sl_${k}" type="url" value="${esc(o.stripe.links[k] || "")}" placeholder="https://buy.stripe.com/test_..."></label>`).join("")}
+    <label class="field"><span>先払い（工事代金＋運営手数料）<small>「お客様が金額を指定する」で作ったリンク</small></span><input name="sl_prepay" type="url" value="${esc(o.stripe.prepay || "")}" placeholder="https://buy.stripe.com/test_..."></label>
+    <label class="field"><span>カスタマーポータル <small>カードの変更・領収書・解約</small></span><input name="sl_portal" type="url" value="${esc(o.stripe.portal || "")}" placeholder="https://billing.stripe.com/p/login/test_..."></label>
     <h2>振込先・書類</h2>
     <label class="field"><span>振込先 <small>先払いと月額の請求書に載ります</small></span><input name="bank" value="${esc(o.bank)}" placeholder="例：○○銀行 ○○支店（普通）1234567 カ）リフォア"></label>
     <div class="two"><label class="field"><span>運営の名前（領収書・請求書）</span><input name="opName" value="${esc(o.opName)}"></label><label class="field"><span>運営のインボイス登録番号</span><input name="opInvoiceNumber" value="${esc(o.opInvoiceNumber)}"></label></div>
@@ -8192,6 +8208,17 @@ function viewOpSettings(){
 
 /* ---------- 操作 ---------- */
 Object.assign(ACTIONS, {
+  async "pp-stripe"(el){
+    const p = await api().getPayment(el.dataset.id); if(!p) return;
+    const url = stripeCfg().prepay; if(!url) throw new Error("Stripe の先払い用の支払いリンクがまだ設定されていません");
+    const q = new URLSearchParams({client_reference_id:`${S.cid}__pp__${String(p.id).replace(/[^A-Za-z0-9_-]/g, "")}`, prefilled_email:S.user?.email || ""});
+    const full = `${url}${url.includes("?") ? "&" : "?"}${q}`;
+    if(!await ask({title:`カードで ${yenFull(p.total)} を払います`, body:`Stripe の支払い画面を新しいタブで開きます。\n\n金額の欄に「${p.total}」円を入れてください（工事代金 ${yenFull(p.amount)}＋運営手数料 ${yenFull(p.fee)}）。\n金額がちがうと発注が確定できません。${stripeTest() ? "\n\n【テストモード】カード番号 4242 4242 4242 4242・有効期限は未来の日付・セキュリティコードは好きな3桁。" : ""}`, ok:"支払い画面を開く"})) return;
+    openTab(full);
+    await api().updatePayment(p.id, {status:"reported", reportedAt:Date.now(), method:"stripe"});
+    notifyMail(p.jobId, "先払いをカード（Stripe）で支払いました", `${p.coName}　${yenFull(p.total)}　Stripe で入金を確認してください`, {kind:"op"});
+    toast("運営に知らせました。Stripe でのお支払いを確認すると発注が確定します"); route();
+  },
   async "pp-reported"(el){
     if(!await ask({title:"振り込みましたか？", body:"運営に知らせます。入金を確認すると発注が確定します。", ok:"振り込んだので知らせる"})) return;
     await api().updatePayment(el.dataset.id, {status:"reported", reportedAt:Date.now()});
@@ -8235,7 +8262,7 @@ Object.assign(ACTIONS, {
     await applyScheduled(true); toast("次回請求日の変更を反映しました"); route();
   },
   async "churn-keep"(){ if(CHURN.t){ await logChurn("kept").catch(e => console.warn(e)); } CHURN = {}; toast("今のまま続けます"); location.hash = "#/admin/plan"; },
-  async "co-card"(){ if(stripeLive() && STRIPE.portal){ window.open(STRIPE.portal, "_blank", "noopener"); return; } await ask({title:"カードを変更する", body:"本番では Stripe のカード変更画面（カスタマーポータル）が開きます。領収書のダウンロードもそこからできます。", ok:"閉じる"}); },
+  async "co-card"(){ if(stripeLive() && stripeCfg().portal){ openTab(stripeCfg().portal); return; } await ask({title:"カードを変更する", body:"本番では Stripe のカード変更画面（カスタマーポータル）が開きます。領収書のダウンロードもそこからできます。", ok:"閉じる"}); },
   async "opt-locked"(el){
     const k = el.dataset.k, n = OPTS[k].name, free = !planOf(S.company).price;
     const inc = PLAN_KEYS.filter(p => opCfg().plans[p].incl.includes(k)).map(p => opCfg().plans[p].name).join("・");
@@ -8429,6 +8456,8 @@ Object.assign(FORMS, {
     Object.keys(o.plans).forEach(k => { plans[k] = {name:f["pn_" + k].value.trim() || o.plans[k].name, price:Number(f["pp_" + k].value) || 0, limit:Number(f["pl_" + k].value) || 1}; });
     const trial = {name:f.tn.value.trim() || o.trial.name, days:Number(f.td.value) || 30, limit:Number(f.tl.value) || 1};
     const d = {plans, trial, fee:(Number(f.fee.value) || 0) / 100, memberFee:Number(f.memberFee.value) || 0, moneyFee:Number(f.moneyFee.value) || 0, extraFee:Number(f.extraFee.value) || 0, bank:f.bank.value.trim(), opName:f.opName.value.trim(), opInvoiceNumber:f.opInvoiceNumber.value.trim()};
+    const surl = n => { const v = (f["sl_" + n]?.value || "").trim(); if(v && !/^https:\/\/(buy|billing|checkout)\.stripe\.com\//.test(v)) throw new Error("Stripe の URL（https://buy.stripe.com/… など）を入れてください：" + v); return v; };
+    d.stripe = {links:Object.fromEntries(["beginner", "pro", "master", "calendar", "money", "docs", "staff", "extra"].map(k => [k, surl(k)])), prepay:surl("prepay"), portal:surl("portal")};
     await api().saveOpSettings(d); S.opCfg = d; toast("保存しました"); route();
   }
 });
