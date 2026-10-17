@@ -829,6 +829,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .acc-tag{display:inline-block;font-size:10.5px;font-weight:700;color:#fff;background:#B0285A;border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:2px}
 .wnote.acc{color:#B0285A;font-weight:700}
 .i-dim{grid-column:1/-1;font-size:12px;color:var(--sub)}
+.emp-inv{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.emp-inv h3{margin:0 0 8px;font-size:15px}
+.emp-inv-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
 .mo-cloth{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 10px;padding:8px 10px;border-radius:6px;background:#F3F6FB;border:1px solid #D8E0EE;font-size:13px}
 .mp-any{margin-left:6px;white-space:nowrap;font-size:12px!important;padding:4px 9px!important}
 /* 収支の1行を薄く：物件名は1行、状態は横並び */
@@ -3548,8 +3550,14 @@ function employeePanel(){
     <span class="row">${sel(u.staffName || "")}<select name="emp_scope" aria-label="通知の範囲"><option value="mine" ${u.notifyScope !== "all" ? "selected" : ""}>自分の担当の案件だけ通知</option><option value="all" ${u.notifyScope === "all" ? "selected" : ""}>すべての案件を通知</option></select>
       <button class="btn sub" data-act="emp-save" data-uid="${esc(u.uid)}">保存</button>${u.uid !== S.user.uid ? `<button class="btn sub danger-text" data-act="emp-stop" data-uid="${esc(u.uid)}">利用を止める</button>` : ""}</span></div>`).join("");
   return `<section class="panel"><h2>従業員 <small>管理画面にログインする人</small></h2>
-    <p class="small" style="margin:0 0 10px">従業員はログイン画面の「従業員として登録する」から申し込みます。担当者名を結びつけると、その人が担当の案件（応募・承諾・辞退・チャット・完了報告・作業開始の遅れ）の通知だけが届きます。担当者名のない人（会社のアカウント）には全部届きます。</p>
-    ${pend ? `<h3 style="margin:6px 0">申し込み（${S.empPending.length}件）</h3>${pend}` : ""}${adm}</section>`;
+    <p class="small" style="margin:0 0 10px">従業員は招待制です。下の「従業員を招待する」から招待メールを送り、その人が登録したら「承認する」を押してください。担当者名を結びつけると、その人が担当の案件（応募・承諾・辞退・チャット・完了報告・作業開始の遅れ）の通知だけが届きます。担当者名のない人（会社のアカウント）には全部届きます。</p>
+    ${pend ? `<h3 style="margin:6px 0">申し込み（${S.empPending.length}件）</h3>${pend}` : ""}${adm}
+    <form class="emp-inv" data-form="staffinvite"><h3>従業員を招待する</h3>
+      <div class="emp-inv-f"><label class="field"><span>氏名</span><input name="name" required placeholder="例：内田 拓" autocomplete="off"></label>
+        <label class="field"><span>メールアドレス</span><input name="email" type="email" required placeholder="例：t-uchida@refore.co.jp" autocomplete="off"></label>
+        <label class="field"><span>担当者名 <small>案件の担当と同じ書き方</small></span><input name="staff" list="emp-staff-list" placeholder="例：内田" autocomplete="off"><datalist id="emp-staff-list">${names.map(n => `<option value="${esc(n)}">`).join("")}</datalist></label></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" name="mode" value="mail">招待メールを作る</button><button class="btn sub" name="mode" value="copy">招待リンクをコピー</button></div>
+      <p class="small" style="margin:6px 0 0">「招待メールを作る」を押すと、Gmailに招待メール（登録用のリンクつき）ができます。送信を押せば届きます。登録されたら、ここに「申し込み」として出るので「承認する」を押してください。</p></form></section>`;
 }
 const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
@@ -3755,14 +3763,17 @@ function viewLogin(){
       <p class="center" style="margin:12px 0 0"><button type="button" class="textlink" data-act="forgot">パスワードを忘れた場合</button></p>
     </form>
     <p class="center">はじめての方は <a href="#/signup">協力業者として登録する</a></p>
-    <p class="center small" style="margin-top:4px">Reforeの従業員の方は <a href="#/signup/staff">従業員として登録する</a></p>
     <p class="center" style="margin-top:8px"><a href="manual.html" target="_blank" rel="noopener">使い方ガイドを見る</a></p></div>`;
 }
-function viewSignup(staff = false){
+// 従業員の招待リンク（#/signup/staff/〇〇）：名前・メール・担当者名を入れておく
+const staffInvEnc = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const staffInvDec = t => { try { return JSON.parse(decodeURIComponent(escape(atob(String(t || "").replace(/-/g, "+").replace(/_/g, "/"))))); } catch(e) { return null; } };
+const staffInvUrl = o => location.href.split("#")[0] + "#/signup/staff/" + staffInvEnc(o);
+function viewSignup(staff = false, inv = null){
   return `<div class="auth-wrap">${authHead()}
-    <form class="panel" data-form="signup" data-staff="${staff ? "1" : ""}">
-      <h2>${staff ? "従業員のアカウントを作る" : "アカウントを作る"}</h2>${staff ? `<p class="small" style="margin:0 0 10px">Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
-      <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off"></label>
+    <form class="panel" data-form="signup" data-staff="${staff ? "1" : ""}"${inv ? ` data-inv="${esc(JSON.stringify(inv))}"` : ""}>
+      <h2>${staff ? "従業員のアカウントを作る" : "アカウントを作る"}</h2>${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
+      <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off" value="${esc(inv?.e || "")}"></label>
       <label class="field"><span>パスワード <small>6文字以上</small></span><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
       <label class="field"><span>パスワード（確認）</span><input type="password" name="password2" required minlength="6" autocomplete="new-password"></label>
       <button class="btn block">${staff ? "次へ（お名前の入力）" : "次へ（業者情報の入力）"}</button>
@@ -3771,11 +3782,12 @@ function viewSignup(staff = false){
 }
 // 従業員の登録（名前・電話・担当者名だけ。承認は会社の管理者がする）
 function viewStaffSignup(){
+  let inv = {}; try { inv = JSON.parse(localStorage.getItem("refore_staff_inv") || "{}") || {}; } catch(e) {}
   return `<div class="auth-wrap">${authHead()}<form class="panel" data-form="staffprofile">
     <h2>従業員の登録</h2>
-    <label class="field"><span>氏名</span><input type="text" name="name" required autocomplete="name"></label>
+    <label class="field"><span>氏名</span><input type="text" name="name" required autocomplete="name" value="${esc(inv.n || "")}"></label>
     <label class="field"><span>電話番号</span><input type="tel" name="phone" required autocomplete="tel"></label>
-    <label class="field"><span>担当者名 <small>案件の「Reforeの担当者」と同じ書き方（例：金子）</small></span><input type="text" name="staffName" required></label>
+    <label class="field"><span>担当者名 <small>案件の「Reforeの担当者」と同じ書き方（例：金子）</small></span><input type="text" name="staffName" required value="${esc(inv.s || "")}"></label>
     <button class="btn block">登録を申し込む</button></form>
     <p class="center"><button class="textlink" data-act="logout">ログアウト</button>　<button class="textlink" data-act="not-staff">協力業者として登録する</button></p></div>`;
 }
@@ -5905,7 +5917,7 @@ async function route(){
   if(!api()) return;
   try {
     if(parts[0] === "join") return done(await viewJoin(parts[1]), {bare:true});
-    if(!S.user) return done(parts[0] === "signup" ? viewSignup(parts[1] === "staff") : viewLogin(), {bare:true});
+    if(!S.user) return done(parts[0] === "signup" ? viewSignup(parts[1] === "staff", parts[1] === "staff" ? staffInvDec(parts[2]) : null) : viewLogin(), {bare:true});
     if(S.pendingJoin){ const t = S.pendingJoin; return done(await viewJoin(t), {bare:true}); }
     if(!S.profile){ let st = false; try { st = localStorage.getItem("refore_signup_staff") === "1"; } catch(e) {} return done(st ? viewStaffSignup() : viewProfileForm(null, true), {bare:true}); }
     const p = S.profile;
@@ -6890,13 +6902,26 @@ const FORMS = {
   async staffprofile(form){
     const g = k => String(form.elements[k].value || "").trim();
     await api().createProfile(S.user.uid, {name:g("name"), phone:g("phone"), staffName:g("staffName"), employee:true, trades:[], prefs:[], role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now()});
-    try { localStorage.removeItem("refore_signup_staff"); } catch(e) {}
+    try { localStorage.removeItem("refore_signup_staff"); localStorage.removeItem("refore_staff_inv"); } catch(e) {}
     S.profile = await api().getProfile(S.user.uid); toast("申し込みました"); route();
+  },
+  // 従業員の招待：登録用リンクつきの招待メールをGmailで作る（送信は自分で押す）
+  async staffinvite(form, e){
+    const g = k => String(form.elements[k]?.value || "").trim(), name = g("name"), email = g("email").toLowerCase(), staff = g("staff");
+    if(!name || !email) throw new Error("氏名とメールアドレスを入れてください");
+    const url = staffInvUrl({n:name, e:email, ...(staff ? {s:staff} : {})});
+    if(e?.submitter?.value === "copy"){ await navigator.clipboard.writeText(url).catch(() => { throw new Error("コピーできませんでした：" + url); }); toast("招待リンクをコピーしました"); return; }
+    const me = S.profile?.name || "株式会社Refore";
+    const body = [`${name} 様`, "", `株式会社Reforeの ${me} です。`, "GENPUKU Pro（Reforeの協力業者ポータル）の管理画面に、従業員として招待します。", "",
+      "▼下のリンクを開いて、このメールアドレス（" + email + "）でアカウントを作ってください。", url, "",
+      "登録が終わったら、こちらで承認すると使えるようになります。", "", "株式会社Refore"].join("\n");
+    const gm = "https://mail.google.com/mail/?" + new URLSearchParams({...(S.user?.email ? {authuser:S.user.email} : {}), view:"cm", fs:"1", to:email, su:"【GENPUKU Pro】従業員としての招待", body}).toString();
+    window.open(gm, "_blank", "noopener"); toast("Gmailに招待メールを作りました。送信を押してください"); form.reset();
   },
   async signup(form){
     const fd = new FormData(form);
     if(fd.get("password") !== fd.get("password2")) throw new Error("確認用のパスワードが一致しません");
-    try { if(form.dataset.staff) localStorage.setItem("refore_signup_staff", "1"); else localStorage.removeItem("refore_signup_staff"); } catch(e) {}
+    try { if(form.dataset.staff) localStorage.setItem("refore_signup_staff", "1"); else localStorage.removeItem("refore_signup_staff"); if(form.dataset.inv) localStorage.setItem("refore_staff_inv", form.dataset.inv); } catch(e) {}
     await api().signUp(fd.get("email"), fd.get("password"));
     location.hash = "#/";
   },
