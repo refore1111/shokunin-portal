@@ -952,7 +952,7 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .md-acc{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12.5px;color:#B4235A}
 .btn.sm{padding:5px 10px;font-size:12.5px;min-height:0}
 .mn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled{background:#EEF1F5;color:var(--sub);cursor:not-allowed}
+.est-form input[readonly],form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled{background:#EEF1F5;color:var(--sub);cursor:not-allowed}
 .memo-price{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:12px;color:var(--sub);margin:-2px 0 4px}
 .memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-spec{flex:1 1 100%;flex-wrap:wrap}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}
 .memo-sum{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px 18px;margin:6px 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 -2px 8px rgba(0,0,0,.06);font-size:13px}
@@ -2930,6 +2930,7 @@ async function viewEstEdit(id){
   const docType = ["tachiai", "self"].includes(e.status) || ["completed", "paid"].includes(jobSt) ? "invoice" : ["ordered", "won"].includes(e.status) ? "ukesho" : "est";
   const docLabel = {est:"見積書", ukesho:"工事請書", invoice:"御請求書"}[docType];
   S.estDoc = docType;
+  setTimeout(() => { const f = $("#est-form"), p = e.masterId ? (S.props || []).find(x => x.id === e.masterId) : null; if(f && p) estLock(f, p); }, 0);
   const canSubmit = !e.id || e.status === "draft";
   const opt = (arr, cur) => arr.map(x => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("");
   return `${estBack()}
@@ -2944,7 +2945,8 @@ async function viewEstEdit(id){
       <li><b>書類を出す</b>：「見積書PDF」で出して管理会社に送り、「見積を提出済みにする」を押します（受注待ちになり、管理会社からの返事の欄が出ます）。受注したら「受注にして案件を作る」で、業者に発注する案件（実行単価）と収支ができます。発注請書・御請求書も同じ内容から出せます。</li></ol></details>
     <div class="est-cols"><form id="est-form" data-form="est" class="stack est-form" autocomplete="off">
       <section class="panel"><h2>宛先と物件</h2>
-        <div class="two"><label class="field"><span>物件名 <small>物件マスタから選べます</small></span><input type="text" name="building" value="${esc(e.building)}" list="est-props" placeholder="例：サンプルハイツ" required></label>
+        <div class="two"><div class="field"><span>物件名 <small>物件マスタから選べます</small></span><input type="text" name="building" value="${esc(e.building)}" list="est-props" placeholder="例：サンプルハイツ" required>
+          <p class="small" id="est-lock" hidden style="margin:2px 0 0">物件マスタから入れた物件名・宛先・所在地は変えられません（直すときは「設定」の物件マスタで）。<button type="button" class="textlink" data-act="est-unlock">物件を選び直す</button></p></div>
           <div class="two"><label class="field"><span>号室</span><input type="text" name="room" value="${esc(e.room)}" placeholder="例：406号室"></label>
             <label class="field"><span>工事種類</span><input type="text" name="kind" value="${esc(e.kind)}" list="est-kinds"></label></div></div>
         <div class="two"><label class="field"><span>宛先（管理会社）</span><input type="text" name="company" value="${esc(e.company)}" list="est-cos" placeholder="例：アイレントホーム株式会社" data-est-co></label>
@@ -2952,7 +2954,6 @@ async function viewEstEdit(id){
         <label class="field" id="est-toname" ${isOtherCo(e.company) ? "" : "hidden"}><span>宛名 <small>宛先が「その他」のときだけ。見積書・請求書の宛先になります（例：山田 太郎、〇〇不動産）</small></span><input type="text" name="toName" value="${esc(e.toName || "")}" placeholder="宛名を手で書く"></label>
         <label class="field"><span>先方のご担当 <small>様</small></span><input type="text" name="person" value="${esc(e.person)}"></label>
         <label class="field"><span>物件所在地</span><input type="text" name="address" value="${esc(e.address)}"></label>
-        <label class="field"><span>提出先のメール <small>「見積を提出」でメールの宛先に入ります。同じ管理会社なら前回のメールが入ります</small></span><input type="email" name="toEmail" value="${esc(e.toEmail || (ests.find(x => x.id !== e.id && x.company && x.company === e.company && x.toEmail) || {}).toEmail || "")}" placeholder="例：genjyo@kanri.co.jp"></label>
         <div class="two"><label class="field"><span>NO（工事番号）</span><input type="text" name="no" value="${esc(e.no)}" placeholder="例：A-2627-12"><small class="small" id="estno-hint"></small></label>
           <div class="two"><label class="field"><span>発行日</span><input type="date" name="issuedAt" value="${esc(e.issuedAt)}"></label>
             <label class="field"><span>工事担当</span><select name="staff"><option value="">なし</option>${opt([...new Set([...(S.staff || []).map(p => p.name), e.staff?.name].filter(Boolean))], e.staff?.name)}</select></label></div></div>
@@ -3027,8 +3028,15 @@ function estPick(el){
   row.querySelector("[name=e_qty]").focus();
 }
 // 物件を選んだら、住所・管理会社（宛先）・工事番号を入れる
+// 物件マスタから入れた項目（物件名・宛先・所在地）は、見積の画面では変えられない
+function estLock(form, p){
+  const E = form.elements, on = (k, el) => { if(el){ el.readOnly = !!p && !!String(k || "").trim(); el.classList.toggle("locked", el.readOnly); } };
+  on(p?.name, E.building); on(p?.company, E.company); on(p?.address, E.address);
+  const h = form.querySelector("#est-lock"); if(h) h.hidden = !p;
+}
 function estProp(form){
   const p = (S.props || []).find(x => x.name === form.elements.building.value.trim()); if(!p) return;
+  setTimeout(() => estLock(form, p), 0);
   const set = (n, v) => { if(form.elements[n] && v !== undefined) form.elements[n].value = v || ""; };
   set("address", p.address); set("autolock", p.al); set("elevator", p.ev); set("masterId", p.id);
   if(p.company){ set("company", p.company); }
@@ -6537,6 +6545,7 @@ const ACTIONS = {
   },
   // 見積を提出：PDFを保存して、メールの下書きを開き、状態を「提出済み（受注待ち）」に
   // 見積を提出済みにする（PDFは「見積書PDF」で出して、自分で送る）。状態は提出済み（受注待ち）、収支も受注待ちになり、返事の欄が出る
+  "est-unlock"(el){ const f = el.closest("form"); estLock(f, null); f.elements.masterId.value = ""; f.elements.building.value = ""; f.elements.building.focus(); },
   async "est-submit"(){
     const f = $("#est-form"); let e = readEst(f);
     if(!e.rows.some(r => r.name)) throw new Error("工事の内容を入れてください");
