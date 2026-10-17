@@ -2764,7 +2764,9 @@ function estDocHtml0(e, type, seal, billing = {}){
   const t = estTotals(e), c = coInfo(), rows = type === "est" ? estDiffRows(e) : (e.rows || []), n = Math.max(28, rows.length);
   const diffOn = type === "est" && rows !== e.rows && rows.some(r => r._del || r._add || r._ch);
   const staff = e.staff?.name ? `${esc(e.staff.name)}${e.staff.phone ? `（${esc(e.staff.phone)}）` : ""}` : "";
-  const to = `<div class="es-to"><span class="es-co">${esc(estToName(e))}</span><span class="es-hon">${esc(e.honor || "御中")}</span>${type === "invoice" ? "" : `<span class="es-tan">担当；</span><span class="es-person">${esc(e.person || "")}</span><span class="es-hon">様</span>`}</div>`;
+  // 宛先：会社名と敬称は1つのまとまり、担当と様ももう1つのまとまり。長い会社名は字を小さくし、入らなければ担当を次の行へ（重ならない）
+  const toName = estToName(e), toLen = [...toName].length;
+  const to = `<div class="es-to${toLen > 22 ? " xl" : toLen > 14 ? " l" : ""}"><span class="es-cow"><span class="es-co">${esc(toName)}</span><span class="es-hon">${esc(e.honor || "御中")}</span></span>${type === "invoice" ? "" : `<span class="es-tanw"><span class="es-tan">担当；</span><span class="es-person">${esc(e.person || "")}</span><span class="es-hon">様</span></span>`}</div>`;
   const prop = `<table class="es-prop"><tr><th>物件名称${type === "invoice" ? "；" : "："}</th><td>${esc(e.building || "")}</td><td class="es-room">${esc(e.room || "")}</td><td class="es-kind">${esc(e.kind || "")}</td></tr>
     <tr><th>物件所在地${type === "invoice" ? "；" : "："}</th><td colspan="3">${esc(e.address || "")}</td></tr></table>`;
   const from = (big = false) => `<div class="es-from${big ? " big" : ""}">${seal ? `<img class="es-seal" src="${esc(seal)}" alt="">` : ""}
@@ -5809,10 +5811,12 @@ const PDF_CSS = `
 .es .es-sub{display:flex;justify-content:space-between;font-size:10px;margin:4px 4px 8px}
 .es .es-mid{display:flex;justify-content:space-between;gap:16px}
 .es .es-left{flex:1}
-.es .es-to{display:flex;align-items:baseline;gap:10px;font-size:14px;margin:6px 4px 8px}
-.es .es-to .es-co{flex:0 0 auto}
-.es .es-to .es-tan{margin-left:auto}
-.es .es-to .es-person{min-width:110px;text-align:center}
+.es .es-to{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:14px;row-gap:2px;font-size:14px;margin:6px 4px 8px}
+.es .es-to.l{font-size:12.5px}.es .es-to.xl{font-size:11px}
+.es .es-cow,.es .es-tanw{display:inline-flex;align-items:baseline;gap:8px;white-space:nowrap;min-width:0}
+.es .es-cow .es-co{white-space:normal}
+.es .es-tanw{margin-left:auto}
+.es .es-to .es-person{min-width:90px;text-align:center}
 .es .es-greet{margin:0 4px 6px;font-size:10.5px}
 .es .es-prop{width:100%;font-size:10.5px}
 .es .es-prop th{text-align:left;font-weight:700;white-space:nowrap;padding:7px 6px 5px;width:1%}
