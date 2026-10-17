@@ -2700,7 +2700,7 @@ const EST_TO_STAGE = {draft:"est", sent:"wait", ordered:"won", won:"won", self:"
 const stageTag = st => `<span class="stg stg-${st || "none"}">${LEDGER_STAGE[st || ""] || "見積前"}</span>`;
 // 状態の流れ：見積前 → 見積中 → 受注待ち（見積を提出） → 受注 → 完了。立会のみ・失注はイレギュラーなので流れに入れない
 const STAGE_FLOW = ["", "est", "wait", "won", "arr", "done"];
-// 収支の進み方（ボタンで次へ）：見積中 →「見積を送信済み」→ 受注待ち →「受注」→ 受注 →（完了確認の予定を入れて）「手配済み」→ 完了待ち →「完了報告済み」→ 完了（完工月が入り、締め日に請求書へ）
+// 収支の進み方（ボタンで次へ）：見積中 →「見積を送信済み」→ 受注待ち →「受注」→ 受注 →（案件で「完了を確認する」）→ 完了待ち →「完了報告済み」→ 完了（完工月が入り、締め日に請求書へ）
 const dispStage = r => (r.billedOutside && !r.stage) || (r.done && r.stage !== "tachiai") ? "done" : (r.stage || "");
 // 完了確認したら：届いている完了報告を確認済みにし、分離発注の全部が完了確認済みなら収支を「完了待ち」へ（次は「完了報告済み」）
 async function afterJobCompleted(id){
@@ -2719,7 +2719,7 @@ function stageNextHtml(r, big = false){
   if(st === "") return r.manual && !r.estimateId ? `<a class="${cls}" href="#/admin/est/from/${esc(r.id)}">見積を作る</a>` : "";
   if(st === "est") return b("wait", "見積を送信済み ›");
   if(st === "wait") return b("won", "受注 ›");
-  if(st === "won") return r.doneCheck ? b("arr", "手配済み ›") : `<a class="${cls}" href="${r.jobId ? `#/admin/job/${esc(r.jobId)}` : `#/admin/money/edit/${esc(r.id)}`}">完了確認の予定を入れる</a>`;
+  if(st === "won") return r.jobId ? "" : b("done", "完了報告済み ›");   // 案件とつながった行は、案件で「完了を確認する」を押すと完了待ちになる
   if(st === "arr") return b("done", "完了報告済み ›");
   return "";
 }
@@ -3392,7 +3392,7 @@ async function viewMoney(kiArg, sheetArg, subArg){
     const chips = `<nav class="chips flow-chips" aria-label="状態で絞り込む"><a href="${url(ki, sheet)}" ${sub ? "" : 'aria-current="true"'}>すべて <b>${all0.length}</b></a>
       ${[["none", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注"], ["arr", "完了待ち"], ["done", "完了"]].map(([s2, l], k) => chip(s2, l, k)).join(`<i class="fl-arr" aria-hidden="true">›</i>`)}
       ${odd.length ? `<span class="fl-odd">${odd.map(([s2, l]) => chip(s2, l)).join("")}</span>` : ""}</nav>
-      <p class="small" style="margin:-4px 0 10px">状態の下のボタンで次に進めます：見積を送信済み → 受注 → （完了確認の予定を入れて）手配済み → 完了報告済み。完了にすると完工月が入り、管理会社の締め日に請求書に入ります。</p>`;
+      <p class="small" style="margin:-4px 0 10px">状態の下のボタンで次に進めます：見積を送信済み → 受注 → （案件で「完了を確認する」を押すと完了待ち）→ 完了報告済み。完了にすると完工月が入り、管理会社の締め日に請求書に入ります。</p>`;
     const wait = list.filter(r => r.stage === "wait").length, before = list.filter(r => ["", "est"].includes(r.stage || "") && !r.jobId).length;
     body = `<section class="panel"><h2>工事一覧 <small>物件名を押すと案件（案件がなければ見積）が開きます。✎は収支の編集</small></h2>${fee ? `<p class="small fee-note">孫受け：元請手数料 <b>${esc(fee)}%</b> を請負金額から引いた金額（-${esc(fee)}%の列）で利益を出しています。<span>変えるときは下の「元請手数料（孫受け）・作業金額の設定」</span></p>` : ""}${chips}${ledgerTable(list, fee)}</section>
       <section class="panel"><h2>月次</h2>${monthlyTable(list, prev.filter(r => r.coKey === k), ki, fee)}</section>`;
@@ -3441,7 +3441,7 @@ async function viewMoneyEdit(id){
         ${auto ? "" : `<div class="row" style="gap:16px">
           <label class="field" style="margin:0"><span>状態</span><select name="stage">${Object.entries(LEDGER_STAGE).map(([k, l]) => `<option value="${k}" ${(r.stage || "") === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
           <label class="field" style="margin:0"><span>期 <small>未完了の行をどの期に出すか</small></span><input type="number" name="ki" value="${esc(r.ki || kiNow())}" min="1" style="max-width:120px"></label></div>`}
-        ${r.jobId ? "" : `<label class="field" style="max-width:260px;margin:12px 0 0"><span>完了確認の予定日 <small>入れると「手配済み」で完了待ちに進めます</small></span><input type="date" name="doneCheck" value="${esc(r.doneCheck || "")}"></label>`}</section>
+</section>
       <section class="panel"><h2>発注業者・発注金額</h2>
         ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<p style="margin:0 0 6px">${esc(v.name)}　<b>${yenFull(v.amount)}</b> <span class="small">ポータルから自動</span></p>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
         <div id="vend-ed">${extra.map(vrow).join("")}</div><button type="button" class="btn sub" data-act="add-vend">＋ 発注業者を追加</button></section>
@@ -4119,6 +4119,7 @@ async function viewJobEdit(id){
   // 新しい案件は、前回選んだ担当者を最初から選んでおく
   let lastStaff = ""; try { lastStaff = localStorage.getItem("refore_last_staff") || ""; } catch(e) {}
   const staffSel = id ? (job.staff?.name || "") : lastStaff;
+  const propFixed = !!(id && priv.building);   // 物件情報は物件マスタ・工事メモから入るので、編集画面には出さない（新しい案件のときだけ入力）
   const staffOpts = [...S.staff.map(p => p.name), ...(staffSel && !S.staff.some(p => p.name === staffSel) && id ? [staffSel] : [])];
   S.jobNos = (await api().listJobs({}).catch(() => [])).filter(j => j.jobNo && j.id !== id && j.parentId !== id && j.id !== job.parentId && !(job.parentId && j.parentId === job.parentId)).map(j => j.jobNo);
   setTimeout(() => { const f = document.querySelector("form[data-form=job]"); if(f){ fillJobNo(f); renderLots(f); renderSelf(f); } }, 0);
@@ -4175,7 +4176,9 @@ async function viewJobEdit(id){
           <label class="field"><span>終了日 <small>1日で終わる場合は空欄</small></span><input type="date" name="endDate" value="${job.endDate !== job.startDate ? esc(job.endDate) : ""}"></label>
         </div>
       </section>
-      <section class="panel"><h2>物件・現場情報<small>鍵・入室方法・写真URL・連絡事項は発注した業者にだけ表示。管理会社は業者に表示しません</small></h2>
+      ${propFixed ? `      <input type="hidden" name="building" value="${esc(priv.building)}"><input type="hidden" name="masterId" value="${esc(priv.masterId)}"><input type="hidden" name="room" value="${esc(priv.room)}">
+      <input type="hidden" name="manager" value="${esc(priv.manager)}"><input type="hidden" name="address" value="${esc(priv.address)}"><input type="hidden" name="autolock" value="${esc(priv.autolock)}"><input type="hidden" name="elevator" value="${esc(priv.elevator)}">
+` : `      <section class="panel"><h2>物件情報<small>管理会社は業者に表示しません</small></h2>
         <div class="field"><span>物件名 <small>入力すると物件マスタから候補が出ます。選ぶと住所・管理会社などが自動で入ります</small></span>
           <div class="ac-wrap"><input type="text" name="building" value="${esc(priv.building)}" autocomplete="off" data-propsearch role="combobox" aria-label="物件名" aria-autocomplete="list" aria-controls="prop-ac" aria-expanded="false" placeholder="例：パークハウス">
             <div class="ac" id="prop-ac" role="listbox" hidden></div></div>
@@ -4186,11 +4189,13 @@ async function viewJobEdit(id){
           <label class="field"><span>管理会社</span><select name="manager">${managerOptions(priv.manager)}</select></label>
         </div>
         <label class="field"><span>住所</span><input type="text" name="address" value="${esc(priv.address)}" autocomplete="off"></label>
-        <label class="field" style="max-width:260px"><span>入居日 <small>入居が決まっているときだけ。完了確認の予定に入ります</small></span><input type="date" name="moveIn" value="${esc(priv.moveIn)}"></label>
         <div class="two">
           <label class="field"><span>オートロック</span><input type="text" name="autolock" value="${esc(priv.autolock)}" placeholder="例：有／無／鍵対応／呼出1131"></label>
           <label class="field"><span>エレベーター</span><input type="text" name="elevator" value="${esc(priv.elevator)}" placeholder="例：有／無"></label>
         </div>
+      </section>`}
+      <section class="panel"><h2>現場のこと<small>鍵・入室方法・写真URL・連絡事項は発注した業者にだけ表示</small></h2>
+        <label class="field" style="max-width:260px"><span>入居日 <small>入居が決まっているときだけ。完了確認の予定に入ります</small></span><input type="date" name="moveIn" value="${esc(priv.moveIn)}"></label>
         ${keyPicker(priv.keyInfo, "鍵・入室方法", "")}
         <label class="field"><span>施工箇所写真確認URL <small>Googleフォト・Dropbox などの共有リンク。複数ある場合は1行に1つ</small></span>
           <textarea name="photoUrls" rows="2" style="min-height:64px" placeholder="https://...">${esc((priv.photoUrls || []).join("\n"))}</textarea></label>
