@@ -3154,9 +3154,13 @@ async function saveEst(e, quiet = false){
 const EST_LEDGER_KIND = {退去工事:"原状回復", 原状回復工事:"原状回復", 修繕工事:"修繕", フルリノベーション工事:"フルリノベ", リフォーム工事:"リフォーム", 入居前工事:"原状回復"};
 const LEDGER_EST_KIND = {原状回復:"退去工事", 修繕:"修繕工事", フルリノベ:"フルリノベーション工事", リフォーム:"リフォーム工事", その他:""};
 // 受注で案件を作ったとき：工事メモで「材料の発注先」を選んだ工事から、材料屋さんごとの発注書の下書きを作る
+// 材料の発注書に入れるのは表装工事だけ。アクセントクロスは、材料の発注先を選んでいなくても、その行だけでタキザワの発注書に入れる
 async function matOrdersFromEst(e, jid){
-  const rows = (e.rows || []).filter(r => !r.noteRow && r.name && r.sup?.mat && Number(r.qty) > 0); if(!rows.length) return 0;
   const [sups, mats] = await Promise.all([api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), api().getMaterials().catch(() => clone(DEFAULT_MATERIALS))]);
+  const taki = (sups.find(x => /タキザワ/.test(x.name || "")) || {}).id || "";
+  const hy = r => r.cat === CF_CAT || isCloth(r.name);
+  const rows = (e.rows || []).filter(r => !r.noteRow && r.name && Number(r.qty) > 0 && hy(r) && (r.sup?.mat || (r.accent && taki)))
+    .map(r => r.sup?.mat ? r : {...r, sup:{...(r.sup || {}), mat:taki}}); if(!rows.length) return 0;
   const by = new Map(); rows.forEach(r => { if(!by.has(r.sup.mat)) by.set(r.sup.mat, []); by.get(r.sup.mat).push(r); });
   const old = await api().getMatOrders(jid).catch(() => []), add = [];
   by.forEach((list, sid) => {
@@ -3169,7 +3173,7 @@ async function matOrdersFromEst(e, jid){
       const code0 = spec.replace(MAKERS, ""), hit = any ? null : mats.find(x => x.sup === sid && x.code && code0.replace(/[\s-]/g, "").includes(x.code.replace(/[\s-]/g, "")));
       const maker = any ? (m?.maker || "") : ((spec.match(MAKERS) || [])[1] || hit?.maker || ""), code = any ? (m?.code || (isCloth(r.name) ? "白 織物（量産品）" : "")) : code0;
       const up = (any ? m?.unitPrice : hit?.unitPrice ?? m?.unitPrice) ?? (r.sup.matPrice != null ? Math.round(r.sup.matPrice / rate) : null);
-      return {name:(m?.name || r.name) + (r.accent ? "（アクセント）" : ""), maker, code, qty, unit:m?.unit || (rate === 1 ? r.unit : "m"), unitPrice:up, date:"", loc:r.loc || ""};
+      return {name:(m?.name || (isCloth(r.name) ? "クロス" : r.name)) + (r.accent ? "（アクセント）" : ""), maker, code, qty, unit:m?.unit || (rate === 1 ? r.unit : "m"), unitPrice:up, date:"", loc:r.loc || ""};
     });
     add.push({id:"mo_" + newId(), supplierId:sup.id, supplierName:sup.name, kind:"material", terms:sup.terms || "", issuedAt:todayIso(), items, delivery:"現場", deliveryNote:"", honor:"御中", showManager:true, workDate:"", parking:0, others:"", note:`工事メモ（${e.no || ""}）から`, status:"draft", createdAt:Date.now(), updatedAt:Date.now()});
   });
