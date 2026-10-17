@@ -232,11 +232,11 @@ textarea{min-height:110px;resize:vertical}
 .doc-row:first-of-type{border-top:0;padding-top:0}
 .doc-row .row-main b{font-size:15px}
 .doc-row .btn{flex:none;white-space:nowrap;min-height:40px;padding:8px 14px;font-size:14px}
-.itbl{width:100%;border-collapse:collapse;font-size:14px}
-.itbl td{border-top:1px solid var(--line);padding:8px 0;vertical-align:top}
-.itbl td span{display:block}
-.itbl .r{text-align:right;white-space:nowrap;padding-left:12px;font-variant-numeric:tabular-nums}
-.itbl tr.sum td{font-weight:700;border-top:2px solid var(--ink)}
+
+
+
+
+
 .items-ed{display:grid;gap:8px}
 .item-row{display:grid;grid-template-columns:110px 1fr 70px 64px 96px 90px 34px;gap:6px;align-items:center;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .item-row [name=i_note]{grid-column:2/5}
@@ -306,22 +306,20 @@ textarea{min-height:110px;resize:vertical}
   .item-row [name=i_loc]{grid-column:1/-1}
   .item-row [name=i_note],.item-row .i-checks{grid-column:1/-1}
   .item-row .i-grip{grid-column:1/-1;grid-row:auto;height:44px}
-  .itbl-note{display:block}
+  
   .price-row{grid-template-columns:1fr 1fr 34px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--paper)}
   .price-row [name=p_name],.price-row [name=p_note],.price-row [name=p_cat]{grid-column:1/-1}
   .item-row .i-amt{grid-column:1/-1}
 }
-.home-week>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}.home-week>summary::-webkit-details-marker{display:none}
-.home-week>summary h2{margin:0;flex:1}.home-week>summary::after{content:"▾";color:var(--muted,#888);transition:transform .2s}.home-week:not([open])>summary::after{transform:rotate(-90deg)}.home-week[open]>summary{margin-bottom:12px}
 .i-total{font-family:var(--num);font-size:24px;font-weight:600}
-.import{border:2px dashed var(--kon-text)}
-.pdftext{white-space:pre-wrap;font-size:12px;max-height:260px;overflow:auto;background:var(--paper);padding:8px;border-radius:4px;margin:6px 0 0}
-.pdf-thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
-.pdf-thumbs .zoom{flex:none;width:110px;border:1px solid var(--line);border-radius:4px;padding:0;background:#fff;cursor:zoom-in}
-.pdfview{padding:16px}
-.pdfframe{display:block;width:100%;height:85vh;min-height:620px;margin-top:12px;border:1px solid var(--line);border-radius:4px;background:#fff}
-.pdfview .zoom{display:block;width:100%;max-width:1000px;margin:12px auto 0;padding:0;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:zoom-in}
-.pdfview img{width:100%;height:auto}
+
+
+
+
+
+
+
+
 .lightbox.doc{display:block;overflow:auto;padding:16px}
 .lightbox.doc img{max-height:none;width:min(100%,1400px);margin:0 auto;display:block}
 .cal-tool{display:flex;align-items:center;gap:12px;margin-bottom:10px}
@@ -358,13 +356,13 @@ textarea{min-height:110px;resize:vertical}
 .inv-line{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:6px;padding:10px 12px;cursor:pointer}
 .inv-line input[type=checkbox]{width:20px;height:20px;accent-color:var(--kon);flex:none}
 .inv-line .row-main{flex:1}
-.inv-amt{display:flex;align-items:center;gap:2px;flex:none}
-.inv-amt input{width:120px;text-align:right;padding:8px}
+
+
 .inv-sum{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px 18px;margin:0 0 14px;font-size:14px}
 .inv-sum b{font-size:18px;font-variant-numeric:tabular-nums}
 .inv-right{display:grid;justify-items:end;gap:6px;flex:none}
 .inv-money{font-size:18px;font-variant-numeric:tabular-nums}
-@media (max-width:560px){.inv-line{flex-wrap:wrap}.inv-amt{margin-left:30px}.inv-right .row .btn{padding:8px 10px;font-size:13px}}
+@media (max-width:560px){.inv-line{flex-wrap:wrap}.inv-right .row .btn{padding:8px 10px;font-size:13px}}
 .warn{color:var(--shu)}
 .badge[hidden]{display:none}
 .tabbar .badge{margin-left:2px;min-width:16px;line-height:16px;font-size:10px;padding:0 4px}
@@ -611,9 +609,9 @@ body{font-size:17px}
 .aud-pick{display:flex;flex-wrap:wrap;gap:8px;flex-basis:100%;margin-bottom:4px}
 .aud-pick label{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:var(--surface);cursor:pointer}
 .aud-pick label:has(input:checked){border-color:var(--kon);background:#EEF3FB;font-weight:700}
-.aud-pick .aud-auto{border-style:dashed;font-size:14px}
-.aud-pick .aud-auto select{padding:4px 6px;font-size:14px}
-.aud-pick:not(:has([value=priority]:checked)) .aud-auto{display:none}
+
+
+
 .reapply{margin-top:8px;padding:8px 10px;border:1px dashed var(--line);border-radius:6px;font-size:14px}
 .witem.pick.off .wn{text-decoration:line-through}
 .witem .wnote{grid-column:1/-1;font-size:14px;color:var(--sub);word-break:break-word}
@@ -631,8 +629,8 @@ body{font-size:17px}
 .stars-in label{font-size:34px;line-height:1;color:#D5D9E0;cursor:pointer;padding:0 2px}
 .stars-in input:checked~label,.stars-in label:hover,.stars-in label:hover~label{color:#E8A317}
 .stars-in input:focus-visible+label{outline:2px solid var(--kon);outline-offset:2px}
-.money-tool{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:0 0 12px}
-.money-tool h2{margin:0;font-size:20px}
+
+
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
 .chips a{border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:14px;background:var(--surface);color:var(--ink);text-decoration:none}
 .chips a[aria-current]{background:var(--kon);border-color:var(--kon);color:#fff;font-weight:700}
@@ -642,7 +640,7 @@ body{font-size:17px}
 .mtbl th{background:var(--paper);font-weight:700;color:var(--sub);font-size:12.5px;position:sticky;top:0}
 .mtbl td.r,.mtbl th.r{text-align:right}
 .mtbl tr.sum td{font-weight:700;border-top:2px solid var(--ink)}
-.mtbl tr.grp td{background:#F7F8FA;font-weight:700;color:var(--kon-text)}
+
 .mtbl td.vend{white-space:normal;min-width:220px;font-size:12.5px;color:var(--sub)}
 .mtbl td.name{white-space:normal;min-width:200px}
 .mtbl .neg{color:var(--danger,#C0392B)}
@@ -676,12 +674,12 @@ body{font-size:17px}
 .i-self{font-size:12.5px;margin-left:auto}.lot-self{font-size:12.5px;margin-left:auto}.self-ul{margin:0;padding-left:18px}
 .lot-info{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-left:12px;font-size:13px;color:var(--sub)}
 .lot-pk{display:inline-flex;align-items:center;gap:4px}.lot-pk .toggle{margin:0;font-size:13px}.lot-pk input[type=number]{width:76px;padding:3px 6px;font-size:13px}.lot-info b{color:var(--ink,inherit);font-weight:700}.lot-info .none{color:#8A5F00}
-.stg-nx{margin-top:5px}.stg-nx .btn{padding:3px 10px;font-size:12px;min-height:0}
+
 .stg-arr{background:#E3F4F0;border-color:#2A8C7A;color:#1F6E60}
 .sfc{display:inline-flex;align-items:center;flex-direction:column;gap:3px}.sfc .sflow{margin:0}.sfc .stg{margin:0}
 .flow-chips{align-items:center}.flow-chips a{display:inline-flex;align-items:center;gap:6px}.flow-chips a .sflow{margin:0}.flow-chips b{font-weight:700}
 .flow-chips .fl-arr{color:var(--sub);font-style:normal;font-size:18px}.fl-odd{display:inline-flex;gap:6px;margin-left:14px;padding-left:14px;border-left:1px solid var(--line);opacity:.75}.fl-odd a{font-size:12.5px}
-.jflow{display:inline-flex;flex-direction:column;align-items:flex-end;gap:4px}.jflow .sflow{margin:0}.jflow-key .sflow{margin-right:4px}
+
 .flowbar{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
 .flowbar .fb{flex:1;min-width:110px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--surface);display:grid}
 .flowbar .fb b{font-size:26px;font-family:"Barlow Condensed",var(--font);line-height:1}
@@ -689,7 +687,7 @@ body{font-size:17px}
 .flowbar .fb small{color:var(--sub);font-size:12px}
 .flowbar>i{align-self:center;color:var(--sub);font-style:normal}
 .stg-done{background:#E6F4EC;border-color:#2C7A4B;color:#2C7A4B}.stg-billed{background:#EEF0F4;color:#3a4252}
-.mtbl .next-l{font-weight:700}
+
 .mtbl .edit-l{color:var(--sub);text-decoration:none;font-size:12px;margin-left:2px}
 .est-link{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .est-btns{display:flex;flex-wrap:wrap;gap:8px}
@@ -711,7 +709,7 @@ body{font-size:17px}
 .er .e-cost{grid-column:3/-1;font-size:12px;color:var(--sub);margin-top:-2px}
 .er .e-cost:empty{display:none}
 .er .er-tools{display:flex;gap:2px;justify-content:flex-end}
-.er .i-mv{border:1px solid var(--line);background:var(--surface);border-radius:4px;width:26px;height:30px;cursor:pointer}
+
 .er.note{grid-template-columns:24px auto minmax(0,1fr) 34px}
 .er-tag{font-size:12px;color:var(--sub);border:1px solid var(--line);border-radius:3px;padding:1px 6px}
 .est-tot{margin-top:14px;border-top:2px solid var(--ink);padding-top:10px}
@@ -756,10 +754,10 @@ body{font-size:17px}
 .ap-row{background:var(--surface);border:1px solid var(--line);border-radius:4px}
 .ap-row>.row-item{border:0}
 .ap-row>.wdetail{margin:0 14px 12px;padding-top:8px}
-.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin:12px 0 0}
-.fact{background:var(--paper);border-radius:4px;padding:8px 12px}
-.fact b{display:block;font-size:13px;color:var(--sub);font-weight:400}
-.fact span{display:block;font-size:18px;font-weight:700;line-height:1.4;word-break:break-word}
+
+
+
+
 .addr{font-size:19px;font-weight:700;line-height:1.5;margin:0;word-break:break-word}
 .when{font-size:20px;font-weight:700;margin:0}
 
@@ -800,17 +798,17 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .ltbl thead th{background:var(--surface);color:var(--sub);font-size:11.5px;font-weight:700;border-bottom:2px solid var(--ink);position:sticky;top:0;z-index:1}
 .ltbl .r{text-align:right}
 .ltbl tbody tr:hover td{background:#F5F7FA}
-.ltbl td.mo{font-family:var(--num);font-size:16px;font-weight:700;color:var(--sub)}.ltbl td.mo small{font-size:10px;margin-left:1px}
-.ltbl td.no{font-family:var(--num);font-size:14px;color:var(--sub);letter-spacing:.02em}
-.ltbl td.name{white-space:normal;min-width:220px;max-width:320px}
-.ltbl td.name a{font-weight:700;font-size:14px;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+.ltbl td.mo{font-family:var(--num);font-size:14px;font-weight:700;color:var(--sub)}.ltbl td.mo small{font-size:10px;margin-left:1px}
+.ltbl td.no{font-family:var(--num);font-size:13px;color:var(--sub);letter-spacing:.02em}
+.ltbl td.name{white-space:nowrap;min-width:220px}
+.ltbl td.name a{font-weight:700;font-size:13.5px;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
 .ltbl td.name a:hover{color:var(--kon-text);border-color:var(--kon-text)}
 .ltbl td.name .edit-l{border:0;margin-left:6px;color:var(--sub);font-weight:400;font-size:13px}
 .ltbl .est-amt{font-size:11.5px;color:var(--sub);margin-left:2px}
-.ltbl td.amt{font-family:var(--num);font-size:15px}
-.ltbl td.profit{font-family:var(--num);font-size:17px;font-weight:700;color:var(--kon-text)}
+.ltbl td.amt{font-family:var(--num);font-size:14px}
+.ltbl td.profit{font-family:var(--num);font-size:15px;font-weight:700;color:var(--kon-text)}
 .ltbl .dash{color:#B5BCC6}
-.ltbl .rate{display:inline-block;min-width:44px;text-align:center;font-family:var(--num);font-size:14px;font-weight:700;border-radius:999px;padding:0 8px}
+.ltbl .rate{display:inline-block;min-width:44px;text-align:center;font-family:var(--num);font-size:13px;font-weight:700;border-radius:999px;padding:0 8px}
 .ltbl .rate-good{background:#E6F4EC;color:var(--ok)}.ltbl .rate-mid{background:#EEF0F4;color:var(--ink)}.ltbl .rate-low{background:var(--warn-soft);color:var(--warn)}.ltbl .rate-neg{background:#FDECEA;color:var(--shu)}
 .lsum .rate-good{color:var(--ok)}.lsum .rate-low{color:var(--warn)}.lsum .rate-neg{color:var(--shu)}
 .ltbl td.s,.ltbl th.s{color:var(--sub);font-size:12px}
@@ -837,27 +835,25 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .mp-sup{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding-top:4px;border-top:1px dashed #E4DDC3}.mp-sup select{width:auto;max-width:180px;padding:5px 6px!important;font-size:13px!important}
 .mp-ws{color:var(--kon-text,#1B2A55);font-weight:700}.mp-ms{color:#8A5A00;font-weight:700}
 form.memo .mpaper{background:#FBF8EC;border:1px solid #E4DDC3;border-radius:8px;padding:10px 12px;margin:0 0 12px}
-form.memo .mpaper>h2{font-size:15px;margin:0 0 8px;border-left:4px solid var(--kon-text,#1B2A55);padding-left:8px}form.memo .mpaper>h2 small{font-weight:400;font-size:11.5px;color:var(--sub);margin-left:6px}
+form.memo .mpaper>h2{font-size:15px;margin:0 0 8px;border-left:4px solid var(--kon-text,#1B2A55);padding-left:8px}form.memo .mpaper>h2 small{display:block;font-weight:400;font-size:11.5px;color:var(--sub);margin:2px 0 0}
 form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mck{display:grid;grid-template-columns:110px 1fr;gap:4px 8px;align-items:center;padding:5px 0;border-bottom:1px dashed #E4DDC3}.mck b{font-size:13px}
 .mck-v{display:flex;flex-wrap:wrap;gap:5px;align-items:center}.mc-g{display:inline-flex;flex-wrap:wrap;gap:4px}
 .mck-n{width:80px!important;padding:5px 6px!important}.mck-t{width:150px!important;padding:5px 6px!important}.mck-d{width:150px!important;padding:5px 6px!important}
 .mq-b.mc.on{background:var(--kon-text,#1B2A55);border-color:var(--kon-text,#1B2A55);color:#fff;font-weight:700}
-.mcf{background:#fff;border:1px solid #E4DDC3;border-radius:6px;padding:8px;margin-bottom:8px}.mcf-h{margin-bottom:5px}
+.mcf{background:#fff;border:1px solid #E4DDC3;border-radius:6px;padding:8px;margin-bottom:8px}
 .mcf-locs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}.mcf-locs .mq-b{padding:3px 8px;font-size:12px}
 .mcf .memo-row [data-act=memo-rm]{visibility:hidden}.mcf.added .memo-row [data-act=memo-rm]{visibility:visible}.mcf.added .memo-row [name=m_name]{background:#fff;font-weight:400}
 .cf-pick{width:100%;margin:0 0 6px;padding:7px 8px!important;font-weight:700}#memo-cf+.btn{margin-top:2px}
 .md-lp{display:none;grid-column:1/-1;order:-1;gap:5px;flex-wrap:wrap;align-items:center}.md-lp .mq-b{padding:3px 8px;font-size:12px}.md-locs{display:flex;flex-wrap:wrap;gap:4px}
 .md-lp [name=d_loc]{flex:1 1 150px;min-width:120px;padding:5px 6px!important;font-size:13px!important}.md-part{display:inline-flex;gap:4px}.mcf.all .md-lp{display:flex}
-.mcf.all .mcf-locs .mc:not([data-all]){display:none}.mcf.all{border-color:var(--kon-text,#1B2A55)}form.memo .mpaper>h2 small{display:block;margin:2px 0 0}.memo-price .mp-spec{flex-wrap:wrap}.mcf .memo-row [name=m_name]{background:#F4F6FA;font-weight:700}
+.mcf.all .mcf-locs .mc:not([data-all]){display:none}.mcf.all{border-color:var(--kon-text,#1B2A55)}.mcf .memo-row [name=m_name]{background:#F4F6FA;font-weight:700}
 .emp-inv{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.emp-inv h3{margin:0 0 8px;font-size:15px}
 .emp-inv-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
 .mo-cloth{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 10px;padding:8px 10px;border-radius:6px;background:#F3F6FB;border:1px solid #D8E0EE;font-size:13px}
 .mp-any{margin-left:6px;white-space:nowrap;font-size:12px!important;padding:4px 9px!important}
-/* 収支の1行を薄く：物件名は1行、状態は横並び */
+/* 収支の1行は薄く：物件名は1行、状態は横並び */
 .ltbl tbody td{padding:4px 10px;line-height:1.35}
-.ltbl td.name{white-space:nowrap;max-width:none}.ltbl td.name a{font-size:13.5px}
-.ltbl td.mo{font-size:14px}.ltbl td.no{font-size:13px}.ltbl td.amt{font-size:14px}.ltbl td.profit{font-size:15px}.ltbl .rate{font-size:13px}
 .ltbl .sfc{flex-direction:row;gap:6px}.ltbl .stg{font-size:11px;line-height:1.5}
 
 .keypick select{width:100%}
@@ -957,15 +953,14 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled{background:#EEF1F5;color:var(--sub);cursor:not-allowed}
 .memo-price{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:12px;color:var(--sub);margin:-2px 0 4px}
-.memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-spec{flex:1 1 100%}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}
+.memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-spec{flex:1 1 100%;flex-wrap:wrap}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}
 .memo-sum{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px 18px;margin:6px 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 -2px 8px rgba(0,0,0,.06);font-size:13px}
 .memo-sum b{font-family:var(--num);font-size:16px;margin-left:4px}
-.mq-g{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px}.mq-g b{width:100%;font-size:12px;color:var(--sub)}
 .mq-b{padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:inherit;font:inherit;font-size:13px;cursor:pointer;line-height:1.3}.mq-b:hover{border-color:var(--sub)}
-.mq-b.on{background:var(--kon-text,#1B2A55);border-color:var(--kon-text,#1B2A55);color:#fff;font-weight:700}.mq-b.on::before{content:"✓ "}.mq-b .mq-n{margin-left:4px;font-size:11px;background:#fff;color:var(--kon-text,#1B2A55);border-radius:999px;padding:0 5px}
+.mq-b.on{background:var(--kon-text,#1B2A55);border-color:var(--kon-text,#1B2A55);color:#fff;font-weight:700}.mq-b.on::before{content:"✓ "}
 /* 工事メモ：間隔を狭く */
 form.memo .field{margin:0 0 10px;gap:4px}form.memo .two{gap:10px}form.memo input,form.memo select{padding-top:8px;padding-bottom:8px}
-form.memo .mq-g{gap:5px;margin-bottom:5px}form.memo .memo-row{margin-bottom:4px}form.memo .memo-price{margin:-2px 0 2px}
+form.memo .memo-row{margin-bottom:4px}form.memo .memo-price{margin:-2px 0 2px}
 .mn-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--sub)}
 .mn-grid small{font-size:11px}
 .mn-save{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;cursor:pointer}
@@ -1025,9 +1020,6 @@ const FIREBASE_CONFIG = {
 // URLの末尾に ?demo を付けると、本番データに触れずにデモモードで開けます
 const FORCE_DEMO = new URLSearchParams(location.search).has("demo");
 const FIREBASE_SDK_VERSION = "10.12.2";
-// プッシュ通知の鍵（Firebase コンソール → プロジェクトの設定 → Cloud Messaging → ウェブ構成 → ウェブプッシュ証明書の「鍵ペア」）
-// 空のあいだは、通知の設定欄は「準備中」になります
-const FCM_VAPID_KEY = "";
 const COMPANY_ID = "refore";
 const CONTACT_TEL = "03-6824-7182";
 const REPORT_EMAIL = "info@refore.co.jp";   // 完了報告メールの送信先
@@ -1035,7 +1027,6 @@ const REPORT_EMAIL = "info@refore.co.jp";   // 完了報告メールの送信先
 // 空のままなら、写真はこれまでどおりメールで送る方式になります
 const PHOTO_UPLOAD_URL = "https://script.google.com/macros/s/AKfycbxLlhiTksaiuldRTZqJlSTVbDUpafJIaUBHzKW6LeOkoSgQBsD31kzFY28yRwMpp2Y/exec";
 const PHOTO_MAX = 100, PHOTO_PX = 1600, PHOTO_Q = 0.75, PHOTO_PARALLEL = 3;
-const JOB_PHOTO_MAX = 4;                      // 案件写真の上限（Firestoreに直接保存するため）
 
 // 発注書・請求書に載せる自社情報（テンプレート確定後に調整）
 const COMPANY = {name:"株式会社Refore", zip:"102-0074", address:"東京都千代田区九段南一丁目5番6号", address2:"りそな九段ビル5階KSフロア", tel:CONTACT_TEL, fax:"03-6369-4214", email:REPORT_EMAIL, invoiceNumber:""};
@@ -1673,16 +1664,6 @@ function buildOrderDoc(job, priv, c, extra = {}){
     amount:calcAmount(job.price, taxMode), taxMode, terms:isRefJob(job) ? PAYMENT_TERMS : coTermsOf(job), company:{...(isRefJob(job) ? COMPANY : coInfo()), staff:job.staff || null}
   };
 }
-function buildPaymentDoc(job, c, order, input){
-  const base = Number(input.base) || 0, tax = Math.floor(base * TAX_RATE), total = base + tax, fee = Number(input.fee) || 0;
-  return {
-    id:`${job.id}_payment`, type:"payment", jobId:job.id, craftsmanId:c.uid, number:input.number || docNumber("PS", job.id),
-    status:"draft", createdAt:Date.now(), issuedAt:null,
-    to:{name:c.name || "", tradeName:c.tradeName || "", invoiceNumber:c.invoiceNumber || ""},
-    job:{jobNo:job.jobNo || "", title:job.title || "", pref:job.pref || "", city:job.city || "", startDate:job.startDate || "", endDate:job.endDate || "", startedAt:job.startedAt || null, finishedAt:job.finishedAt || null},
-    orderNumber:order?.number || "", amount:{base, tax, total}, fee, transferAmount:total - fee, transferDate:input.transferDate, note:input.note || "", company:{...(isRefJob(job) ? COMPANY : coInfo()), staff:job.staff || null}
-  };
-}
 
 function resizeImage(file, max = 1280, q = 0.75){
   return new Promise((res, rej) => {
@@ -1974,15 +1955,11 @@ class DemoBackend {
   async setCraftDates(id, d){ Object.assign(this.data.jobs[id], {craftStart:d.craftStart, craftEnd:d.craftEnd, updatedAt:Date.now()}); this.save(); }
   async getDocument(id){ return clone((this.data.documents || {})[id] || null); }
   async saveDocument(doc){ (this.data.documents ||= {})[doc.id] = doc; this.save(); }
-  async updateDocument(id, d){ Object.assign(this.data.documents[id], d); this.save(); }
   async getJobPrivate(id){ const d = clone(this.data.jobPrivate[id] || {}); if(myRole() !== "admin") delete d.manager; return d; }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
   async getProperties(){ return clone(this.sd().properties || []); }
   async getPrices(){ return clone(this.sd().prices || DEFAULT_PRICES); }
   async getStaff(){ return clone(this.sd().staff || []); }
-  async addPushToken(uid, t){ const u = this.data.users[uid]; u.pushTokens = [...new Set([...(u.pushTokens || []), t])]; this.save(); }
-  async removePushToken(uid, t){ const u = this.data.users[uid]; u.pushTokens = (u.pushTokens || []).filter(x => x !== t); this.save(); }
-  async getNotifySettings(){ return clone(this.sd().notify || {}); }
   async listAdmins(){ return Object.values(this.data.users).filter(u => tenant() ? (u.role === "co" && u.companyId === S.cid) : u.role === "admin").map(clone); }
   async listEstimates(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().estimates || {})); }
   async getEstimate(id){ return clone((this.sd().estimates || {})[id] || null); }
@@ -2001,7 +1978,6 @@ class DemoBackend {
   async getLedgerCfg(){ return clone(this.sd().ledgerCfg || {fees:{}, staffRate:0.5}); }
   async saveLedgerCfg(d){ S.ldCache = null; this.sd().ledgerCfg = clone(d); this.save(); }
   async getAdminInfo(id){ return {manager:this.data.jobPrivate[id]?.manager || ""}; }
-  async saveNotifySettings(d){ this.sd().notify = {...(this.sd().notify || {}), ...d}; this.save(); }
   async listRatings(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().ratings || {})); }
   async saveRating(r){ (this.sd().ratings ||= {})[r.id] = clone(r); this.save(); }
   async getSuppliers(){ return clone(this.sd().suppliers || DEFAULT_SUPPLIERS); }
@@ -2016,13 +1992,6 @@ class DemoBackend {
   async saveMatOrders(jobId, orders){ S.ldCache = null; JOB_ADMIN_CACHE.delete(jobId); (this.data.matOrders ||= {})[jobId] = clone(orders); this.save(); }
   async saveStaff(list){ this.sd().staff = clone(list); this.save(); }
   async savePrices(list){ this.sd().prices = clone(list); this.save(); }
-  async wipeJobData(progress){
-    const d = this.data, jobs = Object.keys(d.jobs || {}).length;
-    const total = ["jobs","jobPrivate","jobPdf","jobPdfSrc","applications","reports","documents","invoices","threads","messages"].reduce((a, k) => a + Object.keys(d[k] || {}).length, 0);
-    ["jobs","jobPrivate","jobPdf","jobPdfSrc","applications","reports","documents","invoices","threads","messages"].forEach(k => { d[k] = {}; });
-    progress?.("削除しました"); this.save();
-    return {jobs, total};
-  }
   async saveProperties(list){ this.sd().properties = clone(list); this.save(); }
   // 選んだ案件だけ削除（応募・完了報告・発注書・連絡も一緒に。請求書は残す）
   async deleteJobs(ids, progress){ S.ldCache = null;
@@ -2097,11 +2066,6 @@ class DemoBackend {
   async setReportStatus(id, status, comment){ Object.assign(this.data.reports[id], {status, reviewComment:comment || "", reviewedAt:Date.now()}); this.save(); }
   async addReportPhotos(id, a){ const r = this.data.reports[id]; if(!r) return; (r.additions ||= []).push(a); r.photoCount = (r.photoCount || 0) + a.count; this.save(); }
 
-  async uploadPhotos(files){
-    const out = [];
-    for(const f of files) out.push(await blobToDataURL(await resizeImage(f, 800, 0.65)));
-    return out;
-  }
   // ---- 工務店・運営・招待・先払い（デモ） ----
   async getCompany(cid){ return clone((this.data.companies || {})[cid] || null); }
   async listCompanies(){ return clone(Object.values(this.data.companies || {})); }
@@ -2118,7 +2082,6 @@ class DemoBackend {
   async acceptInvite(inv, uid, prof){ this.data.users[uid] = {...prof, uid}; this.data.invites[inv.id].usedAt = Date.now(); this.data.invites[inv.id].usedBy = uid; this.save(); }
   async getPayment(id){ return clone((this.data.payments || {})[id] || null); }
   async listPayments(f = {}){ let a = Object.values(this.data.payments || {}); if(f.companyId) a = a.filter(x => x.companyId === f.companyId); if(f.status) a = a.filter(x => x.status === f.status); return clone(a); }
-  async savePayment(p){ (this.data.payments ||= {})[p.id] = clone(p); this.save(); }
   async updatePayment(id, d){ Object.assign(this.data.payments[id], d); this.save(); }
   async getOpSettings(){ return clone(this.data.opSettings || {}); }
   async saveOpSettings(d){ this.data.opSettings = clone(d); this.save(); }
@@ -2290,7 +2253,6 @@ class FirebaseBackend {
     catch(e) { if(e.code === "permission-denied") return null; throw e; }
   }
   async saveDocument(doc){ await this.col("documents").doc(doc.id).set(doc); }
-  async updateDocument(id, d){ await this.col("documents").doc(id).update(d); }
   // 現場情報（発注先と管理者が読める）。管理会社だけは admin/info（管理者だけが読める）に分けて保存し、管理者が読むときに合わせる
   async getJobPrivate(id){
     const j = this.col("jobs").doc(id);
@@ -2314,31 +2276,6 @@ class FirebaseBackend {
   }
   async saveInvoice(d){ await this.col("invoices").doc(d.id).set(d); }
   // 案件データの一括削除（協力業者・物件マスタは残す）
-  async wipeJobData(progress){
-    let total = 0, refs = [];
-    const flush = async () => { while(refs.length){ const b = this.db.batch(); refs.splice(0, 400).forEach(r => b.delete(r)); await b.commit(); } };
-    const jobs = await this.col("jobs").get();
-    let i = 0;
-    for(const j of jobs.docs){
-      progress?.(`案件を削除しています… ${++i} / ${jobs.size}`);
-      for(const sub of ["files", "private", "admin"]){ const s = await j.ref.collection(sub).get(); s.docs.forEach(d => refs.push(d.ref)); }
-      refs.push(j.ref);
-      if(refs.length > 300){ total += refs.length; await flush(); }
-    }
-    total += refs.length; await flush();
-    const threads = await this.col("threads").get();
-    for(const t of threads.docs){
-      const m = await t.ref.collection("messages").get(); m.docs.forEach(d => refs.push(d.ref)); refs.push(t.ref);
-      if(refs.length > 300){ total += refs.length; await flush(); }
-    }
-    progress?.("チャットを削除しています…"); total += refs.length; await flush();
-    for(const c of ["applications", "reports", "documents", "invoices"]){
-      progress?.(`${{applications:"応募", reports:"完了報告", documents:"発注書", invoices:"請求書"}[c]}を削除しています…`);
-      const s = await this.col(c).get(); s.docs.forEach(d => refs.push(d.ref)); total += refs.length; await flush();
-    }
-    progress?.("削除が完了しました");
-    return {jobs:jobs.size, total};
-  }
   // 選んだ案件だけ削除（応募・完了報告・発注書・連絡も一緒に。請求書は記録として残す）
   async deleteJobs(ids, progress){ S.ldCache = null;
     let total = 0, refs = [], i = 0;
@@ -2384,9 +2321,6 @@ class FirebaseBackend {
   async saveMatOrders(jobId, orders){ S.ldCache = null; JOB_ADMIN_CACHE.delete(jobId); await this.col("jobs").doc(jobId).collection("admin").doc("matorders").set({orders, updatedAt:Date.now()}); }
   // Reforeの担当者：master/staff にまとめて保存
   // プッシュ通知の端末（users/{uid}.pushTokens）と、Reforeあてメールのオン・オフ（master/notify）
-  async addPushToken(uid, t){ await this.col("users").doc(uid).update({pushTokens:firebase.firestore.FieldValue.arrayUnion(t)}); }
-  async removePushToken(uid, t){ await this.col("users").doc(uid).update({pushTokens:firebase.firestore.FieldValue.arrayRemove(t)}); }
-  async getNotifySettings(){ const s = await this.smaster("notify").get(); return s.exists ? s.data() : {}; }
   async listAdmins(){ const s = await (tenant() ? this.col("users").where("companyId", "==", S.cid) : this.col("users").where("role", "==", "admin")).get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
   // 見積（estimates/{id}）と、見積・請求書の設定（master/billing）。管理者だけ
   async listEstimates(){ return this.docs(await this.scol("estimates").get()); }
@@ -2408,7 +2342,6 @@ class FirebaseBackend {
   async getLedgerCfg(){ const s = await this.smaster("ledger").get(); return s.exists ? s.data() : {staffRate:0.5}; }
   async saveLedgerCfg(d){ S.ldCache = null; await this.smaster("ledger").set(d); }
   async getAdminInfo(id){ const s = await this.col("jobs").doc(id).collection("admin").doc("info").get(); return s.exists ? s.data() : {}; }
-  async saveNotifySettings(d){ await this.smaster("notify").set(d, {merge:true}); }
   // 評価（ratings/{案件ID}。管理者だけが読み書きできる）
   async listRatings(){ return this.docs(await this.scol("ratings").get()); }
   async saveRating(r){ await this.scol("ratings").doc(r.id).set(r); }
@@ -2536,11 +2469,6 @@ class FirebaseBackend {
   }
 
   // 写真は圧縮して案件ドキュメントに直接保存（Storage・従量課金プラン不要）
-  async uploadPhotos(files){
-    const out = [];
-    for(const f of files) out.push(await blobToDataURL(await resizeImage(f, 800, 0.65)));
-    return out;
-  }
   // ---- 工務店・運営・招待・先払い ----
   async getCompany(cid){ const s = await this.col("companies").doc(cid).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
   async listCompanies(){ return this.docs(await this.col("companies").get()); }
@@ -2563,7 +2491,6 @@ class FirebaseBackend {
   }
   async getPayment(id){ try { const s = await this.col("payments").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; } catch(e) { if(e.code === "permission-denied") return null; throw e; } }
   async listPayments(f = {}){ let q = this.col("payments"); if(f.companyId) q = q.where("companyId", "==", f.companyId); if(f.status) q = q.where("status", "==", f.status); return this.docs(await q.get()); }
-  async savePayment(p){ await this.col("payments").doc(p.id).set(p); }
   async updatePayment(id, d){ await this.col("payments").doc(id).update(d); }
   async getOpSettings(){ const s = await this.col("opdata").doc("settings").get().catch(() => null); return s?.exists ? s.data() : {}; }
   async saveOpSettings(d){ await this.col("opdata").doc("settings").set(d); }
@@ -2789,9 +2716,6 @@ function stageNextHtml(r, big = false){
 }
 const flowBar = (k, n = 6) => `<span class="sflow sf${n === 6 ? k + 1 : [1, 2, 4, 5, 6][k] || 0}" aria-hidden="true">${Array.from({length:n}, (_, i) => `<i class="${i <= k ? "on" : ""}"></i>`).join("")}</span>`;
 const stageCell = st => { const k = STAGE_FLOW.indexOf(st || ""); return k < 0 ? stageTag(st) : `<span class="sfc">${flowBar(k)}${stageTag(st)}</span>`; };
-// 案件の流れ：募集 → 発注（承諾待ち） → 承諾 → 作業中 → 完了
-const jobBar = j => flowBar(jobStep(j), 5);
-const jobStep = j => ["working"].includes(j.status) ? 3 : ["finished", "completed", "paid"].includes(j.status) ? 4 : j.status === "assigned" ? (j.acceptedAt && !j.declinedAt ? 2 : 1) : 0;
 const EST_KINDS = ["退去工事", "原状回復工事", "修繕工事", "フルリノベーション工事", "リフォーム工事", "入居前工事"];
 const BILLING_DEFAULT = {validity:"発行日より1ヶ月", terms:"工事完了月末締、翌月末日支払", invoiceNumber:"", bank:""};
 // 見積で選べる工事：単価表（実行単価）に見積単価を合わせたもの＋見積だけの項目（諸経費・和室など）
@@ -3119,24 +3043,6 @@ function estBulkDialog(){
     bg.addEventListener("click", ev => { if(ev.target === bg) close(null); });
     document.body.appendChild(bg); bg.querySelector(".bk-name").focus();
   });
-}
-// 収支に入れた案件から見積を作る（工事番号・物件・管理会社・担当を引き継ぐ）
-async function estFromLedger(lid){
-  const row = (await api().listLedger()).find(x => x.id === lid);
-  if(!row) throw new Error("収支の案件が見つかりません");
-  if(row.estimateId && await api().getEstimate(row.estimateId)) return row.estimateId;
-  const props = await api().getProperties().catch(() => []), name = String(row.name || "").trim();
-  const prop = props.find(p => name.startsWith(p.name)) || {};
-  const room = prop.name ? name.slice(prop.name.length).trim() : "";
-  const staffs = await api().getStaff().catch(() => []), st = staffs.find(p => p.name === row.staff);
-  const billing = {...BILLING_DEFAULT, ...(await api().getBilling().catch(() => ({})))};
-  const kind = {原状回復:"退去工事", 修繕:"修繕工事", リフォーム:"リフォーム工事", フルリノベ:"リフォーム工事"}[row.kind] || row.kind || "退去工事";
-  const e = {id:"est_" + newId(), ledgerId:row.id, no:row.jobNo || "", status:"draft", company:row.company || prop.company || "", honor:"御中", person:"", building:prop.name || name, room, kind,
-    address:prop.address || "", autolock:prop.al || "", elevator:prop.ev || "", masterId:prop.id || "", issuedAt:todayIso(), validity:billing.validity, terms:billing.terms,
-    staff:row.staff ? {name:row.staff, phone:st?.phone || ""} : null, rows:[{id:"r_" + newId()}, {id:"r_" + newId()}, {id:"r_" + newId()}], createdAt:Date.now(), updatedAt:Date.now()};
-  await api().saveEstimate(e);
-  await api().saveLedger({...row, estimateId:e.id, stage:"est", updatedAt:Date.now()});
-  return e.id;
 }
 // 見積の状態を、収支の案件の状態にも入れる
 async function syncLedgerFromEst(e){
@@ -3646,8 +3552,6 @@ function employeePanel(){
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" name="mode" value="mail">招待メールを作る</button><button class="btn sub" name="mode" value="copy">招待リンクをコピー</button></div>
       <p class="small" style="margin:6px 0 0">「招待メールを作る」を押すと、Gmailに招待メール（登録用のリンクつき）ができます。送信を押せば届きます。登録されたら、ここに「申し込み」として出るので「承認する」を押してください。</p></form></section>`;
 }
-const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 // 評価（Reforeだけが見る。星5が最高）
 const starsHtml = (v, n = null) => { const r = Math.round(Number(v) || 0); return `<span class="stars" aria-label="星${(Number(v) || 0).toFixed(1)}">${"★".repeat(r)}<span class="off">${"★".repeat(5 - r)}</span><small>${(Number(v) || 0).toFixed(1)}${n !== null ? `（${n}件）` : ""}</small></span>`; };
 const ratingOf = uid => { const l = (S.ratings || []).filter(r => r.craftsmanId === uid && r.stars > 0); return l.length ? {avg:l.reduce((a, r) => a + r.stars, 0) / l.length, n:l.length, list:l} : null; };
@@ -3717,7 +3621,6 @@ function reportsBlock(rs, admin){
   </section>`).join("");
 }
 
-const priceSmall = j => esc([Number(j.price) > 0 ? taxModeOf(j) : "", j.priceNote].filter(Boolean).join("・"));
 const STATUS_STAMP = {draft:["下書", true], closed:["締切", true], selected:["支払待", false], assigned:["発注済", false], working:["作業中", false], finished:["完了", false], completed:["確認済", false], paid:["支払済", true]};
 const statusStamp = j => STATUS_STAMP[j.status] ? stamp(STATUS_STAMP[j.status][0], STATUS_STAMP[j.status][1]) : "";
 const STEPS = [["募集開始","publishedAt"],["発注","assignedAt"],["承諾","acceptedAt"],["作業開始","startedAt"],["作業完了","finishedAt"],["完了報告",null],["完了確認","completedAt"],["支払","paidAt"]];
@@ -3739,14 +3642,6 @@ function progressMini(job){
   const stage = stageOf(job);
   if(stage < 0) return "";
   return `<span class="mini" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i <= stage ? "on" : ""}"></i>`).join("")}</span>`;
-}
-// 現場の情報：住所は大きく、オートロック・エレベーターはマスで並べる（管理会社は業者に見せない。鍵などは full のときだけ）
-function siteHtml(p, job, full = false){
-  const addr = [p.address, [p.building, p.room].filter(Boolean).join(" ")].filter(Boolean).join("　");
-  const facts = [["オートロック", p.autolock], ["エレベーター", p.elevator], ...(full ? [["鍵・入室方法", p.keyInfo]] : [])].filter(([, v]) => v);
-  return `${addr ? "" : `<p class="addr">${esc((job.pref || "") + (job.city || ""))}</p><p class="small" style="margin:4px 0 0">くわしい住所は発注後に表示されます。</p>`}
-    ${p.address ? `<p style="margin:0"><a class="btn sub" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}">地図アプリで開く</a></p>` : ""}
-    ${facts.length ? `<div class="facts">${facts.map(([k, v]) => `<div class="fact"><b>${k}</b><span>${esc(v)}</span></div>`).join("")}</div>` : ""}`;
 }
 // 業者の受注ページの工事の内訳（ほかの業者の工事は薄く）
 // 手で直した発注書：最初の発注書から何が変わったか（業者さんの画面に出す）
@@ -3772,15 +3667,6 @@ function itemsPanelBody(job, priv){
   if(!priv.items?.length) return "";
   if(job.allItems?.length) return `<p class="small" style="margin:0 0 8px">薄い工事は、ほかの業者が担当します。</p>${familyListHtml(itemsWithId(job.allItems), new Set(itemsWithId(priv.items).map(i => i.iid)), {taxMode:taxModeOf(job), ownItems:itemsWithId(priv.items)})}`;
   return itemsTable({items:priv.items, taxMode:job.taxMode});
-}
-// 発注内容（作業内訳）：発注先と管理者だけ（現場情報と同じ private に保存）
-function itemsPanel(job, priv, admin = false){
-  if(!priv.items?.length) return "";
-  if(!admin && job.allItems?.length){
-    const own = new Set(itemsWithId(priv.items).map(i => i.iid));
-    return `<section class="panel"><h2>発注内容<small>薄い工事は、ほかの業者が担当します</small></h2>${familyListHtml(itemsWithId(job.allItems), own, {taxMode:taxModeOf(job), ownItems:itemsWithId(priv.items)})}</section>`;
-  }
-  return `<section class="panel"><h2>発注内容${admin ? "<small>発注先にだけ表示</small>" : ""}</h2>${itemsTable({items:priv.items, taxMode:job.taxMode})}</section>`;
 }
 // 案件の全部の工事を分類ごとに並べる。own にない工事は薄く（金額は出さない）。tags があれば工事ごとに添える
 async function adminItemsPanel(job, priv, apps, family){
@@ -3829,7 +3715,6 @@ function docRow(label, doc, note, canSee = true){
   return `<div class="doc-row"><span class="row-main"><b>${label}</b><span class="small">${ok ? `${esc(doc.number)}　${fmtTime(doc.issuedAt || doc.createdAt)} 発注` : esc(note)}</span></span>
     ${ok ? `<span class="row">${view}${btn}</span>` : ""}</div>`;
 }
-const dataUrlToBlob = u => { const [h, b] = u.split(","); const bin = atob(b); const a = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], {type:h.match(/data:([^;]+)/)?.[1] || "application/pdf"}); };
 function saveBlob(blob, name){ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
 
 /* ---------- ログイン・登録 ---------- */
@@ -4388,7 +4273,7 @@ async function viewAdminJob(id){
   // 完了確認の担当：メールのあるメンバーから選ぶ（案件の担当者を最初に選んでおく）。選んだ人は予定に招待される
   const calMembers = calUrl ? (await api().listAdmins().catch(() => [])).filter(m => m.email && m.status !== "suspended") : [];
   const calWho = (root.staff || job.staff)?.name || "";
-  const calPick = calMembers.length ? `<select data-calto aria-label="完了確認の担当"><option value="">完了確認の担当（招待しない）</option>${calMembers.map(m => { const n = m.staffName || m.name || m.email; return `<option value="${esc(m.email)}" ${calWho && (m.staffName === calWho || m.name === calWho) ? "selected" : ""}>${esc(n)}</option>`; }).join("")}</select>` : "";
+  const calPick = calMembers.length ? `<select data-calto aria-label="入れるカレンダー（完了確認の担当）"><option value="">会社のカレンダー（${esc(tenant() ? (S.company?.notifyEmail || S.company?.ownerEmail || "会社") : REPORT_EMAIL)}）</option>${calMembers.map(m => { const n = m.staffName || m.name || m.email; return `<option value="${esc(m.email)}" ${calWho && (m.staffName === calWho || m.name === calWho) ? "selected" : ""}>${esc(n)}</option>`; }).join("")}</select>` : "";
   const order0 = {selected:0, applied:1, rejected:2, withdrawn:3, declined:3};
   apps.sort((a, b) => (order0[a.status] - order0[b.status]) || (a.createdAt - b.createdAt));
   const rs = reports.sort((a, b) => b.createdAt - a.createdAt);
@@ -4470,7 +4355,7 @@ async function viewAdminJob(id){
           return `<section class="panel"><h2>自社でやる工事</h2>${L.length ? `<p class="small" style="margin:0 0 8px">誰もできない工種は、自社でやることにすると案件から外れ、業者には出ません。</p><div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:${self.length ? 12 : 0}px">${L.map(l => `<button class="btn sub sm" data-act="job-lot-self" data-job="${esc(job.id)}" data-key="${esc(l.key)}">${esc(l.key)}を自社でやる</button>`).join("")}</div>` : ""}
             ${self.length ? `<ul class="self-ul">${self.map(i => `<li>${i.loc ? `${esc(i.loc)} ` : ""}<b>${esc(i.name)}</b> <span class="small">${fmtQty(i.qty)}${esc(i.unit || "")}</span></li>`).join("")}</ul><p class="small" style="margin:6px 0 0">業者に出す工事に戻すときは「編集」から。</p>` : ""}</section>`; })()}
         ${calUrl ? `<section class="panel"><h2>完了確認</h2>
-          <p class="small" style="margin:0 0 10px">完了確認の日と担当を選んで、Googleカレンダーに入れます（会社のアドレスで作り、担当は招待されます）。最初の日付はUP日です。</p>
+          <p class="small" style="margin:0 0 10px">完了確認の日と担当を選んで、Googleカレンダーに入れます。担当を選ぶと、その人のカレンダーに直接入ります（招待はしません。このブラウザのGoogleにその人のアカウントが追加されている必要があります）。担当を選ばないと会社のカレンダーに入ります。最初の日付はUP日です。</p>
           <div class="row" style="gap:8px;flex-wrap:wrap"><input type="date" data-caldate value="${esc(lrow?.doneCheck || cal.up)}" aria-label="完了確認の日" style="max-width:180px">${calPick}<button class="btn" data-act="done-cal" data-url="${esc(calUrl)}" data-root="${esc(root.id)}">カレンダーに入れる</button></div>
           ${lrow ? `<div class="row" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><span>収支：${stageCell(dispStage(lrow))}</span>${lrow.doneCheck ? `<span class="small">完了確認 ${fmtDate(lrow.doneCheck)}</span>` : ""}${["completed", "paid"].includes(job.status) ? "" : stageNextHtml(lrow, true)}</div>` : ""}</section>` : ""}
       </div></div>`;
@@ -4534,12 +4419,6 @@ async function viewInvoice(ym){
     <div class="inv-sum"><span>小計 <b>${yenFull(b0)}</b></span><span>消費税 <b>${yenFull(t0)}</b></span><span>合計 <b>${yenFull(b0 + t0)}</b></span></div>
     <label class="field"><span>備考 <small>任意</small></span><textarea name="note" style="min-height:70px">${esc(inv?.note)}</textarea></label>
     <button class="btn block" ${priced.length ? "" : "disabled"}>${inv ? "請求書を再発行する" : "請求書を発行する"}</button></form>`;
-}
-function syncInvoice(form){
-  let base = 0;
-  form.querySelectorAll("input[name=inc]").forEach(c => { if(c.checked) base += Number(form.elements["amt_" + c.value].value) || 0; });
-  const tax = Math.floor(base * TAX_RATE);
-  form.querySelector(".inv-base").textContent = yenFull(base); form.querySelector(".inv-tax").textContent = yenFull(tax); form.querySelector(".inv-total").textContent = yenFull(base + tax);
 }
 async function viewAdminInvoices(ym){
   if(!/^\d{4}-\d{2}$/.test(ym || "")) ym = curMonth();
@@ -4942,12 +4821,17 @@ function priceSupRead(r){
   const m = mt.startsWith("m:") ? (S.materials || []).find(x => x.id === mt.slice(2)) : null;
   return {...(ws ? {workSup:ws} : {}), ...(m ? {matId:m.id, matSup:m.sup} : mt.startsWith("s:") ? {matSup:mt.slice(2)} : {}), ...(mt && rt !== "" ? {matRate:Number(rt) || 0} : {})};
 }
+function priceWsOpts(){
+  const ws = (S.suppliers || []).filter(x => x.kind === "work"), cr = [...(S.crafts?.values() || [])].filter(c => c.status === "approved");
+  return `<option value="">未定（募集する）</option>${cr.length ? `<optgroup label="協力業者">${cr.map(c => `<option value="c:${esc(c.uid)}">${esc(c.tradeName || c.name)}</option>`).join("")}</optgroup>` : ""}${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}">${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self">自社でやる</option>`;
+}
+function priceMatOpts(){
+  return `<option value="">なし（業者の材工）</option>${(S.suppliers || []).filter(x => x.kind !== "work").map(x => `<optgroup label="${esc(x.name)}"><option value="s:${esc(x.id)}">${esc(x.name)}（品番は工事メモで）</option>${(S.materials || []).filter(m => m.sup === x.id).map(m => `<option value="m:${esc(m.id)}">${esc([m.name, m.maker, m.code].filter(Boolean).join(" "))}${m.unitPrice ? `（${yenFull(m.unitPrice)}/${esc(m.unit || "")}）` : ""}</option>`).join("")}</optgroup>`).join("")}`;
+}
 function priceSupHtml(p = {}){
-  const ws = (S.suppliers || []).filter(x => x.kind === "work"), ms = (S.suppliers || []).filter(x => x.kind !== "work");
-  const cr = [...(S.crafts?.values() || [])].filter(c => c.status === "approved");
-  const wv = p.workSup || "", mv = p.matId ? "m:" + p.matId : p.matSup ? "s:" + p.matSup : "";
-  return `<div class="price-sup"><label class="ps-w">業者の発注先<select name="p_ws"><option value="">未定（募集する）</option>${cr.length ? `<optgroup label="協力業者">${cr.map(c => `<option value="c:${esc(c.uid)}" ${wv === "c:" + c.uid ? "selected" : ""}>${esc(c.tradeName || c.name)}</option>`).join("")}</optgroup>` : ""}${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}" ${wv === "s:" + x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self" ${wv === "self" ? "selected" : ""}>自社でやる</option></select></label>
-    <label class="ps-m">材料<select name="p_mat"><option value="">なし（業者の材工）</option>${ms.map(x => `<optgroup label="${esc(x.name)}"><option value="s:${esc(x.id)}" ${mv === "s:" + x.id ? "selected" : ""}>${esc(x.name)}（品番は工事メモで）</option>${(S.materials || []).filter(m => m.sup === x.id).map(m => `<option value="m:${esc(m.id)}" ${mv === "m:" + m.id ? "selected" : ""}>${esc([m.name, m.maker, m.code].filter(Boolean).join(" "))}${m.unitPrice ? `（${yenFull(m.unitPrice)}/${esc(m.unit || "")}）` : ""}</option>`).join("")}</optgroup>`).join("")}</select></label>
+  const wv = p.workSup || "", mv = p.matId ? "m:" + p.matId : p.matSup ? "s:" + p.matSup : "", mm = p.matId ? (S.materials || []).find(m => m.id === p.matId) : null;
+  return `<div class="price-sup"><label class="ps-w">業者の発注先<select name="p_ws" data-lazy="pws">${lazyOne(wv, supNameOf(wv), "未定（募集する）")}</select></label>
+    <label class="ps-m">材料<select name="p_mat" data-lazy="pmat">${lazyOne(mv, mm ? [mm.name, mm.maker, mm.code].filter(Boolean).join(" ") : supNameOf(p.matSup || ""), "なし（業者の材工）")}</select></label>
     <label class="ps-r">材料の数量＝工事の数量×<input type="number" name="p_mrate" min="0" step="0.01" inputmode="decimal" value="${esc(p.matRate ?? "")}" placeholder="${/クロス/.test(p.name || "") ? "1.3" : "1"}"></label></div>`;
 }
 // 見積だけの項目：単価表に入れたもの＋まだ入れていない雛形の項目
@@ -5387,12 +5271,23 @@ function memoWorkSupOpts(){
   const ws = (S.suppliers || []).filter(x => x.kind === "work");
   return `<option value="">未定（募集する）</option>${cr.length ? `<optgroup label="協力業者">${cr.map(c => `<option value="c:${esc(c.uid)}">${esc(c.tradeName || c.name)}</option>`).join("")}</optgroup>` : ""}${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}">${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self">自社でやる</option>`;
 }
+// 長い一覧（協力業者・材料マスタ）のプルダウンは、押したときに中身を入れる（行ごとに全員分を入れると画面がとても重くなるため）
+const LAZY_OPTS = {ws:() => memoWorkSupOpts(), pws:() => priceWsOpts(), pmat:() => priceMatOpts()};
+function lazyFill(sel){
+  if(!sel || sel.dataset.filled || !LAZY_OPTS[sel.dataset.lazy]) return;
+  const v = sel.value; sel.innerHTML = LAZY_OPTS[sel.dataset.lazy]();
+  if(v && ![...sel.options].some(o => o.value === v)) sel.insertAdjacentHTML("afterbegin", `<option value="${esc(v)}">${esc(supNameOf(v) || v)}</option>`);
+  sel.value = v; sel.dataset.filled = "1";
+}
+// 選んである値だけを、1つの選択肢として入れておく（中身は押したときに入れる）
+const lazyOne = (v, label, empty) => `<option value="">${empty}</option>${v ? `<option value="${esc(v)}" selected>${esc(label || v)}</option>` : ""}`;
+["focusin", "pointerdown", "touchstart"].forEach(ev => document.addEventListener(ev, e => { const t = e.target.closest?.("select[data-lazy]"); if(t) lazyFill(t); }, {passive:true, capture:true}));
 function memoMatSupOpts(){
   return `<option value="">なし（業者の材工）</option>${(S.suppliers || []).filter(x => x.kind !== "work").map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}`;
 }
 const memoSupOf = (ws, ms, mp, ds = {}) => ws || ms || mp !== "" ? {...(ws ? {work:ws, workName:supNameOf(ws)} : {}), ...(ms ? {mat:ms, matName:supNameOf(ms)} : {}), ...(mp !== "" && mp != null ? {matPrice:Number(mp) || 0} : {}),
   ...(ms && ds.matId ? {matId:ds.matId} : {}), ...(ms && Number(ds.matRate) > 0 ? {matRate:Number(ds.matRate)} : {})} : null;
-const supNameOf = v => !v ? "" : v === "self" ? "自社" : v.startsWith("c:") ? (S.crafts?.get(v.slice(2))?.tradeName || S.crafts?.get(v.slice(2))?.name || "") : ((S.suppliers || []).find(x => x.id === v.replace(/^s:/, ""))?.name || "");
+const supNameOf = v => !v ? "" : v === "self" ? "自社でやる" : v.startsWith("c:") ? (S.crafts?.get(v.slice(2))?.tradeName || S.crafts?.get(v.slice(2))?.name || "") : ((S.suppliers || []).find(x => x.id === v.replace(/^s:/, ""))?.name || "");
 function memoRowHtml(){
   return `<div class="memo-row"><input type="text" name="m_loc" list="memo-locs" placeholder="箇所" aria-label="箇所" autocomplete="off">
     <div class="memo-wq"><input type="text" name="m_name" data-memo-w placeholder="工事内容（文字で探す）" aria-label="工事内容" autocomplete="off"><input type="hidden" name="m_pid"><ul class="memo-wac" hidden></ul></div>
@@ -5400,7 +5295,7 @@ function memoRowHtml(){
     <input type="text" name="m_unit" list="est-units" placeholder="単位" aria-label="単位">
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
     <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="LB9519" hidden>LB9519</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span>
-      <span class="mp-sup"><label class="mp-ws">業者の発注先<select name="m_ws">${memoWorkSupOpts()}</select></label>
+      <span class="mp-sup"><label class="mp-ws">業者の発注先<select name="m_ws" data-lazy="ws"><option value="">未定（募集する）</option></select></label>
         <label class="mp-ms">材料の発注先<select name="m_ms">${memoMatSupOpts()}</select></label><label class="mp-mp">材料単価<input type="number" name="m_mp" min="0" inputmode="numeric" placeholder="円"></label></span></div>
     <div class="memo-dims" hidden>
       <div class="md-head"><b>寸法をメモ（m）</b><span>入れた面積がそのまま数量に入ります</span></div>
@@ -5460,15 +5355,7 @@ document.addEventListener("input", e => {
   else if(t.matches("[name=m_spec]")) row.querySelectorAll(".mp-any").forEach(b => b.classList.toggle("on", t.value.trim() === (b.dataset.v || CLOTH_ANY)));   // 手で直した単価は、会社を変えても書き換えない
 });
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("[name=d_acc]")) memoDimCalc(t.closest(".memo-row")); });
-// 工事メモの金額：行ごとの見積・業者の金額と、全体の見積金額・業者金額・利益・利益率（元請手数料がある会社は引いたあと）
-// よくある工事：入っている工事のボタンを押した状態に見せる（2つ以上なら数も出す）
-function memoQuickMark(){
-  const names = [...document.querySelectorAll("#memo-rows [name=m_name]")].map(i => normKey(i.value.trim())).filter(Boolean);
-  document.querySelectorAll(".mq-b[data-act=memo-quick]").forEach(b => { const k = normKey(b.dataset.k), n = names.filter(x => x === k || x.includes(k)).length;
-    b.classList.toggle("on", n > 0); b.setAttribute("aria-pressed", n > 0 ? "true" : "false");
-    b.querySelector(".mq-n")?.remove(); if(n > 1) b.insertAdjacentHTML("beforeend", `<span class="mq-n">${n}</span>`); });
-}
-function memoCalc(){ memoQuickMark();
+function memoCalc(){
   const f = document.querySelector("form[data-form=memo]"); if(!f) return;
   let sell = 0, cost = 0, mat = 0;
   f.querySelectorAll(".memo-row").forEach(r => {
@@ -5518,7 +5405,6 @@ const MEMO_LOCS = [["洋", "洋室"], ["洋収", "洋室収納"], ["通路", "�
 const MEMO_CF = [["クロス貼替(壁)", true]];   // 天井・部分貼替・床などは「その他の工事」で足す
 // 「全」を押すと：箇所は「全室内」、工事は「クロス全張替え(天井・壁)」（単価はクロス貼替(天井・壁)）。寸法メモに面ごとの箇所・天井/壁が出る
 const CF_ALL = {loc:"全室内", label:"クロス全張替え(天井・壁)", price:"クロス貼替(天井・壁)"};
-const DIM_LOCS = ["洋室", "洋室収納", "通路", "通路収納", "LDK", "DK", "キッチン", "洗面所", "トイレ", "洗濯機置場", "玄関", "和室", "浴室"];
 const MEMO_CK = [   // [キー, 名前, 選べるもの, 数の欄（単位）, 工事の名前（有のとき）]
   ["rk", "ルークリ", null, "㎡", "ハウスクリーニング"], ["ac", "エアコン洗浄", ["有", "無"], "台", "エアコン内部洗浄"], ["wax", "WAX", ["有", "無"], "", null],   // WAXは工事にせず、クリーニングの仕様に「WAX有り／WAXフリー」
   ["waxh", "WAX剥離", ["有", "無"], "㎡", "WAX剥離"], ["cc", "クロスクリーニング", ["有", "無"], "", "クロスクリーニング"], ["mir", "浴室鏡水垢洗浄", ["有", "無"], "", "鏡水垢洗浄"]];
@@ -5556,7 +5442,7 @@ function memoSupFill(row, p){
   const ws = row.querySelector("[name=m_ws]"), ms = row.querySelector("[name=m_ms]"), mp = row.querySelector("[name=m_mp]"); if(!ws) return;
   // 「(3㎡未満)」などの小さい工事は、元の工事（クッションフロア貼替など）の発注先・材料を使う
   if(!p.workSup && !p.matSup){ const b = estPrices().find(x => x.name === String(p.name || "").replace(/[（(][^）)]*未満[）)]$/, "") && x.id !== p.id); if(b) p = {...p, workSup:b.workSup, matSup:b.matSup, matId:b.matId, matRate:b.matRate}; }
-  if(p.workSup && [...ws.options].some(o => o.value === p.workSup)) ws.value = p.workSup;
+  if(p.workSup){ lazyFill(ws); if([...ws.options].some(o => o.value === p.workSup)) ws.value = p.workSup; }
   if(p.matSup && [...ms.options].some(o => o.value === p.matSup)) ms.value = p.matSup;
   const m = p.matId ? (S.materials || []).find(x => x.id === p.matId) : null;
   if(m?.unitPrice){ mp.value = Math.round(m.unitPrice * matRateOf(p)); }
@@ -5619,20 +5505,6 @@ function memoChecksText(c){
   // メールBOXは番号があるときだけ（業者さんの発注書の備考に載る）
   return [t("light", "居室照明", x => x.v), c.mb?.n ? `メールBOX：番号 ${c.mb.n}${c.mb.v ? `（${c.mb.v}）` : ""}` : "",
     t("park", "敷地内駐車スペース", x => x.v === "有" && x.n ? `有（${x.n}）` : x.v || x.n)].filter(Boolean).join("\n");
-}
-// よくある工事（原状回復）：押すと工事の行が入る。単価表に同じ名前が1つだけならそのまま選び、いくつかあれば候補を出す
-const MEMO_QUICK = [["クリーニング", ["ハウスクリーニング", "エアコン内部洗浄", "WAX", "クロスクリーニング", "鏡水垢洗浄"]],
-  ["リペア", ["フローリング簡易補修", "リペア補修", "建付調整", "コーキング打替"]],
-  ["その他", ["網戸貼替", "電球交換", "退去立会費", "諸経費"]]];
-function memoQuick(k){
-  const box = $("#memo-rows");
-  let row = [...box.querySelectorAll(".memo-row")].find(r => !r.querySelector("[name=m_name]").value.trim());
-  if(!row){ box.insertAdjacentHTML("beforeend", memoRowHtml()); row = box.lastElementChild; }
-  const ps = estPrices().filter(p => !p.noteRow && p.name), nk = normKey(k), same = ps.filter(p => normKey(p.name) === nk);
-  const hits = same.length ? same : ps.filter(p => normKey(p.name).includes(nk)), inp = row.querySelector("[name=m_name]");
-  if(hits.length === 1) memoWorkPick(inp, hits[0]);
-  else { inp.value = k; row.querySelector("[name=m_pid]").value = ""; memoRowState(row); inp.focus(); if(hits.length) memoWork(inp); }
-  memoCalc();
 }
 async function viewMemo(lid = ""){
   S.estCo = "";   // 前に開いた見積の管理会社の単価が残らないように
@@ -6038,8 +5910,6 @@ const PDF_CSS = `
 `;
 const pdfTo = t => t.tradeName ? `<small>${esc(t.tradeName)}</small>${esc(t.name)} 様` : `${esc(t.name)} 様`;
 const pdfFrom = c => `<div class="from"><b>${esc(c.name)}</b><br>${esc(c.address)}${c.address2 ? `<br>${esc(c.address2)}` : ""}<br>TEL ${esc(c.tel)}${c.fax ? `　FAX ${esc(c.fax)}` : ""}<br>${esc(c.email)}${c.invoiceNumber ? `<br>登録番号 ${esc(c.invoiceNumber)}` : ""}${c.staff?.name ? `<br>担当：${esc(c.staff.name)}${c.staff.phone ? `（${esc(c.staff.phone)}）` : ""}` : ""}</div>`;
-const pdfHasLoc = items => (items || []).some(i => i.loc);
-const pdfItemName = i => `${esc(i.name)}${i.zai || i.tema ? ` <span style="display:inline-block;font-size:10px;font-weight:700;border:1px solid ${i.zai ? "#2C7A4B" : "#9A6A12"};color:${i.zai ? "#2C7A4B" : "#9A6A12"};padding:0 4px;border-radius:2px;line-height:1.5">${i.zai ? "材工" : "手間のみ"}</span>` : ""}${i.note ? `<br><span style="font-size:10.5px;color:#555">備考・品番：${esc(i.note)}</span>` : ""}`;
 const pdfPeriod = (a, b) => `${fmtDate(a)}${b && b !== a ? ` 〜 ${fmtDate(b)}` : ""}`;
 function docOrderHtml(d){
   const j = d.job, a = d.amount, c = d.company || {}, items = j.items?.length ? j.items : [{name:j.title, qty:1, unit:"式", unitPrice:a.base}];
@@ -6464,7 +6334,6 @@ const ACTIONS = {
   },
   // 協力業者を「既存業者（優先）」にする／外す
   async "memo-add"(){ $("#memo-rows").insertAdjacentHTML("beforeend", memoRowHtml()); },
-  async "memo-quick"(el){ memoQuick(el.dataset.k); },
   // チェックの「有・無」など：押すと選ぶ、もう一度押すと外す（1つだけ選べる）
   mc(el){ const g = el.closest(".mc-g"), h = g.querySelector("input[type=hidden]"), on = h.value !== el.dataset.v;
     h.value = on ? el.dataset.v : ""; g.querySelectorAll(".mc").forEach(b => b.classList.toggle("on", on && b === el));
@@ -6510,6 +6379,8 @@ const ACTIONS = {
     f.querySelectorAll("textarea").forEach(t => { t.textContent = t.value; });
     f.querySelectorAll("select").forEach(sl => [...sl.options].forEach(o => o.toggleAttribute("selected", o.selected)));
     f.querySelectorAll(".memo-wac, .memo-ac").forEach(b => { b.hidden = true; b.innerHTML = ""; });
+    // 長い一覧は、選んだ1つだけを残して小さくする（押せばまた全部出る）
+    f.querySelectorAll("select[data-lazy]").forEach(sl => { const o = sl.selectedOptions[0]; sl.innerHTML = `<option value="">${sl.dataset.lazy === "ws" ? "未定（募集する）" : ""}</option>${o && o.value ? `<option value="${esc(o.value)}" selected>${esc(o.textContent)}</option>` : ""}`; delete sl.dataset.filled; });
     const g = n => (f.elements[n]?.value || "").trim(), co = g("company") === "__new" ? g("companyNew") : g("company");
     const title = [g("propName"), g("room")].filter(Boolean).join(" ") || "（物件未入力）";
     const list = await api().getMemoDrafts().catch(() => []), id = f.dataset.draft || "md_" + newId();
@@ -6674,7 +6545,6 @@ const ACTIONS = {
     location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     toast("提出済みにしました。PDFを添付して送ってください"); setTimeout(route, 400);
   },
-  async "er-up"(el){ const r = el.closest(".er"), p = r.previousElementSibling; if(p){ p.before(r); estSync(r.closest("form")); } },
   async "er-sort"(){ const list = $("#er-list"), rank = l => { const i = EST_LOCS.indexOf(l); return i < 0 ? 999 : i; };
     [...list.children].map((el, k) => ({el, k, l:el.querySelector("[name=e_loc]")?.value.trim() || ""})).sort((a, b) => rank(a.l) - rank(b.l) || a.k - b.k).forEach(x => list.appendChild(x.el)); estSync(list.closest("form")); },
   async "er-bulk"(){
@@ -6778,14 +6648,6 @@ const ACTIONS = {
     const snap = {rev:e0.rev || 0, rows:clone(e0.rows), total:estTotals(e0).total, issuedAt:e0.issuedAt || "", at:Date.now()};
     await saveEst({...e0, rev:next, baseRows:clone(e0.rows), revs:[...(e0.revs || []), snap], status:"draft", showDiff:true, issuedAt:todayIso()}, true);
     toast(`訂正${next}を始めました。直して「訂正${next}を提出」を押してください`); route();
-  },
-  async "est-revise-old"(){
-    const e = await saveEst(readEst($("#est-form")), true);
-    const nid = "est_" + newId();
-    await api().saveEstimate({...e, id:nid, rev:(e.rev || 0) + 1, prevId:e.id, nextId:"", status:"draft", issuedAt:todayIso(), rows:e.rows.map(r => ({...r, id:"r_" + newId()})), createdAt:Date.now(), updatedAt:Date.now()});
-    await api().saveEstimate({...e, status:"revised", nextId:nid, updatedAt:Date.now()});
-    if(e.ledgerId){ const row = (await api().listLedger()).find(x => x.id === e.ledgerId); if(row) await api().saveLedger({...row, estimateId:nid, stage:"est", updatedAt:Date.now()}); }
-    toast("訂正見積を作りました。直して提出してください"); go(`#/admin/est/edit/${nid}`);
   },
   async "est-self"(){
     const e = await saveEst(readEst($("#est-form")), true);
@@ -6981,7 +6843,10 @@ const ACTIONS = {
   async "done-cal"(el){
     const box = el.parentElement, day = box.querySelector("[data-caldate]")?.value, to = box.querySelector("[data-calto]")?.value || "";
     if(!day) throw new Error("完了確認の日を選んでください");
-    window.open(el.dataset.url + `&dates=${day.replace(/-/g, "")}/${addDays(day, 1).replace(/-/g, "")}` + (to ? "&add=" + encodeURIComponent(to) : ""), "_blank", "noopener");
+    // 担当を選んだら、その人のGoogleアカウント（authuser）のカレンダーに直接入れる（招待はしない）
+    const u = new URL(el.dataset.url); if(to){ u.searchParams.set("authuser", to); u.searchParams.delete("add"); }
+    u.searchParams.set("dates", `${day.replace(/-/g, "")}/${addDays(day, 1).replace(/-/g, "")}`);
+    window.open(u.toString(), "_blank", "noopener");
     // 完了確認の日を収支に入れる（これで「手配済み」ボタンが出る）
     const rid = el.dataset.root;
     if(rid){ const lr = await api().getLedgerRow(rid).catch(() => null); await api().saveLedger({...(lr || {id:rid, jobId:rid}), doneCheck:day, updatedAt:Date.now()}); S.ldCache = null; setTimeout(route, 300); }
