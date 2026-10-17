@@ -847,7 +847,8 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mcf-locs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}.mcf-locs .mq-b{padding:3px 8px;font-size:12px}
 .mcf .memo-row [data-act=memo-rm]{visibility:hidden}.mcf.added .memo-row [data-act=memo-rm]{visibility:visible}.mcf.added .memo-row [name=m_name]{background:#fff;font-weight:400}
 .cf-pick{width:100%;margin:0 0 6px;padding:7px 8px!important;font-weight:700}#memo-cf+.btn{margin-top:2px}
-.md-lp{display:none;grid-column:1/-1;order:-1;gap:6px}.md-lp select{width:auto;padding:5px 6px!important;font-size:13px!important}.mcf.all .md-lp{display:flex}
+.md-lp{display:none;grid-column:1/-1;order:-1;gap:5px;flex-wrap:wrap;align-items:center}.md-lp .mq-b{padding:3px 8px;font-size:12px}.md-locs{display:flex;flex-wrap:wrap;gap:4px}
+.md-lp [name=d_loc]{flex:1 1 150px;min-width:120px;padding:5px 6px!important;font-size:13px!important}.md-part{display:inline-flex;gap:4px}.mcf.all .md-lp{display:flex}
 .mcf.all .mcf-locs .mc:not([data-all]){display:none}.mcf.all{border-color:var(--kon-text,#1B2A55)}form.memo .mpaper>h2 small{display:block;margin:2px 0 0}.memo-price .mp-spec{flex-wrap:wrap}.mcf .memo-row [name=m_name]{background:#F4F6FA;font-weight:700}
 .emp-inv{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.emp-inv h3{margin:0 0 8px;font-size:15px}
 .emp-inv-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
@@ -2004,6 +2005,8 @@ class DemoBackend {
   async listRatings(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().ratings || {})); }
   async saveRating(r){ (this.sd().ratings ||= {})[r.id] = clone(r); this.save(); }
   async getSuppliers(){ return clone(this.sd().suppliers || DEFAULT_SUPPLIERS); }
+  async getMemoDrafts(){ return clone(this.sd().memoDrafts || []); }
+  async saveMemoDrafts(list){ this.sd().memoDrafts = clone(list); this.save(); }
   async saveSuppliers(list){ this.sd().suppliers = clone(list); this.save(); }
   async getMaterials(){ return clone(this.sd().materials || DEFAULT_MATERIALS); }
   async saveMaterials(list){ this.sd().materials = clone(list); this.save(); }
@@ -2369,6 +2372,9 @@ class FirebaseBackend {
   }
   // 材料・外部の発注先、材料マスタ、社印（master/…）と、案件ごとの材料・外部発注（jobs/{id}/admin/matorders）
   async getSuppliers(){ const s = await this.smaster("suppliers").get(); return s.exists ? (s.data().items || []) : clone(DEFAULT_SUPPLIERS); }
+  // 工事メモの下書き（入れかけの画面をそのまま覚える。会社のみんなで見られる）
+  async getMemoDrafts(){ const s = await this.smaster("memodrafts").get(); return s.exists ? (s.data().items || []) : []; }
+  async saveMemoDrafts(list){ await this.smaster("memodrafts").set({items:list, updatedAt:Date.now()}); }
   async saveSuppliers(list){ await this.smaster("suppliers").set({items:list, updatedAt:Date.now()}); }
   async getMaterials(){ const s = await this.smaster("materials").get(); return s.exists ? (s.data().items || []) : clone(DEFAULT_MATERIALS); }
   async saveMaterials(list){ await this.smaster("materials").set({items:list, updatedAt:Date.now()}); }
@@ -2881,7 +2887,7 @@ function clothDetailRows(rows){
     const nm = String(r.name || ""), base = /天井/.test(nm) && !/壁/.test(nm) ? "天井" : /壁/.test(nm) && !/天井/.test(nm) ? "壁" : "";
     r.dims.forEach(d => { const part = d.part || base, loc = d.loc || r.loc || "", name = `クロス貼替${part ? `(${part})` : ""}${d.acc || r.accent ? "（アクセント）" : ""}`, k = [loc, name, r.price].join("|");
       if(!g.has(k)) g.set(k, {loc, name, qty:0, unit:"㎡", price:r.price}); g.get(k).qty += Number(d.a) || 0; }); });
-  return [...g.values()].map(x => ({...x, qty:Math.round(x.qty * 100) / 100}));
+  return [...g.values()].map(x => ({...x, qty:up1(x.qty)}));
 }
 function clothDetailHtml(e){
   const list = clothDetailRows(e.rows); if(!list.length) return "";
@@ -5357,6 +5363,7 @@ async function viewHome(){
   const jobMine = j => !mineOnly || isMine(j?.staff?.name), estMine = e => !mineOnly || isMine(e?.staff?.name);
   const add = (t, what, href, cls = "", who) => todo.push({t, what, href, cls, who});   // who：Reforeの担当（undefined＝担当のない項目）
   if(mineOnly && !S.staff?.length) S.staff = await api().getStaff().catch(() => []);
+  (await api().getMemoDrafts().catch(() => [])).filter(d => !mineOnly || isMine(d.staff)).forEach(d => add(d.title, "工事メモの下書き。続きを入れる", `#/admin/memo/${d.id}`, "", d.staff || ""));
   ests.filter(e => estMine(e) && e.status === "draft" && e.fromMemo).forEach(e => add(estTitle(e) || "工事メモ", "工事メモから見積を仕上げる", `#/admin/est/edit/${e.id}`, "", e.staff?.name || ""));
   ests.filter(e => estMine(e) && e.status === "ordered").forEach(e => add(estTitle(e), "受注しました。請書を確認して業者に公開する", `#/admin/est/edit/${e.id}`, "warn", e.staff?.name || ""));
   const cnt = {}; apps.forEach(a => { if(a.status === "applied") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
@@ -5392,7 +5399,7 @@ function memoRowHtml(){
     <input type="number" name="m_qty" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
     <input type="text" name="m_unit" list="est-units" placeholder="単位" aria-label="単位">
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
-    <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="SP2823" hidden>SP2823</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span>
+    <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="LB9519" hidden>LB9519</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span>
       <span class="mp-sup"><label class="mp-ws">業者の発注先<select name="m_ws">${memoWorkSupOpts()}</select></label>
         <label class="mp-ms">材料の発注先<select name="m_ms">${memoMatSupOpts()}</select></label><label class="mp-mp">材料単価<input type="number" name="m_mp" min="0" inputmode="numeric" placeholder="円"></label></span></div>
     <div class="memo-dims" hidden>
@@ -5411,11 +5418,14 @@ function memoRowHtml(){
 }
 // クロスの寸法：1面ずつ「高さ×長さ」（天井は「縦×横」）。アクセントにチェックした面は別の行（仕様：アクセントクロス）になる
 function memoDimHtml(){
-  return `<div class="md-row"><span class="md-lp"><select name="d_loc" aria-label="この面の箇所"><option value="">箇所</option>${DIM_LOCS.map(l => `<option>${l}</option>`).join("")}</select><select name="d_part" aria-label="天井か壁"><option>壁</option><option>天井</option></select></span><input type="number" name="d_h" min="0" step="0.01" inputmode="decimal" placeholder="高さ" aria-label="高さ（m）"><i>×</i><input type="number" name="d_l" min="0" step="0.01" inputmode="decimal" placeholder="長さ" aria-label="長さ（m）"><span class="md-a">—</span>
+  return `<div class="md-row"><span class="md-lp"><span class="md-locs">${MEMO_LOCS.map(([sh, v]) => `<button type="button" class="mq-b mc" data-act="dloc" data-v="${esc(v)}">${sh}</button>`).join("")}</span>
+    <input type="text" name="d_loc" list="memo-locs" placeholder="箇所（ボタンにないときは打ち込む）" aria-label="この面の箇所" autocomplete="off">
+    <span class="md-part"><button type="button" class="mq-b mc on" data-act="dpart" data-v="壁">壁</button><button type="button" class="mq-b mc" data-act="dpart" data-v="天井">天井</button><input type="hidden" name="d_part" value="壁"></span></span><input type="number" name="d_h" min="0" step="0.01" inputmode="decimal" placeholder="高さ" aria-label="高さ（m）"><i>×</i><input type="number" name="d_l" min="0" step="0.01" inputmode="decimal" placeholder="長さ" aria-label="長さ（m）"><span class="md-a">—</span>
     <label class="md-ck"><input type="checkbox" name="d_acc"> アクセント</label><button type="button" class="i-x" data-act="md-rm" aria-label="この面を消す">×</button></div>`;
 }
 const isCloth = name => /クロス|壁紙/.test(name || "") && !/クリーニング|襖|洗浄/.test(name || "");
 const r2 = n => Math.round(n * 100) / 100;
+const up1 = n => Math.ceil(r2(n) * 10 - 1e-9) / 10;   // クロスの㎡の合計は、小数点第2位を繰り上げ（例：46.98 → 47.0）
 function memoDims(row){
   const all = !!row.closest(".mcf.all");
   return [...row.querySelectorAll(".md-row")].map(d => ({h:Number(d.querySelector("[name=d_h]").value) || 0, l:Number(d.querySelector("[name=d_l]").value) || 0, acc:d.querySelector("[name=d_acc]").checked,
@@ -5435,7 +5445,7 @@ function memoRowState(row){
   if(cloth) memoDimCalc(row);
 }
 function memoDimCalc(row){
-  const ds = memoDims(row), main = r2(ds.filter(d => !d.acc).reduce((a, d) => a + d.a, 0)), acc = r2(ds.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
+  const ds = memoDims(row), main = up1(ds.filter(d => !d.acc).reduce((a, d) => a + d.a, 0)), acc = up1(ds.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
   row.querySelectorAll(".md-row").forEach(d => { const h = Number(d.querySelector("[name=d_h]").value) || 0, l = Number(d.querySelector("[name=d_l]").value) || 0;
     d.querySelector(".md-a").textContent = h > 0 && l > 0 ? `${r2(h * l)}㎡` : "—"; d.classList.toggle("acc", d.querySelector("[name=d_acc]").checked); });
   row.querySelector(".md-acc").hidden = !acc;
@@ -5463,7 +5473,7 @@ function memoCalc(){ memoQuickMark();
   let sell = 0, cost = 0, mat = 0;
   f.querySelectorAll(".memo-row").forEach(r => {
     const v = n => Number(r.querySelector(`[name=${n}]`)?.value) || 0, name = r.querySelector("[name=m_name]").value.trim();
-    const acc = isCloth(name) ? memoDims(r).filter(d => d.acc).reduce((a, d) => a + d.a, 0) : 0, q = v("m_qty") + acc;
+    const acc = isCloth(name) ? up1(memoDims(r).filter(d => d.acc).reduce((a, d) => a + d.a, 0)) : 0, q = v("m_qty") + acc;
     const a = Math.round(q * v("m_sell")), b = Math.round(q * v("m_cost")), m = Math.round(q * v("m_mp")); sell += a; cost += b; mat += m;
     r.querySelector(".mp-amt").innerHTML = name && q ? `見積 <b>${yenFull(a)}</b>　業者 ${yenFull(b)}${m ? `　材料 ${yenFull(m)}` : ""}` : "";
   });
@@ -5544,12 +5554,26 @@ function memoCfAll(c, on){
 const matRateOf = p => p?.matRate > 0 ? p.matRate : /クロス/.test(p?.name || "") ? 1.3 : 1;
 function memoSupFill(row, p){
   const ws = row.querySelector("[name=m_ws]"), ms = row.querySelector("[name=m_ms]"), mp = row.querySelector("[name=m_mp]"); if(!ws) return;
+  // 「(3㎡未満)」などの小さい工事は、元の工事（クッションフロア貼替など）の発注先・材料を使う
+  if(!p.workSup && !p.matSup){ const b = estPrices().find(x => x.name === String(p.name || "").replace(/[（(][^）)]*未満[）)]$/, "") && x.id !== p.id); if(b) p = {...p, workSup:b.workSup, matSup:b.matSup, matId:b.matId, matRate:b.matRate}; }
   if(p.workSup && [...ws.options].some(o => o.value === p.workSup)) ws.value = p.workSup;
   if(p.matSup && [...ms.options].some(o => o.value === p.matSup)) ms.value = p.matSup;
   const m = p.matId ? (S.materials || []).find(x => x.id === p.matId) : null;
   if(m?.unitPrice){ mp.value = Math.round(m.unitPrice * matRateOf(p)); }
   row.dataset.matId = p.matId || ""; row.dataset.matRate = p.matSup ? matRateOf(p) : "";
+  if(!m) memoMatAuto(row);
 }
+// 材料の発注先だけ決まっているとき：その材料屋さんの材料マスタから、工事の名前に合う材料（クッションフロア・クロスなど）を選んで材料単価を入れる
+function memoMatAuto(row){
+  const ms = row.querySelector("[name=m_ms]")?.value || "", mp = row.querySelector("[name=m_mp]"); if(!ms || !mp) return;
+  const name = row.querySelector("[name=m_name]").value, cur = row.dataset.matId && (S.materials || []).find(x => x.id === row.dataset.matId && x.sup === ms);
+  const m = cur || (S.materials || []).filter(x => x.sup === ms && x.name && normKey(name).includes(normKey(x.name))).sort((a, b) => b.name.length - a.name.length || (/量産/.test(b.note || "") ? 1 : 0) - (/量産/.test(a.note || "") ? 1 : 0))[0];
+  if(!m) return;
+  const p = estPrices().find(x => x.id === row.querySelector("[name=m_pid]")?.value), rate = Number(row.dataset.matRate) > 0 ? Number(row.dataset.matRate) : matRateOf(p || {name});
+  row.dataset.matId = m.id; row.dataset.matRate = rate; if(m.unitPrice) mp.value = Math.round(m.unitPrice * rate);
+}
+document.addEventListener("change", e => { const t = e.target; if(!t.matches?.("form[data-form=memo] [name=m_ms]")) return; const row = t.closest(".memo-row");
+  row.dataset.matId = ""; if(t.value) memoMatAuto(row); else row.querySelector("[name=m_mp]").value = ""; memoCalc(); });
 function memoPreset(row, k, area = 0){
   const all = estPrices().filter(p => !p.noteRow && p.name), nk = normKey(k), cl = all.filter(p => p.cat === CK_CAT);
   const ps = row.dataset.chk && cl.some(p => normKey(p.name).includes(nk)) ? cl : all;   // チェックの工事は、クリーニングの工事から選ぶ
@@ -5619,13 +5643,18 @@ async function viewMemo(lid = ""){
   const [{rows: lrows}, ests] = await Promise.all([ledgerData().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
   S.memoEsts = ests; S.memoNos = [...lrows.map(r => r.jobNo), ...ests.map(e => e.no)].filter(Boolean);
   // 収支の案件から開いたとき：その案件の管理会社・物件・担当・工事種類・工事番号を入れておき、保存すると同じ案件の見積になる
+  const drafts = await api().getMemoDrafts().catch(() => []), D = lid.startsWith("md_") ? drafts.find(d => d.id === lid) : null;
+  if(lid.startsWith("md_")){ if(!D) return `${back("#/admin/home", "ホーム")}<div class="empty">工事メモの下書きが見つかりません（もう見積にしたか、消されました）。</div>`; lid = D.lid || ""; }
   const L = lid ? lrows.find(r => r.id === lid && !r.jobId) : null;
   if(lid && !L) return `${back("#/admin/money", "収支")}<div class="empty">収支の案件が見つかりません。</div>`;
   S.memoRow = L || null;
-  setTimeout(() => { const f = document.querySelector("form[data-form=memo]"); if(!f) return; f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); if(L) memoFromLedger(f, L); memoCalc(); }, 0);
+  setTimeout(() => { const f = document.querySelector("form[data-form=memo]"); if(!f) return;
+    if(D){ f.innerHTML = D.html; f.dataset.draft = D.id; memoReprice(f); memoCalc(); return; }   // 下書きは入れかけの画面をそのまま戻す
+    f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); if(L) memoFromLedger(f, L); memoCalc(); }, 0);
   return `${back("#/admin/home", "ホーム")}<div class="page-head"><div><h1>工事メモ・見積</h1><p class="lead">現場でスマホから入れます。工事は単価表から選び、見積の金額・業者の金額・利益もここで見られます。そのまま見積になります。</p></div></div>
     ${L ? `<p class="panel small" style="margin:0 0 12px">収支の案件「<b>${esc(L.name)}</b>」（${esc(L.jobNo || "工事番号なし")}）の見積を作ります。</p>` : ""}
-    <form class="panel memo" data-form="memo" data-lid="${esc(L?.id || "")}">
+    ${D ? `<p class="panel small" style="margin:0 0 12px">下書き「<b>${esc(D.title)}</b>」（${fmtTime(D.at)}　${esc(D.by || "")}）の続きです。</p>` : drafts.length ? `<section class="panel memo-drafts"><h2>工事メモの下書き <small>${drafts.length}件</small></h2>${drafts.sort((a, b) => b.at - a.at).map(d => `<div class="doc-row"><span class="row-main"><b>${esc(d.title)}</b><span class="small">${fmtTime(d.at)}　${esc(d.by || "")}</span></span><span class="row"><a class="btn sub sm" href="#/admin/memo/${esc(d.id)}">続きを入れる</a><button type="button" class="btn sub sm danger-text" data-act="memo-draft-del" data-id="${esc(d.id)}">消す</button></span></div>`).join("")}</section>` : ""}
+    <form class="panel memo" data-form="memo" data-lid="${esc(L?.id || "")}"${D ? ` data-draft="${esc(D.id)}"` : ""}>
       <section class="mpaper"><h2>物件</h2>
       <label class="field"><span>管理会社 <small>見積の宛先になります</small></span><select name="company" data-memo-co required>
         <option value="">${cos.length ? `選んでください（${cos.length}社）` : "会社がまだありません"}</option>${cos.sort((a, b) => a.localeCompare(b, "ja")).map(c => `<option>${esc(c)}</option>`).join("")}<option value="__new">一覧にない会社（手で入れる）</option></select></label>
@@ -5663,6 +5692,7 @@ async function viewMemo(lid = ""){
       </section>
       <label class="field"><span>その他メモ <small>項目にないことは何でもここに。見積のメモ（Reforeだけ・書類には出ません）に入ります</small></span><textarea name="mFree" rows="2" placeholder="例：洗面台の下に水漏れ跡あり。次回、管理会社に確認"></textarea></label>
       <div class="memo-sum" id="memo-sum" aria-live="polite"></div>
+      <button type="button" class="btn sub block" data-act="memo-draft" style="margin-bottom:8px">下書きに保存（あとで続きを入れる）</button>
       <button class="btn block big-action">見積にする（収支にも入ります）</button></form>`;
 }
 
@@ -6472,6 +6502,30 @@ const ACTIONS = {
     S.ldCache = null; S.props = null;
     toast(`「${name}」を消しました`); go("#/admin/money");
   },
+  // 全張替えの寸法：面ごとの箇所（ボタンか打ち込み）と、天井か壁か
+  // 工事メモを下書きに保存：入れた値を画面に書き込んでから、画面ごと覚える
+  async "memo-draft"(el){
+    const f = el.closest("form");
+    f.querySelectorAll("input").forEach(i => { if(i.type === "checkbox" || i.type === "radio") i.toggleAttribute("checked", i.checked); else i.setAttribute("value", i.value); });
+    f.querySelectorAll("textarea").forEach(t => { t.textContent = t.value; });
+    f.querySelectorAll("select").forEach(sl => [...sl.options].forEach(o => o.toggleAttribute("selected", o.selected)));
+    f.querySelectorAll(".memo-wac, .memo-ac").forEach(b => { b.hidden = true; b.innerHTML = ""; });
+    const g = n => (f.elements[n]?.value || "").trim(), co = g("company") === "__new" ? g("companyNew") : g("company");
+    const title = [g("propName"), g("room")].filter(Boolean).join(" ") || "（物件未入力）";
+    const list = await api().getMemoDrafts().catch(() => []), id = f.dataset.draft || "md_" + newId();
+    const d = {id, title, company:co, staff:g("staff"), by:S.profile?.staffName || S.profile?.name || "", at:Date.now(), lid:f.dataset.lid || "", html:f.innerHTML};
+    if(d.html.length > 700000) throw new Error("工事メモが大きすぎて下書きにできません。行を減らしてください");
+    await api().saveMemoDrafts([d, ...list.filter(x => x.id !== id)].slice(0, 30));
+    f.dataset.draft = id; toast("下書きに保存しました。ホームと工事メモの画面から続きを入れられます");
+  },
+  async "memo-draft-del"(el){
+    if(!await ask({title:"この下書きを消しますか？", body:"消すと元に戻せません。", ok:"消す", danger:true})) return;
+    await api().saveMemoDrafts((await api().getMemoDrafts()).filter(x => x.id !== el.dataset.id)); toast("下書きを消しました"); route();
+  },
+  dloc(el){ const d = el.closest(".md-row"), i = d.querySelector("[name=d_loc]"), on = i.value !== el.dataset.v; i.value = on ? el.dataset.v : "";
+    d.querySelectorAll("[data-act=dloc]").forEach(b => b.classList.toggle("on", on && b === el)); },
+  dpart(el){ const d = el.closest(".md-row"); d.querySelector("[name=d_part]").value = el.dataset.v; d.querySelectorAll("[data-act=dpart]").forEach(b => b.classList.toggle("on", b === el));
+    const h = d.querySelector("[name=d_h]"), l = d.querySelector("[name=d_l]"); h.placeholder = el.dataset.v === "天井" ? "縦" : "高さ"; l.placeholder = el.dataset.v === "天井" ? "横" : "長さ"; },
   async "md-add"(el){ const row = el.closest(".memo-row"); row.querySelector(".md-list").insertAdjacentHTML("beforeend", memoDimHtml()); memoRowState(row); row.querySelector(".md-row:last-child [name=d_h]").focus(); },
   async "md-rm"(el){ const row = el.closest(".memo-row"), list = row.querySelector(".md-list");
     if(list.children.length > 1) el.closest(".md-row").remove(); else el.closest(".md-row").querySelectorAll("input").forEach(i => { i.type === "checkbox" ? i.checked = false : i.value = ""; });
@@ -7210,7 +7264,7 @@ const FORMS = {
       const num = n => v(n) === "" ? "" : Math.max(0, Math.round(Number(v(n)) || 0));
       const p0 = ps.find(x => x.id === v("m_pid") && (x.name === name || r.dataset.alias)) || ps.find(x => x.name === name);
       const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
-      const dims = isCloth(name) ? memoDims(r) : [], acc = r2(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
+      const dims = isCloth(name) ? memoDims(r) : [], acc = up1(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
         save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", ccat:r.dataset.chk ? CK_CAT : "", sup:memoSupOf(v("m_ws"), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {})}; })
       .filter(x => x.p.name && !(x.fixed && (x.qty === "" || !x.qty) && !x.dims.length));   // クロス・床で数量のない行は入れない
@@ -7262,6 +7316,7 @@ const FORMS = {
         if(!x.acc) return [one(x.spec, x.qty, dd(dm))];
         return [...(Number(x.qty) > 0 ? [one(x.spec, x.qty, dd(dm))] : []), one(`アクセントクロス${x.accCode ? " " + x.accCode : ""}`, x.acc, {...dd(da), accent:true})]; }),
       note:[g("mFree"), dimNote].filter(Boolean).join("\n"), createdAt:now, updatedAt:now});
+    if(form.dataset.draft){ const dl = await api().getMemoDrafts().catch(() => null); if(dl) await api().saveMemoDrafts(dl.filter(x => x.id !== form.dataset.draft)).catch(() => {}); }
     S.ldCache = null; toast(L0 ? `見積の下書きを作り、収支の案件につなぎました（工事番号 ${jobNo}）` : `見積の下書きを作り、収支に入れました（工事番号 ${jobNo}）`); go(`#/admin/est/edit/${eid}`);
   },
   async money(form){
