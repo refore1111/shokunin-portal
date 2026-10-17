@@ -817,6 +817,11 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .ltbl td.note{white-space:normal;min-width:120px}
 .ltbl tr.is-open td.name a{font-weight:400}
 .ltbl tr.is-lost td{color:#9AA3AF}.ltbl tr.is-lost td.name a{color:#9AA3AF;text-decoration:line-through}
+/* 収支の1行を薄く：物件名は1行、状態は横並び */
+.ltbl tbody td{padding:4px 10px;line-height:1.35}
+.ltbl td.name{white-space:nowrap;max-width:none}.ltbl td.name a{font-size:13.5px}
+.ltbl td.mo{font-size:14px}.ltbl td.no{font-size:13px}.ltbl td.amt{font-size:14px}.ltbl td.profit{font-size:15px}.ltbl .rate{font-size:13px}
+.ltbl .sfc{flex-direction:row;gap:6px}.ltbl .stg{font-size:11px;line-height:1.5}
 
 .keypick select{width:100%}
 .keypick-sub{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
@@ -1292,27 +1297,28 @@ function lotsFromItems(items, old = [], defPk = PARKING_FEE){
   const m = new Map();
   (items || []).filter(i => i.name && !isParking(i)).forEach(i => { const k = lotKeyOf(i); if(!m.has(k)) m.set(k, []); m.get(k).push(i); });
   const list = m.size ? [...m] : [["全体", []]];
-  return list.map(([key, its]) => { const o = old.find(l => l.key === key) || {}; return {key, iids:its.map(i => i.iid), names:its.map(i => i.name), start:o.start || "", end:o.end || "", parking:o.parking ?? defPk, pkAmt:o.pkAmt || o.parking || defPk || PARKING_FEE}; });
+  return list.map(([key, its]) => { const o = old.find(l => l.key === key) || {}; return {key, iids:its.map(i => i.iid), names:its.map(i => i.name), start:o.start || "", end:o.end || "", parking:key === "全体" ? 0 : o.parking ?? defPk, pkAmt:o.pkAmt || o.parking || defPk || PARKING_FEE}; });
 }
 function readLots(f){
   const box = f?.querySelector?.("#lots-ed"); if(!box) return [];
   const items = readItems(f).filter(i => i.name || i.unitPrice);
   return lotsFromItems(items).map(l => { const r = box.querySelector(`.lot-row[data-key="${CSS.escape(l.key)}"]`), v = n => r?.querySelector(`[name=${n}]`);
     const amt = Math.max(0, Math.round(Number(v("l_pka")?.value) || 0)), st = v("l_start")?.value || "", en = v("l_end")?.value || "";
-    return {key:l.key, iids:l.iids, start:st, end:en && en >= st ? en : st, parking:v("l_pk")?.checked ? amt : 0, pkAmt:amt, ...(r ? {} : {missing:true})}; });
+    return {key:l.key, iids:l.iids, start:st, end:en && en >= st ? en : st, parking:l.key !== "全体" && v("l_pk")?.checked ? amt : 0, pkAmt:amt, ...(r ? {} : {missing:true})}; });
 }
 const formParking = f => readLots(f).reduce((a, l) => a + l.parking, 0);
 function lotRowHtml(l){
-  return `<div class="lot-row" data-key="${esc(l.key)}"><div class="lot-h"><b>${esc(l.key)}</b><span class="small">${esc((l.names || []).join("・"))}</span>${(l.iids || []).length ? `<button type="button" class="textlink lot-self" data-act="lot-self" data-key="${esc(l.key)}">この工種を自社でやる</button>` : ""}</div>
+  const all = l.key === "全体";   // 作業内訳がまだないとき：全体の工期だけ（業者には見せない。駐車場代は入れない）
+  return `<div class="lot-row" data-key="${esc(l.key)}"><div class="lot-h"><b>${all ? "全体の工期" : esc(l.key)}</b>${all ? `<span class="small">業者には見せません</span>` : ""}<span class="small">${esc((l.names || []).join("・"))}</span>${(l.iids || []).length ? `<button type="button" class="textlink lot-self" data-act="lot-self" data-key="${esc(l.key)}">この工種を自社でやる</button>` : ""}</div>
     <div class="lot-f"><label>工期 <input type="date" name="l_start" value="${esc(l.start)}" aria-label="${esc(l.key)}の開始日"></label><span>〜</span><input type="date" name="l_end" value="${esc(l.end !== l.start ? l.end : "")}" aria-label="${esc(l.key)}の終了日（1日なら空欄）">
-      <label class="toggle" style="margin:0"><input type="checkbox" name="l_pk" ${l.parking ? "checked" : ""}>駐車場代</label><input type="number" name="l_pka" min="0" step="1" inputmode="numeric" value="${esc(l.pkAmt)}" style="width:96px" aria-label="${esc(l.key)}の駐車場代（税抜）"><span class="small">円</span></div></div>`;
+      ${all ? "" : `<label class="toggle" style="margin:0"><input type="checkbox" name="l_pk" ${l.parking ? "checked" : ""}>駐車場代</label><input type="number" name="l_pka" min="0" step="1" inputmode="numeric" value="${esc(l.pkAmt)}" style="width:96px" aria-label="${esc(l.key)}の駐車場代（税抜）"><span class="small">円</span>`}</div></div>`;
 }
 // 作業内訳が変わったら、業者ごとの欄を作り直す（入れた工期・駐車場代は工種ごとに残す）
 function renderLots(f){
   const box = f?.querySelector?.("#lots-ed"); if(!box) return;
   const cur = box.querySelector(".lot-row") ? readLots(f).filter(l => !l.missing) : JSON.parse(box.dataset.init || "[]");
   const lots = lotsFromItems(readItems(f).filter(i => i.name || i.unitPrice), cur, cur.length ? 0 : Number(box.dataset.defpk || 0));
-  lots.forEach(l => { const o = cur.find(x => x.key === l.key); if(!o) { l.parking = Number(box.dataset.defpk || 0); l.pkAmt = Number(box.dataset.defpk) || PARKING_FEE; } });
+  lots.forEach(l => { const o = cur.find(x => x.key === l.key); if(!o && l.key !== "全体") { l.parking = Number(box.dataset.defpk || 0); l.pkAmt = Number(box.dataset.defpk) || PARKING_FEE; } });
   const sig = JSON.stringify(lots.map(l => [l.key, l.names]));
   if(box.dataset.sig !== sig){ box.dataset.sig = sig; box.innerHTML = lots.map(lotRowHtml).join(""); }
   const g = f.querySelector("#lots-gantt"); if(g) g.innerHTML = ganttHtml(readLots(f));
@@ -3314,7 +3320,7 @@ function ledgerTable(list, fee){
   const row = r => { const st = dispStage(r);
     return `<tr class="${r.lost ? "is-lost" : !r.month ? "is-open" : ""}"><td class="mo">${r.month && !r.lost ? `${Number(r.month.slice(5))}<small>月</small>` : ""}</td><td class="no">${esc(r.jobNo)}</td>
     <td class="name"><a href="${openOf(r)}">${esc(r.name)}</a><a class="edit-l" href="#/admin/money/edit/${esc(r.id)}" aria-label="収支を編集" title="収支を編集">✎</a></td>
-    <td class="stgc">${stageCell(st)}${(n => n ? `<div class="stg-nx">${n}</div>` : "")(stageNextHtml(r))}${r.billId ? `<span class="stg stg-billed">請求済</span>` : ""}${r.estAmount && ["est", "wait"].includes(r.stage) ? `<span class="est-amt">見積 ${yenFull(r.estAmount)}</span>` : ""}</td>
+    <td class="stgc">${stageCell(st)}${r.billId ? `<span class="stg stg-billed">請求済</span>` : ""}${r.estAmount && ["est", "wait"].includes(r.stage) ? `<span class="est-amt">見積 ${yenFull(r.estAmount)}</span>` : ""}</td>
     <td class="r amt">${r.lost ? yenFull(0) : r.contract ? yenFull(r.contract) : `<span class="dash">—</span>`}</td>${fee ? `<td class="r amt">${y(r.contract && r.net)}</td>` : ""}
     <td class="r profit ${r.profit < 0 ? "neg" : ""}">${r.contract || r.cost ? yenSign(r.profit) : ""}</td>
     <td class="r">${r.net ? `<span class="rate rate-${rateTier(r.rate, r.net)}">${pct(r.rate)}</span>` : ""}</td>
@@ -4226,7 +4232,7 @@ async function viewAdminJob(id){
   // 工程表：元の案件と分離発注の子案件の、工種ごとの工期（発注した業者の入る日があればそれ）
   const ganttLots = [root, ...family.filter(j => j.parentId === root.id)].map(j => j.id === job.id ? job : j).flatMap(j => (j.lots || []).filter(l => (l.iids || []).length || j.lots.length === 1).map(l => ({...l,
     start:(j.parentId || j.lots.length === 1) && j.craftStart ? j.craftStart : l.start, end:(j.parentId || j.lots.length === 1) && j.craftStart ? (j.craftEnd || j.craftStart) : l.end, who:j.assignedTo && !j.declinedAt ? craftName(j.assignedTo) : "未発注"})));
-  const lrow = calUrl ? ((await ledgerData().catch(() => ({rows:[]}))).rows.find(r => r.jobId === root.id) || null) : null;
+  const lrow = calUrl || ["completed", "paid"].includes(job.status) ? ((await ledgerData().catch(() => ({rows:[]}))).rows.find(r => r.jobId === root.id) || null) : null;
   // 完了確認の担当：メールのあるメンバーから選ぶ（案件の担当者を最初に選んでおく）。選んだ人は予定に招待される
   const calMembers = calUrl ? (await api().listAdmins().catch(() => [])).filter(m => m.email && m.status !== "suspended") : [];
   const calWho = (root.staff || job.staff)?.name || "";
@@ -4241,6 +4247,8 @@ async function viewAdminJob(id){
   const acts = {draft:act("open", "既存業者に先に公開", "", "priority") + act("open", "全体に公開", "sub", "all"),
     open:(job.audience === "priority" ? `<button class="btn" data-act="aud-all" data-id="${esc(id)}">全体に公開する</button>` : "") + act("closed", "募集を締め切る"), closed:act("open", "募集を再開する"),
     assigned:job.acceptedAt ? act("completed", "完了を確認する") : "", working:act("completed", "完了を確認する"), finished:act("completed", "完了を確認する"), completed:lrow ? stageNextHtml(lrow, true) : "", paid:lrow ? stageNextHtml(lrow, true) : ""}[job.status] || "";
+  // 業者がいない案件（全部自社でやった・誰も応募しなかった）は、業者なしで完了確認にして次（完了待ち）へ進める
+  const selfDone = !job.assignedTo && !job.parentId && ["draft", "open", "closed"].includes(job.status) ? `<button class="btn" data-act="job-status" data-id="${esc(id)}" data-status="completed" data-self="1">業者なしで完了にする</button>` : "";
   const assigned = S.crafts.get(job.assignedTo);
   const jobItems = itemsWithId(priv.items?.length ? priv.items : job.items);
   // 応募者が選んだ工事：分類ごとに丸ごと選んでいれば「クリーニング」のように分類名で見せる
@@ -4292,7 +4300,7 @@ async function viewAdminJob(id){
     <p style="margin:10px 0 0"><a class="btn sub" href="#/admin/job/${esc(id)}/mat/new">＋ 材料・外部発注を作る</a></p></section>`;
   return `${back("#/admin", "案件")}
     <div class="page-head"><div class="row"><span class="pill ${pillClass(job)}">${esc(statusLabel(job))}</span>${job.status === "draft" ? `<span class="small">作成 ${fmtTime(job.createdAt)}</span>` : ""}<span class="small">工事番号：<b style="color:var(--ink)">${esc(job.jobNo) || "未入力"}</b></span>${["draft", "open", "closed"].includes(job.status) ? `<span class="small">公開範囲：<b style="color:${job.audience === "priority" ? "#9A6A12" : "var(--ink)"}">${job.audience === "priority" ? "既存業者だけ（先行公開）" : "全体"}</b>${job.status === "open" && job.audience === "priority" && job.autoAllAt ? `　応募がなければ ${fmtFull(job.autoAllAt)} に自動で全体公開 <button class="textlink" data-act="auto-off" data-id="${esc(id)}">やめる</button>` : ""}</span>` : ""}<span class="small">管理会社：<b style="color:var(--ink)">${esc(priv.manager) || "未登録"}</b></span>${parentJob ? `<span class="small">元の案件：<a href="#/admin/job/${esc(parentJob.id)}">${esc(parentJob.title)}</a></span>` : ""}</div>
-      <div class="row">${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
+      <div class="row">${selfDone}${acts}<a class="btn sub" href="#/admin/job/${esc(id)}/edit">編集</a><button class="btn sub danger-text" data-act="job-delete" data-job="${esc(id)}">削除</button></div></div>
     <div class="cols">
       <div class="stack">${job.status === "selected" ? await prepayPanel(job) : ""}${job.status !== "draft" ? progressTrack(job, rs) : ""}${jobDetailBlock(job, true, false, true)}${await adminItemsPanel(job, priv, apps, family)}${privateBlock(priv, "現場情報（発注先にだけ表示）")}</div>
       <div class="stack">
@@ -5159,7 +5167,7 @@ function chatPanel(threads, jobId, assignedTo){
 }
 
 
-/* ---------- 管理：ホーム（やること・今週の現場） ---------- */
+/* ---------- 管理：ホーム（やること） ---------- */
 async function viewHome(){
   const [jobs, apps, ests, reps] = await Promise.all([api().listJobs({}), api().listApplications({}), api().listEstimates().catch(() => []), api().listReports({}).catch(() => [])]);
   const todo = [];
@@ -5177,16 +5185,11 @@ async function viewHome(){
   reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j) && !["completed", "paid"].includes(j.status)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn"); });
   [...(S.threads?.values() || [])].filter(isUnread).filter(t => !mineOnly || !t.jobId || jobMine(jobs.find(j => j.id === t.jobId))).forEach(t => add(t.jobTitle || "チャット", `${peerName(t)}から新しいチャット`, chatHref(t)));
   if(S.pending && !mineOnly) add("協力業者の登録", `審査待ちが${S.pending}件あります`, "#/admin/craftsmen");
-  const today = todayIso(), wk = addDays(today, 6);
-  const week = jobs.filter(j => !["draft", "completed", "paid"].includes(j.status)).map(j => ({j, s:j.craftStart || j.startDate, e:j.craftEnd || j.craftStart || j.endDate || j.startDate})).filter(x => x.s && x.s <= wk && x.e >= today).sort((a, b) => a.s.localeCompare(b.s));
-  return `<div class="page-head"><div><h1>ホーム</h1><p class="lead">今やることと、今週の現場です。押すとその画面に移ります。</p></div><a class="btn" href="#/admin/memo">＋ 工事メモ・見積を作る</a></div>
-    <div class="cols"><section class="panel"><h2>やること <small>${todo.length}件</small></h2>
+  return `<div class="page-head"><div><h1>ホーム</h1><p class="lead">今やることです。押すとその画面に移ります。</p></div><a class="btn" href="#/admin/memo">＋ 工事メモ・見積を作る</a></div>
+    <div><section class="panel"><h2>やること <small>${todo.length}件</small></h2>
       ${me ? `<p class="small home-scope">${mineOnly ? `担当が<b>${esc(staffCanon(me) || me)}</b>の案件だけ出しています。` : "全員の案件を出しています。"}<button type="button" class="textlink" data-act="home-scope">${mineOnly ? "全部を見る" : "自分の担当だけにする"}</button></p>` : ""}
       ${todo.length ? `<div class="list">${todo.map(x => `<a class="row-item" href="${x.href}"><span class="row-main"><b>${esc(x.t)}</b><span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span><span class="small">開く ›</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今やることはありません。</p>`}</section>
-    <details class="panel home-week" ${(() => { try { return localStorage.getItem("refore_home_week") === "0" ? "" : "open"; } catch(e) { return "open"; } })()}><summary><h2>今週の現場 <small>業者が入る日・${week.length}件</small></h2></summary>
-      <p class="small jflow-key" style="margin:0 0 8px">${flowBar(-1, 5)} 募集 › 発注 › 承諾 › 作業中 › 完了</p>
-      ${week.length ? `<div class="list">${week.map(x => `<a class="row-item" href="#/admin/job/${esc(x.j.id)}"><span class="row-main"><b>${esc(x.j.title)}</b><span class="small">${fmtRange(x.s, x.e)}　${esc(S.crafts.get(x.j.assignedTo)?.name || "未発注")}</span></span><span class="jflow">${jobBar(x.j)}<span class="pill ${pillClass(x.j)}">${esc(statusLabel(x.j))}</span></span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今週の現場はありません。</p>`}
-      <p style="margin:10px 0 0"><a class="textlink" href="#/admin/calendar">予定表を開く ›</a></p></details></div>`;
+    </div>`;
 }
 
 /* ---------- 管理：工事メモ（スマホで入れて、そのまま見積の下書きにする） ---------- */
@@ -6486,7 +6489,8 @@ const ACTIONS = {
       closed:{title:"募集を締め切りますか？", body:"協力業者の一覧に表示されなくなります。応募済みの業者から発注先を選ぶことはできます。", ok:"締め切る"},
       completed:{title:"作業の完了を確認しましたか？", body:"完了確認にすると、業者さまの月末の請求に入ります。業者さまの「作業完了」や完了報告がまだの場合でも確定します。", ok:"完了を確認した"}
     }[status];
-    if(conf && !await ask(conf)) return;
+    if(el.dataset.self && !await ask({title:"業者なしで完了にしますか？", body:"業者に発注せずに（自社でやって）工事が終わった案件を完了確認にします。募集は終わり、収支は「完了待ち」になります。管理会社に完了報告したら「完了報告済み」を押してください。", ok:"完了にする"})) return;
+    if(conf && !el.dataset.self && !await ask(conf)) return;
     if(status === "open"){   // 収支とつながっていない案件は公開できない
       const j = await api().getJob(id), lr = j ? await api().getLedgerRow(j.parentId || id).catch(() => null) : null;
       if(!lr && (!tenant() || (await api().listLedger().catch(() => [])).length)) throw new Error("収支とつながっていない案件は公開できません。「編集」で工事番号と管理会社を収支の案件に合わせて保存してください");
@@ -8270,7 +8274,6 @@ document.addEventListener("mousedown", e => {
 });
 
 document.addEventListener("input", e => { const t = e.target; if(t.matches?.("#est-form [name=company], form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) S.estCo = t.value === "__new" ? "" : t.value.trim(); });
-document.addEventListener("toggle", e => { if(e.target.matches?.(".home-week")) try { localStorage.setItem("refore_home_week", e.target.open ? "1" : "0"); } catch(x) {} }, true);
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company]")) S.estCo = t.value === "__new" ? "" : t.value; });
 
 /* ---------- 起動 ---------- */
