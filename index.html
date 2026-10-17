@@ -829,6 +829,17 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .acc-tag{display:inline-block;font-size:10.5px;font-weight:700;color:#fff;background:#B0285A;border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:2px}
 .wnote.acc{color:#B0285A;font-weight:700}
 .i-dim{grid-column:1/-1;font-size:12px;color:var(--sub)}
+/* 工事メモ：紙の工事メモと同じ並び */
+form.memo .mpaper{background:#FBF8EC;border:1px solid #E4DDC3;border-radius:8px;padding:10px 12px;margin:0 0 12px}
+form.memo .mpaper>h2{font-size:15px;margin:0 0 8px;border-left:4px solid var(--kon-text,#1B2A55);padding-left:8px}form.memo .mpaper>h2 small{font-weight:400;font-size:11.5px;color:var(--sub);margin-left:6px}
+form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.mck{display:grid;grid-template-columns:110px 1fr;gap:4px 8px;align-items:center;padding:5px 0;border-bottom:1px dashed #E4DDC3}.mck b{font-size:13px}
+.mck-v{display:flex;flex-wrap:wrap;gap:5px;align-items:center}.mc-g{display:inline-flex;flex-wrap:wrap;gap:4px}
+.mck-n{width:80px!important;padding:5px 6px!important}.mck-t{width:150px!important;padding:5px 6px!important}.mck-d{width:150px!important;padding:5px 6px!important}
+.mq-b.mc.on{background:var(--kon-text,#1B2A55);border-color:var(--kon-text,#1B2A55);color:#fff;font-weight:700}
+.mcf{background:#fff;border:1px solid #E4DDC3;border-radius:6px;padding:8px;margin-bottom:8px}.mcf-h{margin-bottom:5px}
+.mcf-locs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}.mcf-locs .mq-b{padding:3px 8px;font-size:12px}
+.mcf .memo-row [data-act=memo-rm]{visibility:hidden}form.memo .mpaper>h2 small{display:block;margin:2px 0 0}.memo-price .mp-spec{flex-wrap:wrap}.mcf .memo-row [name=m_name]{background:#F4F6FA;font-weight:700}
 .emp-inv{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.emp-inv h3{margin:0 0 8px;font-size:15px}
 .emp-inv-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
 .mo-cloth{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 10px;padding:8px 10px;border-radius:6px;background:#F3F6FB;border:1px solid #D8E0EE;font-size:13px}
@@ -3112,7 +3123,7 @@ async function estToJob(e){
   const data = {title:estTitle(e) || "見積からの案件", trades, pref:pref || "", city:city || "", startDate:e.periodStart || "", endDate:e.periodEnd || e.periodStart || "",
     price:itemsTotal(items), taxMode:"税別", items, site, staff:e.staff || null, jobNo:e.no || "", description:"", priceNote:"", photos:[], status:"draft", audience:"all"};
   const jid = await api().saveJob(null, data);
-  await api().setJobPrivate(jid, {...site, keyInfo:e.keyInfo || "", manager:e.company || "", contact:e.contact || "", masterId:e.masterId || "", photoUrls:e.photoUrls || [], items});
+  await api().setJobPrivate(jid, {...site, keyInfo:e.keyInfo || "", manager:e.company || "", contact:e.contact || "", masterId:e.masterId || "", photoUrls:e.photoUrls || [], items, ...(e.moveIn ? {moveIn:e.moveIn} : {})});
   const old = e.ledgerId ? (await api().listLedger()).find(x => x.id === e.ledgerId) : null;
   const {vendors, manual, ki, ...keep} = old || {};
   await api().saveLedger({...keep, id:jid, jobId:jid, contract:estTotals(e).sub, company:e.company || keep.company || "", kind:EST_LEDGER_KIND[e.kind] || keep.kind || "",
@@ -5284,7 +5295,7 @@ function memoRowHtml(){
     <input type="number" name="m_qty" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
     <input type="text" name="m_unit" list="est-units" placeholder="単位" aria-label="単位">
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
-    <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span></div>
+    <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="SP2823" hidden>SP2823</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span></div>
     <div class="memo-dims" hidden>
       <div class="md-head"><b>寸法をメモ（m）</b><span>入れた面積がそのまま数量に入ります</span></div>
       <div class="md-list">${memoDimHtml()}</div>
@@ -5316,7 +5327,7 @@ function memoRowState(row){
   const inTable = !!estPrices().find(x => (pid && x.id === pid && x.name === name) || x.name === name);
   const dims = row.querySelector(".memo-dims"), nw = row.querySelector(".memo-new"), cloth = isCloth(name);
   dims.hidden = !cloth; nw.hidden = !name || inTable;
-  const any = row.querySelector(".mp-any"); if(any){ any.hidden = !cloth; any.classList.toggle("on", row.querySelector("[name=m_spec]").value.trim() === CLOTH_ANY); }
+  row.querySelectorAll(".mp-any").forEach(b => { b.hidden = !cloth || (b.dataset.v && !row.dataset.sp); b.classList.toggle("on", row.querySelector("[name=m_spec]").value.trim() === (b.dataset.v || CLOTH_ANY)); });
   const ceil = /天井/.test(name);
   dims.querySelectorAll("[name=d_h]").forEach(i => { i.placeholder = ceil ? "縦" : "高さ"; });
   dims.querySelectorAll("[name=d_l]").forEach(i => { i.placeholder = ceil ? "横" : "長さ"; });
@@ -5335,14 +5346,14 @@ document.addEventListener("input", e => {
   if(t.matches("[data-memo-w]")) memoRowState(row);
   else if(t.closest(".md-row")) memoDimCalc(row);
   else if(t.matches("[name=m_sell],[name=m_cost]")) delete row.dataset.auto;
-  else if(t.matches("[name=m_spec]")) row.querySelector(".mp-any")?.classList.toggle("on", t.value.trim() === CLOTH_ANY);   // 手で直した単価は、会社を変えても書き換えない
+  else if(t.matches("[name=m_spec]")) row.querySelectorAll(".mp-any").forEach(b => b.classList.toggle("on", t.value.trim() === (b.dataset.v || CLOTH_ANY)));   // 手で直した単価は、会社を変えても書き換えない
 });
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("[name=d_acc]")) memoDimCalc(t.closest(".memo-row")); });
 // 工事メモの金額：行ごとの見積・業者の金額と、全体の見積金額・業者金額・利益・利益率（元請手数料がある会社は引いたあと）
 // よくある工事：入っている工事のボタンを押した状態に見せる（2つ以上なら数も出す）
 function memoQuickMark(){
   const names = [...document.querySelectorAll("#memo-rows [name=m_name]")].map(i => normKey(i.value.trim())).filter(Boolean);
-  document.querySelectorAll(".mq-b").forEach(b => { const k = normKey(b.dataset.k), n = names.filter(x => x === k || x.includes(k)).length;
+  document.querySelectorAll(".mq-b[data-act=memo-quick]").forEach(b => { const k = normKey(b.dataset.k), n = names.filter(x => x === k || x.includes(k)).length;
     b.classList.toggle("on", n > 0); b.setAttribute("aria-pressed", n > 0 ? "true" : "false");
     b.querySelector(".mq-n")?.remove(); if(n > 1) b.insertAdjacentHTML("beforeend", `<span class="mq-n">${n}</span>`); });
 }
@@ -5385,11 +5396,76 @@ function memoNextNo(co){
   const head = `${jobNoPrefix(co)}-${jobNoPeriod()}-`;
   return head + (Math.max(0, ...(S.memoNos || []).map(normJobNo).filter(n => n.startsWith(head)).map(n => Number(n.slice(head.length)) || 0)) + 1);
 }
-document.addEventListener("input", e => { if(e.target.closest?.("form[data-form=memo]")) memoCalc(); });
+document.addEventListener("input", e => { if(e.target.closest?.("form[data-form=memo]")){ if(/^c_(rk|ac|wax|waxh)_n$/.test(e.target.name)){ const f = e.target.form, k = e.target.name.slice(2, -2), h = f.elements[`c_${k}`];
+  if(h && e.target.value && !h.value){ h.value = "有"; h.closest(".mc-g").querySelectorAll(".mc").forEach(b => b.classList.toggle("on", b.dataset.v === "有")); } memoCheckSync(f); } else memoCalc(); } });
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) memoReprice(t.form); else if(t.closest?.("form[data-form=memo]")) memoCalc(); });
+// ---- 紙の工事メモと同じ並び：チェック（上の段）・クロス・床（真ん中の段） ----
+// チェックは「有・無」などを押すだけ。工事になるもの（ルークリ・エアコン・WAX・鏡など）は、その他の工事に行が入る
+const MEMO_LOCS = [["全", "全室"], ["洋", "洋室"], ["洋収", "洋室収納"], ["通路", "通路"], ["通収", "通路収納"], ["洗面", "洗面所"], ["WC", "トイレ"], ["洗置", "洗濯機置場"]];
+const MEMO_CF = [["クロス貼替(壁)", true], ["クロス貼替(天井)", true], ["クロス部分貼替", false], ["フロアタイル上貼", false], ["ソフト巾木貼替", false], ["クッションフロア貼替", false]];
+const MEMO_CK = [   // [キー, 名前, 選べるもの, 数の欄（単位）, 工事の名前（有のとき）]
+  ["rk", "ルークリ", null, "㎡", "ハウスクリーニング"], ["ac", "エアコン洗浄", ["有", "無"], "台", "エアコン内部洗浄"], ["wax", "WAX", ["有", "無"], "㎡", "WAX"],
+  ["waxh", "WAX剥離", ["有", "無"], "㎡", "WAX剥離"], ["cc", "クロスクリーニング", ["有", "無"], "", "クロスクリーニング"], ["mir", "浴室鏡水垢洗浄", ["有", "無"], "", "鏡水垢洗浄"]];
+const MEMO_CK2 = [   // 工事にはならず、業者さんへの連絡事項・案件に入るもの
+  ["mb", "メールBOX", ["AL内", "外"], "番号"], ["light", "居室照明", ["有（リモコン有）", "有（リモコン無）", "無"], ""], ["movein", "次回入居予定", ["申込有"], "date"],
+  ["elec", "電気", ["済", "受注時", "不要"], "〜日まで"], ["park", "敷地内駐車", ["有", "無"], "場所"], ["waste", "産廃一時置き場", ["有", "無"], "場所"]];
+// チェックの値を入れる（物件マスタから入れたときなど）
+function mcSet(f, k, v){ const h = f.elements[`c_${k}`]; if(!h) return; h.value = v || ""; h.closest(".mc-g").querySelectorAll(".mc").forEach(b => b.classList.toggle("on", !!v && b.dataset.v === v)); }
+const mcChips = (k, vs) => `<span class="mc-g" data-mc="${k}">${vs.map(v => `<button type="button" class="mq-b mc" data-act="mc" data-k="${k}" data-v="${esc(v)}">${esc(v)}</button>`).join("")}<input type="hidden" name="c_${k}"></span>`;
+function memoChecksHtml(){
+  return MEMO_CK.map(([k, l, vs, u]) => `<div class="mck"><b>${l}</b><span class="mck-v">${vs ? mcChips(k, vs) : ""}${u ? `<input type="number" name="c_${k}_n" min="0" step="0.01" inputmode="decimal" class="mck-n" placeholder="${u === "台" ? "1" : ""}" aria-label="${l}（${u}）"><span class="small">${u}</span>` : ""}</span></div>`).join("");
+}
+function memoChecksHtml2(){
+  return MEMO_CK2.map(([k, l, vs, u]) => `<div class="mck"><b>${l}</b><span class="mck-v">${u === "date" ? `<input type="date" name="c_${k}_n" class="mck-d" aria-label="${l}">` : u === "番号" ? `<input type="text" name="c_${k}_n" class="mck-n" placeholder="番号" aria-label="${l}の番号">` : ""}${mcChips(k, vs)}${u && u !== "date" && u !== "番号" ? `<input type="text" name="c_${k}_n" class="mck-t" placeholder="${u}" aria-label="${l}（${u}）">` : ""}</span></div>`).join("");
+}
+function memoCfHtml([name, cloth]){
+  return `<div class="mcf" data-cf="${esc(name)}">
+    <div class="mcf-locs">${MEMO_LOCS.map(([s, v]) => `<button type="button" class="mq-b mc" data-act="mloc" data-v="${esc(v)}">${s}</button>`).join("")}<button type="button" class="mq-b mc" data-act="mloc" data-v="">他</button></div>
+    ${memoRowHtml().replace('<div class="memo-row">', `<div class="memo-row" data-fixed="1"${cloth ? ' data-sp="1"' : ""}>`)}</div>`;
+}
+// 工事の名前から単価表の工事を選んで、その行に入れる（候補がいくつかあれば最初の。ルークリは広さで選ぶ）
+function memoPreset(row, k, area = 0){
+  const ps = estPrices().filter(p => !p.noteRow && p.name), nk = normKey(k);
+  let hits = ps.filter(p => normKey(p.name) === nk); if(!hits.length) hits = ps.filter(p => normKey(p.name).includes(nk));
+  if(k === "ハウスクリーニング" && area > 0){
+    const tiers = ps.filter(p => /クリーニング（〜\s*(\d+)\s*㎡/.test(p.name)).map(p => ({p, n:Number(p.name.match(/〜\s*(\d+)/)[1])})).sort((a, b) => a.n - b.n);
+    const t = tiers.find(x => x.n >= area && !/以上/.test(x.p.name)) || tiers.find(x => /以上/.test(x.p.name)) || tiers[tiers.length - 1]; if(t) hits = [t.p];
+  }
+  const inp = row.querySelector("[name=m_name]"), p = hits[0];
+  if(p){ inp.value = p.name; row.querySelector("[name=m_pid]").value = p.id; row.querySelector("[name=m_unit]").value = p.unit || ""; row.querySelector("[name=m_sell]").value = p.sell || ""; row.querySelector("[name=m_cost]").value = p.cost || ""; row.dataset.auto = "1"; }
+  else { inp.value = k; row.querySelector("[name=m_pid]").value = ""; }
+  memoRowState(row); return p;
+}
+// チェックから工事の行を作る・直す・消す（行は「その他の工事」に出る。手で直してもよい）
+function memoCheckSync(f){
+  const box = f.querySelector("#memo-rows");
+  MEMO_CK.forEach(([k, l, vs, u, work]) => {
+    const v = f.elements[`c_${k}`]?.value || "", n = Number(f.elements[`c_${k}_n`]?.value) || 0, on = vs ? v === "有" : n > 0;
+    let row = box.querySelector(`.memo-row[data-chk="${k}"]`);
+    if(!on){ if(row){ row.remove(); if(!box.querySelector(".memo-row")) box.insertAdjacentHTML("beforeend", memoRowHtml()); } return; }
+    if(!row){ row = [...box.querySelectorAll(".memo-row")].find(r => !r.querySelector("[name=m_name]").value.trim() && !r.dataset.chk);
+      if(!row){ box.insertAdjacentHTML("beforeend", memoRowHtml()); row = box.lastElementChild; } row.dataset.chk = k; row.dataset.chkKey = ""; }
+    const key = `${work}|${k === "rk" ? n : ""}`;
+    if(row.dataset.chkKey !== key){ memoPreset(row, work, k === "rk" ? n : 0); row.dataset.chkKey = key; }
+    const unit = row.querySelector("[name=m_unit]").value, q = row.querySelector("[name=m_qty]"), sp = row.querySelector("[name=m_spec]");
+    if(k === "ac") q.value = n || 1;
+    else if(n && /㎡/.test(unit)) q.value = n;
+    else { q.value = 1; if(n && u === "㎡" && k !== "rk") sp.value = `約${n}㎡`; else if(k === "rk" && n) sp.value = `${n}㎡`; }
+  });
+  memoCalc();
+}
+// チェックの内容（保存用）と、業者さんへの連絡事項にする文
+function memoChecksRead(f){
+  const o = {}; [...MEMO_CK, ...MEMO_CK2].forEach(([k]) => { const v = f.elements[`c_${k}`]?.value || "", n = f.elements[`c_${k}_n`]?.value.trim() || ""; if(v || n) o[k] = {v, n}; }); return o;
+}
+function memoChecksText(c){
+  const t = (k, l, fmt) => c[k] ? `${l}：${fmt(c[k])}` : "";
+  return [t("elec", "電気", x => x.v === "済" && x.n ? `済（${x.n}まで）` : x.v || x.n), t("light", "居室照明", x => x.v), t("mb", "メールBOX", x => [x.n && "番号 " + x.n, x.v].filter(Boolean).join("・")),
+    t("park", "敷地内駐車スペース", x => x.v === "有" && x.n ? `有（${x.n}）` : x.v || x.n), t("waste", "産廃一時置き場", x => x.v === "有" && x.n ? `有（${x.n}）` : x.v || x.n),
+    t("movein", "次回入居予定", x => [x.n && fmtDate(x.n), x.v].filter(Boolean).join("・"))].filter(Boolean).join("\n");
+}
 // よくある工事（原状回復）：押すと工事の行が入る。単価表に同じ名前が1つだけならそのまま選び、いくつかあれば候補を出す
 const MEMO_QUICK = [["クリーニング", ["ハウスクリーニング", "エアコン内部洗浄", "WAX", "クロスクリーニング", "鏡水垢洗浄"]],
-  ["クロス・床", ["クロス貼替(壁)", "クロス貼替(天井)", "クロス部分貼替", "クッションフロア貼替", "ソフト巾木貼替", "フロアタイル上貼"]],
   ["リペア", ["フローリング簡易補修", "リペア補修", "建付調整", "コーキング打替"]],
   ["その他", ["網戸貼替", "電球交換", "退去立会費", "諸経費"]]];
 function memoQuick(k){
@@ -5413,10 +5489,11 @@ async function viewMemo(lid = ""){
   const L = lid ? lrows.find(r => r.id === lid && !r.jobId) : null;
   if(lid && !L) return `${back("#/admin/money", "収支")}<div class="empty">収支の案件が見つかりません。</div>`;
   S.memoRow = L || null;
-  setTimeout(() => { const f = document.querySelector("form[data-form=memo]"); if(f && L) memoFromLedger(f, L); memoCalc(); }, 0);
+  setTimeout(() => { const f = document.querySelector("form[data-form=memo]"); if(!f) return; f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); if(L) memoFromLedger(f, L); memoCalc(); }, 0);
   return `${back("#/admin/home", "ホーム")}<div class="page-head"><div><h1>工事メモ・見積</h1><p class="lead">現場でスマホから入れます。工事は単価表から選び、見積の金額・業者の金額・利益もここで見られます。そのまま見積になります。</p></div></div>
     ${L ? `<p class="panel small" style="margin:0 0 12px">収支の案件「<b>${esc(L.name)}</b>」（${esc(L.jobNo || "工事番号なし")}）の見積を作ります。</p>` : ""}
     <form class="panel memo" data-form="memo" data-lid="${esc(L?.id || "")}">
+      <section class="mpaper"><h2>物件</h2>
       <label class="field"><span>管理会社 <small>見積の宛先になります</small></span><select name="company" data-memo-co required>
         <option value="">${cos.length ? `選んでください（${cos.length}社）` : "会社がまだありません"}</option>${cos.sort((a, b) => a.localeCompare(b, "ja")).map(c => `<option>${esc(c)}</option>`).join("")}<option value="__new">一覧にない会社（手で入れる）</option></select></label>
       <p class="small" id="memo-no" style="margin:-6px 0 10px"></p>
@@ -5428,21 +5505,29 @@ async function viewMemo(lid = ""){
       <p class="small" id="memo-locked" hidden style="margin:-6px 0 10px">住所・オートロック・設備・備考は物件マスタの内容です（ここでは変えられません。直すときは「設定」の物件マスタで）</p>
       <label class="field"><span>号室</span><input type="text" name="room" placeholder="例：203号室"></label>
       <label class="field"><span>住所 <small>物件を選ぶと自動で入ります</small></span><input type="text" name="address" placeholder="例：東京都足立区〇〇1-2-3"></label>
+        <div class="two"><label class="field"><span>担当</span><select name="staff"><option value="">—</option>${(S.staff || []).map(s => `<option ${S.profile?.staffName === s.name ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label><label class="field"><span>工事種類 <small>収支・見積に入ります</small></span><select name="kind">${LEDGER_KINDS.map(k => `<option ${k === "原状回復" ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>
+      </section>
+      <section class="mpaper"><h2>チェック <small>紙の上の段。押すと下の工事に入ります</small></h2>
+        ${memoChecksHtml()}
       <div class="field al-pick" data-alpick><span>オートロック <small>物件マスタに覚えます</small></span>
         <select name="mAlT">${AL_TYPES.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>
         <input type="text" name="mAlN" placeholder="オートロックの番号（例：1131）" hidden></div>
       <div class="field"><span>物件の設備 <small>物件マスタに覚えます</small></span><div class="memo-checks">
-        <label class="ev-pick">エレベーター <select name="mEv"><option value="">—</option><option>有</option><option>無</option><option>不明</option></select></label><label class="toggle"><input type="checkbox" name="mPk">専用駐車場</label></div></div>
-      <label class="field"><span>備考 <small>物件マスタに覚えます（例：管理人 平日9-17時）</small></span><textarea name="mNote" rows="2"></textarea></label>
-      <label class="field"><span>担当</span><select name="staff"><option value="">—</option>${(S.staff || []).map(s => `<option ${S.profile?.staffName === s.name ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>
+        <label class="ev-pick">エレベーター <select name="mEv"><option value="">—</option><option>有</option><option>無</option><option>不明</option></select></label></div></div>
       ${keyPicker("")}
-      <label class="field"><span>その他メモ <small>項目にないことは何でもここに。見積のメモ（Reforeだけ・書類には出ません）に入ります</small></span><textarea name="mFree" rows="2" placeholder="例：洗面台の下に水漏れ跡あり。次回、管理会社に確認"></textarea></label>
-      <label class="field"><span>工事種類 <small>収支・見積に入ります</small></span><select name="kind">${LEDGER_KINDS.map(k => `<option ${k === "原状回復" ? "selected" : ""}>${k}</option>`).join("")}</select></label>
+        ${memoChecksHtml2()}<input type="checkbox" name="mPk" hidden>
+      <label class="field"><span>備考 <small>物件マスタに覚えます（例：管理人 平日9-17時）</small></span><textarea name="mNote" rows="2"></textarea></label>
+      </section>
+      <section class="mpaper"><h2>クロス・床 <small>箇所を押して、品番と数量（寸法）を入れます。数量のない行は見積に入りません</small></h2>
+        <div id="memo-cf">${MEMO_CF.map(memoCfHtml).join("")}</div></section>
+      <section class="mpaper"><h2>その他の工事</h2>
       <div class="field"><span>よくある工事 <small>押すと下に工事の行が入ります</small></span><div class="memo-quick">${MEMO_QUICK.map(([g, ks]) => `<div class="mq-g"><b>${g}</b>${ks.map(k => `<button type="button" class="mq-b" data-act="memo-quick" data-k="${esc(k)}">${esc(k)}</button>`).join("")}</div>`).join("")}</div></div>
       <div class="field"><span>工事（箇所・工事・数量・単価） <small>工事内容は文字を入れると単価表から候補が出ます。単価は管理会社ごとの単価が入り、直すこともできます</small></span>
         <div class="memo-rhead" aria-hidden="true"><span>箇所</span><span>工事内容</span><span>数量</span><span>単位</span><span></span></div><div id="memo-rows">${memoRowHtml()}</div>
         <datalist id="memo-cats">${[...new Set(estPrices().map(x => x.cat).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist><datalist id="memo-locs">${EST_LOCS.map(l => `<option value="${esc(l)}">`).join("")}</datalist><datalist id="est-units">${UNITS.map(u => `<option value="${u}">`).join("")}<option value="ヶ所"></datalist>
         <button type="button" class="btn sub" data-act="memo-add" style="justify-self:start">＋ 行を足す</button></div>
+      </section>
+      <label class="field"><span>その他メモ <small>項目にないことは何でもここに。見積のメモ（Reforeだけ・書類には出ません）に入ります</small></span><textarea name="mFree" rows="2" placeholder="例：洗面台の下に水漏れ跡あり。次回、管理会社に確認"></textarea></label>
       <div class="memo-sum" id="memo-sum" aria-live="polite"></div>
       <button class="btn block big-action">見積にする（収支にも入ります）</button></form>`;
 }
@@ -6216,8 +6301,19 @@ const ACTIONS = {
   // 協力業者を「既存業者（優先）」にする／外す
   async "memo-add"(){ $("#memo-rows").insertAdjacentHTML("beforeend", memoRowHtml()); },
   async "memo-quick"(el){ memoQuick(el.dataset.k); },
+  // チェックの「有・無」など：押すと選ぶ、もう一度押すと外す（1つだけ選べる）
+  mc(el){ const g = el.closest(".mc-g"), h = g.querySelector("input[type=hidden]"), on = h.value !== el.dataset.v;
+    h.value = on ? el.dataset.v : ""; g.querySelectorAll(".mc").forEach(b => b.classList.toggle("on", on && b === el));
+    const f = el.closest("form"); if(g.dataset.mc === "park" && f.elements.mPk && !f.elements.mPk.disabled) f.elements.mPk.checked = h.value === "有";
+    const n = f.elements[`c_${g.dataset.mc}_n`]; if(on && el.dataset.v === "有" && n && !n.value && g.dataset.mc === "ac") n.value = 1;
+    memoCheckSync(f); },
+  // クロス・床の箇所：押した箇所を「・」でつないで箇所の欄に入れる（他は手で入れる）
+  mloc(el){ const c = el.closest(".mcf"), inp = c.querySelector("[name=m_loc]");
+    if(!el.dataset.v){ inp.focus(); return; }
+    el.classList.toggle("on"); inp.value = [...c.querySelectorAll(".mcf-locs .mc.on")].map(b => b.dataset.v).join("・"); memoCalc(); },
   // クロスの品番がなんでもいいとき：「材工 白 織物」を入れる（もう一度押すと消す）
-  "memo-any"(el){ const i = el.closest(".memo-row").querySelector("[name=m_spec]"); i.value = i.value.trim() === CLOTH_ANY ? "" : CLOTH_ANY; el.classList.toggle("on", i.value === CLOTH_ANY); },
+  "memo-any"(el){ const r = el.closest(".memo-row"), i = r.querySelector("[name=m_spec]"), v = el.dataset.v || CLOTH_ANY; i.value = i.value.trim() === v ? "" : v;
+    r.querySelectorAll(".mp-any").forEach(b => b.classList.toggle("on", i.value.trim() === (b.dataset.v || CLOTH_ANY))); },
   // 管理会社を丸ごと消す：収支の行・物件マスタ・見積・管理会社への請求・手数料の設定。ポータルの案件は残し、管理会社の欄を空にする
   async "ledger-purge"(el){
     const name = el.dataset.co, k = coKey(name);
@@ -6979,7 +7075,8 @@ const FORMS = {
       const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
       const dims = isCloth(name) ? memoDims(r) : [], acc = r2(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
-        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec")}; }).filter(x => x.p.name);
+        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed}; })
+      .filter(x => x.p.name && !(x.fixed && (x.qty === "" || !x.qty) && !x.dims.length));   // クロス・床で数量のない行は入れない
     // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
     const adds = rows.filter(x => x.save && x.p.cost > 0);
     if(adds.length){
@@ -7002,6 +7099,7 @@ const FORMS = {
     if(!bName) throw new Error("物件名を選ぶか入れてください");
     if(!rows.length) throw new Error("工事を1つ以上入れてください");
     const room = g("room"), name = room ? `${bName} ${room}` : bName, staff = g("staff"), st = (S.staff || []).find(s => s.name === staff);
+    const checks = memoChecksRead(form), ckText = memoChecksText(checks);
     // 物件マスタにない物件（新しい管理会社を含む）は覚えておく。住所が空の物件は、入れた住所で埋める
     // 物件マスタに覚えるのは、管理会社・物件名・住所・オートロック・エレベーター・専用駐車場・備考だけ（号室・担当・鍵・工事は覚えない）
     const props0 = await api().getProperties().catch(() => S.props || []);
@@ -7019,7 +7117,7 @@ const FORMS = {
     const lid = L0 ? L0.id : "l_" + newId(), jobNo = L0?.jobNo || await nextJobNo(company);
     if(L0) await api().saveLedger({...L0, jobNo, estimateId:eid, stage:"est", staff:L0.staff || staff, kind:L0.kind || g("kind") || "原状回復", updatedAt:now});
     else await api().saveLedger({id:lid, manual:true, ki:kiNow(), month:"", jobNo, name, company, contract:0, kind:g("kind") || "原状回復", staff, staff2:"", vendors:[], note:"工事メモから", arranged:false, done:false, stage:"est", estimateId:eid, createdAt:now, updatedAt:now});
-    await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:g("person"), building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", master.note || ""].filter(Boolean).join("\n"), kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
+    await api().saveEstimate({id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, company, honor:"御中", person:g("person"), building:bName, room, contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", ckText, master.note || ""].filter(Boolean).join("\n"), checks, moveIn:checks.movein?.n || "", kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"), photoUrls:g("photoUrl") ? [g("photoUrl")] : [],
       issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, staff:staff ? {name:staff, phone:st?.phone || ""} : null,
       rows:rows.flatMap(x => { const one = (spec, qty, more = {}) => ({id:"r_" + newId(), loc:x.loc, name:x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.p.cat || "", priceId:x.p.id || "", ...more});
@@ -8149,7 +8247,7 @@ function memoPick(f, p){
   if(co && !coSame(f.elements.company.value, co)){ if(!opts.some(o => o.value === co)) f.elements.company.add(new Option(co, co), f.elements.company.options.length - 1); f.elements.company.value = co; $("#memo-co-new").hidden = true; }
   memoReprice(f);   // 物件から管理会社が入ったときも、その会社の単価・工事番号にする
   f.elements.address.value = p.address || "";
-  alSet(f, p.al); evSet(f, p.ev); f.elements.mPk.checked = hasFacility(p.pk); f.elements.mNote.value = p.note || "";
+  alSet(f, p.al); evSet(f, p.ev); f.elements.mPk.checked = hasFacility(p.pk); f.elements.mNote.value = p.note || ""; if(p.pk) mcSet(f, "park", hasFacility(p.pk) ? "有" : "無");
   memoLock(f, p);
   $("#memo-ac").hidden = true; f.elements.propName.setAttribute("aria-expanded", "false");
   f.elements.room.focus();
