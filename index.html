@@ -830,6 +830,9 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .wnote.acc{color:#B0285A;font-weight:700}
 .i-dim{grid-column:1/-1;font-size:12px;color:var(--sub)}
 /* 工事メモ：紙の工事メモと同じ並び */
+.price-sup{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:12px;color:var(--sub);margin:-2px 0 8px;padding:0 0 8px;border-bottom:1px dashed var(--line)}
+.price-sup select{width:auto;max-width:260px;padding:4px 6px!important;font-size:12.5px!important}.price-sup input{width:64px!important;padding:4px 6px!important;font-size:12.5px!important}
+.price-sup .ps-w{color:var(--kon-text,#1B2A55);font-weight:700}.price-sup .ps-m{color:#8A5A00;font-weight:700}
 .mp-sup{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding-top:4px;border-top:1px dashed #E4DDC3}.mp-sup select{width:auto;max-width:180px;padding:5px 6px!important;font-size:13px!important}
 .mp-ws{color:var(--kon-text,#1B2A55);font-weight:700}.mp-ms{color:#8A5A00;font-weight:700}
 form.memo .mpaper{background:#FBF8EC;border:1px solid #E4DDC3;border-radius:8px;padding:10px 12px;margin:0 0 12px}
@@ -2789,7 +2792,8 @@ function coSell(p, co){
   return k != null && m[k] !== "" && m[k] != null ? Number(m[k]) : null;
 }
 function estPrices(co = S.estCo){
-  const base = (S.prices || DEFAULT_PRICES).map(p => ({id:p.id, cat:p.cat || "その他", name:p.name, unit:p.unit, sell:coSell(p, co) ?? Number(p.sellPrice ?? DEFAULT_SELL[p.name] ?? 0), cost:Number(p.unitPrice) || 0, note:/材工/.test(p.note || "") ? "" : (p.note || ""), off:!!p.off, onlyCo:p.onlyCo || ""}));
+  const base = (S.prices || DEFAULT_PRICES).map(p => ({id:p.id, cat:p.cat || "その他", name:p.name, unit:p.unit, sell:coSell(p, co) ?? Number(p.sellPrice ?? DEFAULT_SELL[p.name] ?? 0), cost:Number(p.unitPrice) || 0, note:/材工/.test(p.note || "") ? "" : (p.note || ""), off:!!p.off, onlyCo:p.onlyCo || "",
+    workSup:p.workSup || "", matSup:p.matSup || "", matId:p.matId || "", matRate:p.matRate}));
   const have = new Set(base.map(p => p.name));
   return [...base, ...EST_EXTRA.filter(x => !have.has(x.name))].filter(p => p.name && !p.off && (!p.onlyCo || !co || coSame(p.onlyCo, co)));
 }
@@ -3148,6 +3152,29 @@ async function saveEst(e, quiet = false){
 // 受注：業者に発注する案件（実行単価）と、収支の請負金額を作る
 const EST_LEDGER_KIND = {退去工事:"原状回復", 原状回復工事:"原状回復", 修繕工事:"修繕", フルリノベーション工事:"フルリノベ", リフォーム工事:"リフォーム", 入居前工事:"原状回復"};
 const LEDGER_EST_KIND = {原状回復:"退去工事", 修繕:"修繕工事", フルリノベ:"フルリノベーション工事", リフォーム:"リフォーム工事", その他:""};
+// 受注で案件を作ったとき：工事メモで「材料の発注先」を選んだ工事から、材料屋さんごとの発注書の下書きを作る
+async function matOrdersFromEst(e, jid){
+  const rows = (e.rows || []).filter(r => !r.noteRow && r.name && r.sup?.mat && Number(r.qty) > 0); if(!rows.length) return 0;
+  const [sups, mats] = await Promise.all([api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), api().getMaterials().catch(() => clone(DEFAULT_MATERIALS))]);
+  const by = new Map(); rows.forEach(r => { if(!by.has(r.sup.mat)) by.set(r.sup.mat, []); by.get(r.sup.mat).push(r); });
+  const old = await api().getMatOrders(jid).catch(() => []), add = [];
+  by.forEach((list, sid) => {
+    const sup = sups.find(x => x.id === sid) || {id:sid, name:list[0].sup.matName || "材料"};
+    const items = list.map(r => {
+      const m = r.sup.matId ? mats.find(x => x.id === r.sup.matId) : null, rate = Number(r.sup.matRate) > 0 ? r.sup.matRate : isCloth(r.name) ? CLOTH_LOSS : 1;
+      const spec = String(r.spec || "").replace(/^アクセントクロス\s*/, "").replace(/^材工\s*/, "").trim(), any = !spec || spec === CLOTH_ANY.replace(/^材工\s*/, "");
+      const q = r.dims?.length ? dimSum(r.dims) : Number(r.qty) || 0, qty = rate === 1 ? q : Math.ceil(Math.round(q * rate * 100) / 100);
+      // 工事メモで品番を入れたときは、その品番（材料マスタにあればそのメーカー・単価）。なんでもいいときは単価表の材料
+      const code0 = spec.replace(MAKERS, ""), hit = any ? null : mats.find(x => x.sup === sid && x.code && code0.replace(/[\s-]/g, "").includes(x.code.replace(/[\s-]/g, "")));
+      const maker = any ? (m?.maker || "") : ((spec.match(MAKERS) || [])[1] || hit?.maker || ""), code = any ? (m?.code || (isCloth(r.name) ? "白 織物（量産品）" : "")) : code0;
+      const up = (any ? m?.unitPrice : hit?.unitPrice ?? m?.unitPrice) ?? (r.sup.matPrice != null ? Math.round(r.sup.matPrice / rate) : null);
+      return {name:(m?.name || r.name) + (r.accent ? "（アクセント）" : ""), maker, code, qty, unit:m?.unit || (rate === 1 ? r.unit : "m"), unitPrice:up, date:"", loc:r.loc || ""};
+    });
+    add.push({id:"mo_" + newId(), supplierId:sup.id, supplierName:sup.name, kind:"material", terms:sup.terms || "", issuedAt:todayIso(), items, delivery:"現場", deliveryNote:"", honor:"御中", showManager:true, workDate:"", parking:0, others:"", note:`工事メモ（${e.no || ""}）から`, status:"draft", createdAt:Date.now(), updatedAt:Date.now()});
+  });
+  await api().saveMatOrders(jid, [...old, ...add]);
+  return add.length;
+}
 async function estToJob(e){
   const rows = (e.rows || []).filter(r => !r.noteRow && r.name && Number(r.cost) > 0 && !["和室工事", "諸経費"].includes(r.cat));
   // 仕様が「材工 …」なら材工の工事にして、残り（白 織物 など）を備考・品番に
@@ -3165,7 +3192,8 @@ async function estToJob(e){
   await api().saveLedger({...keep, id:jid, jobId:jid, contract:estTotals(e).sub, company:e.company || keep.company || "", kind:EST_LEDGER_KIND[e.kind] || keep.kind || "",
     extraVendors:[...(keep.extraVendors || []), ...(vendors || [])], stage:"won", estimateId:e.id, note:keep.note || `見積 ${e.no || ""}`.trim(), updatedAt:Date.now()});
   if(old) await api().deleteLedger(old.id);
-  return {jid, n:items.length, skipped:(e.rows || []).filter(r => !r.noteRow && r.name).length - items.length};
+  const mo = await matOrdersFromEst(e, jid).catch(err => { console.error(err); return 0; });
+  return {jid, n:items.length, mo, skipped:(e.rows || []).filter(r => !r.noteRow && r.name).length - items.length};
 }
 /* ---------- 管理会社への請求（締め日ごとに、完了確認まで行った案件を集めて請求書を作る） ---------- */
 const BILL_FMT = {sum:"まとめ請求書（案件の一覧1枚）", each:"案件ごとの御請求書"};
@@ -4893,7 +4921,22 @@ function priceRowHtml(p = {unit:"式"}){
     <input type="number" name="p_sell" value="${esc(co ? (by[co] ?? "") : std)}" min="0" inputmode="numeric" placeholder="${co ? `標準 ${esc(std === "" ? "なし" : std)}` : "見積単価"}" aria-label="見積単価（管理会社への見積に使う単価）" title="見積単価（見積書で使う単価）" class="${co && by[co] != null && by[co] !== "" ? "co-set" : ""}">
     <input type="number" name="p_tema" value="${esc(p.temaPrice || "")}" min="0" inputmode="numeric" placeholder="手間のみ単価" aria-label="手間のみの単価（材工の作業だけ・任意）" title="材工の作業で、業者が手間のみに切り替えたときの単価（任意）">
     <input type="text" name="p_note" value="${esc(p.note)}" placeholder="備考・品番（任意）" aria-label="備考・品番">
-    <button type="button" class="i-x" data-act="rm-price" aria-label="この作業を削除">×</button></div>`;
+    <button type="button" class="i-x" data-act="rm-price" aria-label="この作業を削除">×</button>
+    ${p.estOnly ? "" : priceSupHtml(p)}</div>`;
+}
+// 単価表の作業ごとの発注先：業者（いつも出す先）と材料（材料屋さん・材料マスタ）。工事メモで選ぶと最初から入り、受注で材料の発注書の下書きができる
+function priceSupRead(r){
+  const ws = r.querySelector("[name=p_ws]")?.value || "", mt = r.querySelector("[name=p_mat]")?.value || "", rt = r.querySelector("[name=p_mrate]")?.value || "";
+  const m = mt.startsWith("m:") ? (S.materials || []).find(x => x.id === mt.slice(2)) : null;
+  return {...(ws ? {workSup:ws} : {}), ...(m ? {matId:m.id, matSup:m.sup} : mt.startsWith("s:") ? {matSup:mt.slice(2)} : {}), ...(mt && rt !== "" ? {matRate:Number(rt) || 0} : {})};
+}
+function priceSupHtml(p = {}){
+  const ws = (S.suppliers || []).filter(x => x.kind === "work"), ms = (S.suppliers || []).filter(x => x.kind !== "work");
+  const cr = [...(S.crafts?.values() || [])].filter(c => c.status === "approved");
+  const wv = p.workSup || "", mv = p.matId ? "m:" + p.matId : p.matSup ? "s:" + p.matSup : "";
+  return `<div class="price-sup"><label class="ps-w">業者の発注先<select name="p_ws"><option value="">未定（募集する）</option>${cr.length ? `<optgroup label="協力業者">${cr.map(c => `<option value="c:${esc(c.uid)}" ${wv === "c:" + c.uid ? "selected" : ""}>${esc(c.tradeName || c.name)}</option>`).join("")}</optgroup>` : ""}${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}" ${wv === "s:" + x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self" ${wv === "self" ? "selected" : ""}>自社でやる</option></select></label>
+    <label class="ps-m">材料<select name="p_mat"><option value="">なし（業者の材工）</option>${ms.map(x => `<optgroup label="${esc(x.name)}"><option value="s:${esc(x.id)}" ${mv === "s:" + x.id ? "selected" : ""}>${esc(x.name)}（品番は工事メモで）</option>${(S.materials || []).filter(m => m.sup === x.id).map(m => `<option value="m:${esc(m.id)}" ${mv === "m:" + m.id ? "selected" : ""}>${esc([m.name, m.maker, m.code].filter(Boolean).join(" "))}${m.unitPrice ? `（${yenFull(m.unitPrice)}/${esc(m.unit || "")}）` : ""}</option>`).join("")}</optgroup>`).join("")}</select></label>
+    <label class="ps-r">材料の数量＝工事の数量×<input type="number" name="p_mrate" min="0" step="0.01" inputmode="decimal" value="${esc(p.matRate ?? "")}" placeholder="${/クロス/.test(p.name || "") ? "1.3" : "1"}"></label></div>`;
 }
 // 見積だけの項目：単価表に入れたもの＋まだ入れていない雛形の項目
 function estOnlyRows(){
@@ -5334,7 +5377,8 @@ function memoWorkSupOpts(){
 function memoMatSupOpts(){
   return `<option value="">なし（業者の材工）</option>${(S.suppliers || []).filter(x => x.kind !== "work").map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}`;
 }
-const memoSupOf = (ws, ms, mp) => ws || ms || mp !== "" ? {...(ws ? {work:ws, workName:supNameOf(ws)} : {}), ...(ms ? {mat:ms, matName:supNameOf(ms)} : {}), ...(mp !== "" && mp != null ? {matPrice:Number(mp) || 0} : {})} : null;
+const memoSupOf = (ws, ms, mp, ds = {}) => ws || ms || mp !== "" ? {...(ws ? {work:ws, workName:supNameOf(ws)} : {}), ...(ms ? {mat:ms, matName:supNameOf(ms)} : {}), ...(mp !== "" && mp != null ? {matPrice:Number(mp) || 0} : {}),
+  ...(ms && ds.matId ? {matId:ds.matId} : {}), ...(ms && Number(ds.matRate) > 0 ? {matRate:Number(ds.matRate)} : {})} : null;
 const supNameOf = v => !v ? "" : v === "self" ? "自社" : v.startsWith("c:") ? (S.crafts?.get(v.slice(2))?.tradeName || S.crafts?.get(v.slice(2))?.name || "") : ((S.suppliers || []).find(x => x.id === v.replace(/^s:/, ""))?.name || "");
 function memoRowHtml(){
   return `<div class="memo-row"><input type="text" name="m_loc" list="memo-locs" placeholder="箇所" aria-label="箇所" autocomplete="off">
@@ -5486,6 +5530,16 @@ function memoCfAll(c, on){
   memoRowState(row); memoCalc();
 }
 // 工事の名前から単価表の工事を選んで、その行に入れる（候補がいくつかあれば最初の。ルークリは広さで選ぶ）
+// 単価表の発注先・材料を、工事メモの行に入れる（材料単価は 材料の単価 × 数量の倍率）
+const matRateOf = p => p?.matRate > 0 ? p.matRate : /クロス/.test(p?.name || "") ? 1.3 : 1;
+function memoSupFill(row, p){
+  const ws = row.querySelector("[name=m_ws]"), ms = row.querySelector("[name=m_ms]"), mp = row.querySelector("[name=m_mp]"); if(!ws) return;
+  if(p.workSup && [...ws.options].some(o => o.value === p.workSup)) ws.value = p.workSup;
+  if(p.matSup && [...ms.options].some(o => o.value === p.matSup)) ms.value = p.matSup;
+  const m = p.matId ? (S.materials || []).find(x => x.id === p.matId) : null;
+  if(m?.unitPrice){ mp.value = Math.round(m.unitPrice * matRateOf(p)); }
+  row.dataset.matId = p.matId || ""; row.dataset.matRate = p.matSup ? matRateOf(p) : "";
+}
 function memoPreset(row, k, area = 0){
   const ps = estPrices().filter(p => !p.noteRow && p.name), nk = normKey(k);
   let hits = ps.filter(p => normKey(p.name) === nk); if(!hits.length) hits = ps.filter(p => normKey(p.name).includes(nk));
@@ -5494,7 +5548,7 @@ function memoPreset(row, k, area = 0){
     const t = tiers.find(x => x.n >= area && !/以上/.test(x.p.name)) || tiers.find(x => /以上/.test(x.p.name)) || tiers[tiers.length - 1]; if(t) hits = [t.p];
   }
   const inp = row.querySelector("[name=m_name]"), p = hits[0];
-  if(p){ inp.value = p.name; row.querySelector("[name=m_pid]").value = p.id; row.querySelector("[name=m_unit]").value = p.unit || ""; row.querySelector("[name=m_sell]").value = p.sell || ""; row.querySelector("[name=m_cost]").value = p.cost || ""; row.dataset.auto = "1"; }
+  if(p){ inp.value = p.name; row.querySelector("[name=m_pid]").value = p.id; row.querySelector("[name=m_unit]").value = p.unit || ""; row.querySelector("[name=m_sell]").value = p.sell || ""; row.querySelector("[name=m_cost]").value = p.cost || ""; row.dataset.auto = "1"; memoSupFill(row, p); }
   else { inp.value = k; row.querySelector("[name=m_pid]").value = ""; }
   memoRowState(row); return p;
 }
@@ -5543,6 +5597,7 @@ function memoQuick(k){
 async function viewMemo(lid = ""){
   S.estCo = "";   // 前に開いた見積の管理会社の単価が残らないように
   [S.prices, S.props, S.staff, S.suppliers] = await Promise.all([api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getProperties().catch(() => []), api().getStaff().catch(() => []), api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS))]);
+  S.materials = await api().getMaterials().catch(() => clone(DEFAULT_MATERIALS));
   const cos = await ledgerCosLoad();
   // 工事番号の見本（収支・見積で使った番号の続き）と、先方のご担当者様の候補
   const [{rows: lrows}, ests] = await Promise.all([ledgerData().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
@@ -6573,7 +6628,7 @@ const ACTIONS = {
     if(!await ask({title:"受注にして案件を作りますか？", body:`この見積の工事から、業者に発注する案件（実行単価）を下書きで作ります。収支には請負金額 ${yenFull(estTotals(e).sub)}（税抜）が入ります。\n諸経費・和室（材料・外部発注）・実行単価のない工事は、業者の案件には入れません。`, ok:"案件を作る"})) return;
     const r = await estToJob(e);
     await api().saveEstimate({...e, status:"won", jobId:r.jid, wonAt:Date.now(), updatedAt:Date.now()});
-    toast(`案件を作りました（業者の工事${r.n}件${r.skipped ? `・入れなかった工事${r.skipped}件` : ""}）。内容を確認して公開してください`);
+    toast(`案件を作りました（業者の工事${r.n}件${r.skipped ? `・入れなかった工事${r.skipped}件` : ""}${r.mo ? `・材料の発注書の下書き${r.mo}件` : ""}）。内容を確認して公開してください`);
     go(`#/admin/job/${r.jid}/edit`);
   },
   async "bill-make"(el){
@@ -7136,7 +7191,7 @@ const FORMS = {
       const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
       const dims = isCloth(name) ? memoDims(r) : [], acc = r2(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
-        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", sup:memoSupOf(v("m_ws"), v("m_ms"), num("m_mp"))}; })
+        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", sup:memoSupOf(v("m_ws"), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {})}; })
       .filter(x => x.p.name && !(x.fixed && (x.qty === "" || !x.qty) && !x.dims.length));   // クロス・床で数量のない行は入れない
     // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
     const adds = rows.filter(x => x.save && x.p.cost > 0);
@@ -7289,7 +7344,7 @@ const FORMS = {
       return {id:r.dataset.id || "p_" + newId(),
       name:r.querySelector("[name=p_name]").value.trim(), unit:r.querySelector("[name=p_unit]").value.trim(), unitPrice:Number(r.querySelector("[name=p_price]").value) || 0,
       note:r.querySelector("[name=p_note]").value.trim(), cat:r.querySelector("[name=p_cat]").value.trim(), ...(r.dataset.sell !== "" ? {sellPrice:Number(r.dataset.sell) || 0} : {}), ...(Number(r.querySelector("[name=p_tema]")?.value) > 0 ? {temaPrice:Number(r.querySelector("[name=p_tema]").value)} : {}),
-      ...(Object.keys(by).length ? {sellBy:by} : {}), ...(est ? {estOnly:true} : {}), ...(r.dataset.only ? {onlyCo:r.dataset.only} : {})}; })
+      ...(Object.keys(by).length ? {sellBy:by} : {}), ...(est ? {estOnly:true} : {}), ...(r.dataset.only ? {onlyCo:r.dataset.only} : {}), ...priceSupRead(r)}; })
       .filter(p => p.name || p.unitPrice);
     if(list.some(p => !p.name)) throw new Error("単価表に作業名が空の行があります");
     if(list.some(p => !p.unit)) throw new Error("単価表に単位が空の行があります");
@@ -8538,7 +8593,7 @@ function memoWorkPick(input, p){
   const row = input.closest(".memo-row");
   input.value = p.name; row.querySelector("[name=m_pid]").value = p.id;
   const u = row.querySelector("[name=m_unit]"); if(u) u.value = p.unit || u.value;
-  row.querySelector("[name=m_sell]").value = p.sell || ""; row.querySelector("[name=m_cost]").value = p.cost || ""; row.dataset.auto = "1";
+  row.querySelector("[name=m_sell]").value = p.sell || ""; row.querySelector("[name=m_cost]").value = p.cost || ""; row.dataset.auto = "1"; memoSupFill(row, p);
   row.querySelector(".memo-wac").hidden = true; memoRowState(row); memoCalc();
   (isCloth(p.name) ? row.querySelector("[name=d_h]") : row.querySelector("[name=m_qty]")).focus();
 }
