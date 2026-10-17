@@ -1731,7 +1731,7 @@ function seedDemo(){
       c3: {email:"suzuki@demo.jp", pw:"demo1234"},
       op: {email:"op@demo.jp", pw:"demo1234"},
       k1: {email:"midori@demo.jp", pw:"demo1234"},
-      w1: {email:"kenta@demo.jp", pw:"demo1234"}
+      k2: {email:"sasaki@demo.jp", pw:"demo1234"}
     },
     users: {
       admin: {uid:"admin", role:"admin", status:"approved", name:"Refore 管理者", email:"admin@demo.jp", createdAt:now - 90*day},
@@ -1865,11 +1865,11 @@ function seedDemo(){
       ]
     }
   };
-  // 工務店（招待された会社）・運営・職人の従業員
+  // 工務店（招待された会社。管理者と、招待で入った従業員）・運営
   Object.assign(d.users, {
     op: {uid:"op", role:"op", status:"approved", name:"GENPUKU Pro 運営", email:"op@demo.jp", createdAt:now - 90*day},
     k1: {uid:"k1", role:"co", status:"approved", companyId:"midori", coRole:"管理者", owner:true, name:"緑川 誠", email:"midori@demo.jp", createdAt:now - 20*day},
-    w1: {uid:"w1", role:"crew", status:"approved", ownerUid:"c1", name:"山田 健太", email:"kenta@demo.jp", createdAt:now - 7*day}
+    k2: {uid:"k2", role:"co", status:"approved", companyId:"midori", coRole:"担当者", name:"佐々木 美穂", email:"sasaki@demo.jp", inviteId:"iv_demo_k2", createdAt:now - 10*day}
   });
   d.companies = {midori:{id:"midori", name:"みどり建装株式会社", status:"active", plan:"beginner", money:false, opts:{}, optEnd:{}, card:"Visa ****4242", nextBill:now + 12*day, extra:{}, priority:["c3", "c1"], closeDay:20, prefix:"MD",
     ownerEmail:"midori@demo.jp", notifyEmail:"midori@demo.jp", info:{zip:"130-0001", address:"東京都墨田区吾妻橋1-1-1", tel:"03-0000-1111", invoiceNumber:"T5555555555555"}, createdAt:now - 20*day}};
@@ -2661,7 +2661,7 @@ function demoBar(){
     <button data-act="demo-login" data-email="suzuki@demo.jp">職人（内装）で入る</button>
     <button data-act="demo-login" data-email="tanaka@demo.jp">職人（審査中）で入る</button>
     <button data-act="demo-login" data-email="midori@demo.jp">工務店（管理者）で入る</button>
-    <button data-act="demo-login" data-email="kenta@demo.jp">職人の従業員で入る</button>
+    <button data-act="demo-login" data-email="sasaki@demo.jp">工務店の従業員で入る</button>
     <button data-act="demo-login" data-email="op@demo.jp">運営で入る</button>
     <button data-act="demo-reset">データを初期化</button></div>`;
 }
@@ -5926,6 +5926,7 @@ async function route(){
     if(!S.profile){ let st = false; try { st = localStorage.getItem("refore_signup_staff") === "1"; } catch(e) {} return done(st ? viewStaffSignup() : viewProfileForm(null, true), {bare:true}); }
     const p = S.profile;
     if(p.role === "op") return done(await routeOp(parts));
+    if(p.role === "crew") return done(`<div class="auth-wrap"><div class="alert-box"><b>このアカウントは使えなくなりました</b><p>職人さんの従業員としてのログインは終わりました。わからないことは、親方か運営（Refore）にお問い合わせください。</p></div><button class="btn sub" data-act="logout">ログアウト</button></div>`, {bare:true});
     if(p.role === "co" && (p.status === "suspended" || !S.company)) return done(viewSuspended());
     startNotifier(); startBadges();
     if(!isCoRole(p.role)){
@@ -5983,7 +5984,7 @@ async function route(){
     if(a === "job") html = await viewJobDetail(b);
     else if(a === "applied") html = await viewApplied();
     else if(a === "work") html = b ? await viewWorkDetail(b) : await viewWork();
-    else if(a === "profile") html = S.me ? viewCrewProfile() : viewProfileForm(p, false) + await crewPanel();
+    else if(a === "profile") html = viewProfileForm(p, false);
     else if(a === "invoice") html = await viewInvoice(b);
     else if(a === "schedule") html = await viewMySchedule(b);
     else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
@@ -7679,10 +7680,7 @@ async function afterLogin(){
   const p = S.profile; if(!p) return;
   S.opCfg = await api().getOpSettings().catch(() => ({}));
   if(p.role === "co"){ S.cid = p.companyId; S.company = await api().getCompany(p.companyId).catch(() => null); await applyScheduled().catch(e => console.warn(e)); }
-  if(p.role === "crew" && p.status !== "suspended"){
-    const o = await api().getOwnerProfile(p.ownerUid).catch(() => null);
-    if(o){ S.me = {...p}; S.user = {...S.user, uid:o.uid, realUid:p.uid}; S.profile = o; }
-  }
+
 }
 function coStatusNote(){ return `<div class="alert-box"><b>この会社の利用は停止中です。</b><p>運営（Refore）にお問い合わせください。</p></div>`; }
 function coNavExtra(){
@@ -8378,13 +8376,12 @@ Object.assign(FORMS, {
   },
   async joinaccept(form){
     const inv = await api().getInvite(form.dataset.id), name = form.elements.name.value.trim();
-    if(!inv || inv.usedAt || inv.expiresAt < Date.now()) throw new Error("この招待は使えません");
+    if(!inv || inv.usedAt || inv.expiresAt < Date.now() || inv.kind === "crew") throw new Error("この招待は使えません");
     const base = {name, email:S.user.email, status:"approved", inviteId:inv.id, createdAt:Date.now()};
-    const prof = inv.kind === "crew" ? {...base, role:"crew", ownerUid:inv.ownerUid}
-      : {...base, role:"co", companyId:inv.companyId, coRole:inv.coRole === "管理者" ? "管理者" : "担当者", owner:!!inv.owner, phone:form.elements.phone?.value.trim() || ""};
+    const prof = {...base, role:"co", companyId:inv.companyId, coRole:inv.coRole === "管理者" ? "管理者" : "担当者", owner:!!inv.owner, phone:form.elements.phone?.value.trim() || ""};
     await api().acceptInvite(inv, S.user.uid, prof);
     S.profile = await api().getProfile(S.user.uid); await afterLogin();
-    toast("参加しました"); location.hash = inv.kind === "crew" ? "#/work" : "#/admin";
+    toast("参加しました"); location.hash = "#/admin";
   },
   async opcompany(form){
     const g = k => String(form.elements[k]?.value || "").trim();
