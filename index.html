@@ -326,6 +326,20 @@ textarea{min-height:110px;resize:vertical}
 .cal-tool{display:flex;align-items:center;gap:12px;margin-bottom:10px}
 .cal-tool h2{margin:0;font-size:20px;min-width:7.5em;text-align:center}
 .cal-tool .btn{min-height:36px;padding:4px 14px;font-size:18px}
+.cal-filter{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:-4px 0 12px}.cal-filter .seg{margin:0}.cal-filter select{width:auto;max-width:200px;padding:5px 8px;font-size:13px}.cal-filter .toggle{margin:0;font-size:13px}
+.vg-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+.vg{min-width:calc(150px + var(--nd) * 34px)}
+.vg-row{display:grid;grid-template-columns:150px repeat(var(--nd),minmax(34px,1fr));row-gap:3px;border-top:1px solid var(--line);padding:4px 0;position:relative}
+.vg-row.vg-head{border-top:0;padding:0;position:sticky;top:0;background:var(--surface);z-index:2}
+.vg-name{grid-column:1;position:sticky;left:0;z-index:1;background:var(--surface);padding:4px 8px;font-size:13px;font-weight:700;line-height:1.3;border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;word-break:break-all}
+.vg-name small{font-weight:400;color:var(--sub);font-size:11px}
+.vg-row.none .vg-name{color:var(--danger,#B42318)}
+.vg-day{text-align:center;padding:4px 0;font-size:12px;line-height:1.2;border-left:1px solid var(--line)}.vg-day small{display:block;color:var(--sub);font-size:10px}
+.vg-day.sun{color:#C0392B}.vg-day.sat{color:#2F6DB5}.vg-day.today b{display:inline-block;background:var(--kon);color:var(--kon-ink);border-radius:999px;min-width:20px}
+.vg-bg{border-left:1px solid var(--line);margin:-4px 0}.vg-bg.we{background:rgba(0,0,0,.025)}.vg-bg.today{background:rgba(27,42,85,.07)}
+.vg-row .cal-bar{position:relative;z-index:0;align-self:center}
+.vg-lbl{align-self:center;min-width:0;border:0;background:none;padding:3px 4px;font:inherit;font-size:12px;line-height:1.35;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);cursor:pointer;position:relative;z-index:0}
+.vg-lbl:hover{text-decoration:underline}
 .cal-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:10px}
 .cal-legend .cal-bar{cursor:default;margin:0;font-size:12px}
 .cal{background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden}
@@ -5976,7 +5990,12 @@ async function viewCalendar(ym, company = ""){
   const cos = [...new Set([...masterCos, ...shown.map(coOf)])].filter(c => c !== NONE).sort((a, b) => (counts[b] || 0) - (counts[a] || 0) || a.localeCompare(b, "ja"));
   if(counts[NONE]) cos.push(NONE);
   if(company && !cos.includes(company)) cos.unshift(company);
-  const list = company ? shown.filter(j => coOf(j) === company) : shown;
+  const list0 = company ? shown.filter(j => coOf(j) === company) : shown;
+  // 絞り込み（業者・担当・工種・未手配だけ）。カレンダーと業者ごとの両方に効く
+  const F = S.calF ||= {who:"", staff:"", trade:"", none:false}, mode = calModeGet();
+  const tradeOf = j => [...tradeGroups(tradesFromItems(j.items || []))];
+  const whoName = uid => { const c = S.crafts?.get(uid); return c ? (c.tradeName || c.name || "業者") : "業者"; };
+  const list = list0.filter(j => (!F.none || !j.assignedTo) && (!F.who || (F.who === "__none" ? !j.assignedTo : j.assignedTo === F.who)) && (!F.staff || (j.staff?.name || "") === F.staff) && (!F.trade || tradeOf(j).includes(F.trade)));
   S.cal = {jobs:new Map(list.map(j => [j.id, j])), cnt};
   const calUrl = (ymv, co = company) => `#/admin/calendar/${ymv}${co ? "/" + encodeURIComponent(co) : ""}`;
   const today = todayIso(), mm = `${y}-${String(m).padStart(2, "0")}`;
@@ -6003,26 +6022,48 @@ async function viewCalendar(ym, company = ""){
     weeks += `<div class="cal-week"><div class="cal-bg">${bg}</div><div class="cal-fg">${nums}${bars}</div></div>`;
   }
   const prev = isoOf(new Date(y, m - 2, 1).getTime()).slice(0, 7), next = isoOf(new Date(y, m, 1).getTime()).slice(0, 7);
-  const inMonth = list.filter(j => j.startDate <= last && j.endDate >= first).sort((a, b) => a.startDate.localeCompare(b.startDate));
   const tabs = `<nav class="seg cal-tabs" aria-label="管理会社で切り替え">
     <a href="${calUrl(mm, "")}" ${!company ? 'aria-current="true"' : ""}>全体（${monthJobs.length}）</a>
     ${cos.map(c => `<a href="${calUrl(mm, c)}" ${company === c ? 'aria-current="true"' : ""}>${esc(c)}（${counts[c] || 0}）</a>`).join("")}</nav>`;
-  const rows = inMonth.map(j => {
-    const who = S.crafts.get(j.assignedTo);
-    return `<a class="row-item" href="#/admin/job/${esc(j.id)}"><span class="row-main"><b>${esc(j.title)}</b>
-      <span class="small">開始 ${fmtDay(j.startDate)}　終了 ${fmtDay(j.endDate)}　${esc(j.pref)}${esc(j.city)}${!company ? `　${esc(coOf(j))}` : ""}</span>
-      <span class="small">${who ? `受注業者：${esc(who.name)}${who.tradeName ? `（${esc(who.tradeName)}）` : ""}` : `未発注　応募 ${cnt[j.id] || 0}件`}</span></span>
-      <span class="pill ${j.status}">${JOB_STATUS[j.status]}</span></a>`;
-  }).join("");
+  // 絞り込みの選択肢（この月にかかる案件から）
+  const m0 = list0.filter(j => j.startDate <= last && j.endDate >= first);
+  const whoOpts = [...new Set(m0.map(j => j.assignedTo).filter(Boolean))].map(u => [u, whoName(u)]).sort((a, b) => a[1].localeCompare(b[1], "ja"));
+  const staffOpts = [...new Set(m0.map(j => j.staff?.name).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+  const sel = (k, opts, all) => `<select data-calf="${k}" aria-label="${all}"><option value="">${all}</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${F[k] === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  const filters = `<div class="cal-filter">
+    <nav class="seg cal-mode" aria-label="表示の切り替え"><a href="#" data-act="cal-mode" data-v="vendor" ${mode === "vendor" ? 'aria-current="true"' : ""}>業者ごと</a><a href="#" data-act="cal-mode" data-v="cal" ${mode !== "vendor" ? 'aria-current="true"' : ""}>カレンダー</a></nav>
+    ${sel("who", [...whoOpts, ["__none", "未手配"]], "業者：すべて")}${sel("staff", staffOpts.map(n => [n, n]), "担当：すべて")}${sel("trade", TRADES.map(t => [t, t]), "工種：すべて")}
+    <label class="toggle"><input type="checkbox" data-calf="none" ${F.none ? "checked" : ""}>未手配だけ</label>
+    ${F.who || F.staff || F.trade || F.none ? `<button type="button" class="textlink" data-act="cal-clear">絞り込みを外す</button>` : ""}<span class="small">${list.filter(j => j.startDate <= last && j.endDate >= first).length}件</span></div>`;
+  // 業者ごと：縦に業者、横にこの月の日付。同じ業者の工事が重なる日は段を分ける
+  const nd = Number(last.slice(8)), days = Array.from({length:nd}, (_, i) => addDays(first, i));
+  const vendorView = () => {
+    const g = new Map(); list.filter(j => j.startDate <= last && j.endDate >= first).forEach(j => { const k = j.assignedTo || "__none"; if(!g.has(k)) g.set(k, []); g.get(k).push(j); });
+    const keys = [...g.keys()].sort((a, b) => (a === "__none") - (b === "__none") || whoName(a).localeCompare(whoName(b), "ja"));
+    const head = `<div class="vg-row vg-head"><div class="vg-name">業者</div>${days.map(d => { const w = new Date(d + "T00:00:00").getDay(); return `<div class="vg-day${w === 0 ? " sun" : w === 6 ? " sat" : ""}${d === today ? " today" : ""}"><b>${Number(d.slice(8))}</b><small>${"日月火水木金土"[w]}</small></div>`; }).join("")}</div>`;
+    const body = keys.map(k => {
+      const js = g.get(k).sort((a, b) => a.startDate.localeCompare(b.startDate) || dayDiff(b.startDate, b.endDate) - dayDiff(a.startDate, a.endDate)), lanes = [];
+      // 工期が短くて名前が入らないときは、バーの右に名前を出す（その分も同じ段を使う）
+      const bars = js.map(j => { const cs = Math.max(1, dayDiff(first, j.startDate) + 1), ce = Math.min(nd, dayDiff(first, j.endDate) + 1);
+        const need = Math.ceil((String(j.title).length * 12 + 14) / 34), out = ce - cs + 1 < need && ce + need <= nd, end = out ? ce + need : ce;
+        let lane = lanes.findIndex(e => e < cs); if(lane < 0){ lane = lanes.length; lanes.push(0); } lanes[lane] = end;
+        const isS = j.startDate >= first, isE = j.endDate <= last, tip = `${esc(j.title)}（${esc(fmtRange(j.startDate, j.endDate))}）`;
+        return `<button type="button" class="cal-bar ${CAL_CLASS[j.status] || ""}${isS ? " s" : ""}${isE ? " e" : ""}" style="grid-column:${cs + 1}/${ce + 2};grid-row:${lane + 1}" data-act="cal-job" data-id="${esc(j.id)}" title="${tip}">${out ? "&nbsp;" : `${isS ? "" : "◀ "}${esc(j.title)}`}</button>${out ? `<button type="button" class="vg-lbl" style="grid-column:${ce + 2}/${end + 2};grid-row:${lane + 1}" data-act="cal-job" data-id="${esc(j.id)}" title="${tip}">${esc(j.title)}</button>` : ""}`; }).join("");
+      const bgc = days.map((d, i) => { const w = new Date(d + "T00:00:00").getDay(); return `<div class="vg-bg${w === 0 || w === 6 ? " we" : ""}${d === today ? " today" : ""}" style="grid-column:${i + 2};grid-row:1/${lanes.length + 1}"></div>`; }).join("");
+      return `<div class="vg-row${k === "__none" ? " none" : ""}" style="grid-template-rows:repeat(${lanes.length},auto)"><div class="vg-name" style="grid-row:1/${lanes.length + 1}">${k === "__none" ? "未手配" : esc(whoName(k))}<small>${js.length}件</small></div>${bgc}${bars}</div>`;
+    }).join("");
+    return keys.length ? `<div class="vg-wrap"><div class="vg" style="--nd:${nd}">${head}${body}</div></div>` : `<div class="empty">この月に工期がかかる案件はありません。</div>`;
+  };
   return `<div class="page-head"><div><h1>予定表${company ? `<small class="cal-co">${esc(company)}</small>` : ""}</h1><p class="lead">案件の工期をカレンダーで確認できます。上のタブで全体と管理会社ごとを切り替えられます。案件名を押すと受注業者が表示されます。</p></div></div>
-    ${tabs}
+    ${tabs}${filters}
     <div class="cal-tool"><a class="btn sub" href="${calUrl(prev)}" aria-label="前の月">‹</a><h2>${y}年${m}月</h2><a class="btn sub" href="${calUrl(next)}" aria-label="次の月">›</a>
       ${mm !== today.slice(0, 7) ? `<a class="textlink" href="${calUrl(today.slice(0, 7))}">今月へ</a>` : ""}</div>
     <div class="cal-legend"><span class="cal-bar c-open s e">募集中</span><span class="cal-bar c-closed s e">締切</span><span class="cal-bar c-work s e">発注済み・作業中</span><span class="cal-bar c-done s e">作業完了以降</span></div>
-    <div class="cal" role="grid" aria-label="${y}年${m}月の予定"><div class="cal-head">${"日月火水木金土".split("").map((d, i) => `<div class="${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${d}</div>`).join("")}</div>${weeks}</div>
-    <h2 class="day-head"><b>${m}月の案件${company ? `（${esc(company)}）` : ""}</b>${inMonth.length}件</h2>
-    ${rows ? `<div class="list">${rows}</div>` : `<div class="empty">この月に工期がかかる案件はありません。</div>`}`;
+    ${mode === "vendor" ? vendorView() : `<div class="cal" role="grid" aria-label="${y}年${m}月の予定"><div class="cal-head">${"日月火水木金土".split("").map((d, i) => `<div class="${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${d}</div>`).join("")}</div>${weeks}</div>`}`;
 }
+// 予定表の表示（業者ごと／カレンダー）は、この端末で覚えておく
+function calModeGet(){ if(S.calMode) return S.calMode; try { S.calMode = localStorage.getItem("calMode") || "vendor"; } catch(e) { S.calMode = "vendor"; } return S.calMode; }
+document.addEventListener("change", e => { const t = e.target.closest?.("[data-calf]"); if(!t) return; S.calF ||= {}; S.calF[t.dataset.calf] = t.type === "checkbox" ? t.checked : t.value; route(); });
 function calPopup(j){
   const who = S.crafts.get(j.assignedTo), n = S.cal?.cnt[j.id] || 0;
   const bg = document.createElement("div"); bg.className = "modal-bg";
@@ -6571,7 +6612,7 @@ function lightbox(src, doc){
 
 /* ---------- 操作 ---------- */
 // 画面の中だけで終わる操作（押しても保存しない）。これを押しても集計を読み直さない（重くしないため）
-const LIGHT_ACTS = new Set(["go-back", "mc", "mloc", "dloc", "dpart", "memo-any", "md-add", "md-rm", "cf-add", "memo-rm", "memo-add", "add-item", "rm-item", "mo-add-row", "mo-cloth", "add-price", "add-price-est", "rm-price", "er-sort", "home-scope", "est-unlock", "self-back", "item-self", "lot-self"]);
+const LIGHT_ACTS = new Set(["go-back", "cal-mode", "cal-clear", "mc", "mloc", "dloc", "dpart", "memo-any", "md-add", "md-rm", "cf-add", "memo-rm", "memo-add", "add-item", "rm-item", "mo-add-row", "mo-cloth", "add-price", "add-price-est", "rm-price", "er-sort", "home-scope", "est-unlock", "self-back", "item-self", "lot-self"]);
 const ACTIONS = {
   hub(el){ return caseStep(el); },
   "go-back"(el){ if((S.navDepth || 0) > 1 && history.length > 1){ S.navDepth -= 2; history.back(); } else go(el.getAttribute("href")); },
@@ -6705,6 +6746,8 @@ const ACTIONS = {
     toast(work.length ? `「${key}」を自社でやる工事にしました` : "業者に出す工事がなくなりました。募集を締め切ってください"); route();
   },
   async "rm-item"(el){ const form = el.closest("form"); el.closest(".item-row").remove(); syncItems(form); },
+  "cal-mode"(el){ S.calMode = el.dataset.v; try { localStorage.setItem("calMode", S.calMode); } catch(e) {} route(); },
+  "cal-clear"(){ S.calF = {who:"", staff:"", trade:"", none:false}; route(); },
   async "cal-job"(el){ const j = S.cal?.jobs.get(el.dataset.id); if(j) calPopup(j); },
   async "rm-photo"(el){ S.editPhotos.splice(Number(el.dataset.i), 1); $("#photo-edit").innerHTML = editPhotosHtml(); },
   async withdraw(el){
