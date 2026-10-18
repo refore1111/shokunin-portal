@@ -8262,7 +8262,7 @@ Object.assign(ACTIONS, {
     await applyScheduled(true); toast("次回請求日の変更を反映しました"); route();
   },
   async "churn-keep"(){ if(CHURN.t){ await logChurn("kept").catch(e => console.warn(e)); } CHURN = {}; toast("今のまま続けます"); location.hash = "#/admin/plan"; },
-  async "co-card"(){ if(stripeLive() && stripeCfg().portal){ openTab(stripeCfg().portal); return; } await ask({title:"カードを変更する", body:"本番では Stripe のカード変更画面（カスタマーポータル）が開きます。領収書のダウンロードもそこからできます。", ok:"閉じる"}); },
+  async "co-card"(){ if(stripeLive() && stripeCfg().portal){ const u = stripeCfg().portal; openTab(`${u}${u.includes("?") ? "&" : "?"}prefilled_email=${encodeURIComponent(S.user?.email || "")}`); return; } await ask({title:"カードを変更する", body:"本番では Stripe のカード変更画面（カスタマーポータル）が開きます。領収書のダウンロードもそこからできます。", ok:"閉じる"}); },
   async "opt-locked"(el){
     const k = el.dataset.k, n = OPTS[k].name, free = !planOf(S.company).price;
     const inc = PLAN_KEYS.filter(p => opCfg().plans[p].incl.includes(k)).map(p => opCfg().plans[p].name).join("・");
