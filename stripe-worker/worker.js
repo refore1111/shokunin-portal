@@ -210,7 +210,9 @@ async function onboard(req, env) {
     const a = await stripe(env, "GET", `accounts/${acct}`);
     if (a.details_submitted) { const l = await stripe(env, "POST", `accounts/${acct}/login_links`, {}); return { url: l.url, done: a.capabilities?.transfers === "active" }; }
   } else {
-    const a = await stripe(env, "POST", "accounts", { type: "express", country: "JP", email: me.email || undefined,
+    // Express 相当（Stripe が本人確認を集め、職人さんは簡易ダッシュボードで入金・振込を見る。手数料と損失は Refore 持ち）
+    const a = await stripe(env, "POST", "accounts", { country: "JP", email: me.email || undefined,
+      controller: { stripe_dashboard: { type: "express" }, fees: { payer: "application" }, losses: { payments: "application" }, requirement_collection: "stripe" },
       capabilities: { transfers: { requested: true } }, business_profile: { name: prof.tradeName || prof.name || undefined, product_description: "内装・クリーニング等の工事" }, metadata: { uid: me.uid } });
     acct = a.id;
     // opdata/connect の、この職人さんの1項目だけを書き換える（ほかの人の登録は消さない）
