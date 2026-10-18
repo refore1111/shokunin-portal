@@ -326,7 +326,7 @@ service cloud.firestore {
         && request.resource.data.fee >= 0 && request.resource.data.total == request.resource.data.amount + request.resource.data.fee;
       allow update: if isOp() || isAdmin()
         // 工務店：「振り込みました」と、発注を取り消したときの「返金が必要」
-        || (inCo(resource.data) && resource.data.status == 'waiting' && request.resource.data.status == 'reported' && onlyKeys(['status', 'reportedAt']))
+        || (inCo(resource.data) && resource.data.status == 'waiting' && request.resource.data.status == 'reported' && onlyKeys(['status', 'reportedAt', 'method']))
         || (inCo(resource.data) && resource.data.status == 'held' && request.resource.data.status == 'refund' && onlyKeys(['status', 'refundAt']))
         // 職人：請求書を出したら「職人の請求あり」
         || (isApproved() && resource.data.craftsmanId == request.auth.uid && resource.data.status == 'held'
