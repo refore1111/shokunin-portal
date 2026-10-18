@@ -2653,6 +2653,8 @@ const isCoRole = r => r === "admin" || r === "co";
 const tenant = () => S.profile?.role === "co" && !!S.cid && S.cid !== COMPANY_ID;
 const coId = () => tenant() ? S.cid : COMPANY_ID;
 const isRefJob = x => !x?.companyId || x.companyId === COMPANY_ID;
+// 工事代金を Refore が預かって職人に払う（前の仕組み）案件か。これからの全体公開の案件は、工事代金は工務店から職人へ直接、Refore には手数料だけ
+const viaRef = j => !!j?.pay && !!j.viaRef;
 const scopeList = list => { const r = S.profile?.role; if(r === "admin") return list.filter(isRefJob); if(r === "co") return list.filter(x => x.companyId === S.cid); return list; };
 const meName = () => tenant() ? (S.company?.name || "工務店") : "Refore";
 const coNameOf = j => isRefJob(j) ? "Refore" : (j?.coName || "工務店");
@@ -2748,7 +2750,7 @@ function itemsPeek(j){
   return `<ul class="peek">${it.slice(0, 3).map(i => `<li><span>${i.loc ? esc(i.loc) + "　" : ""}${esc(i.name)}</span><em>${fmtQty(i.qty)}${esc(i.unit)}</em></li>`).join("")}${it.length > 3 ? `<li class="more">ほか${it.length - 3}件</li>` : ""}</ul>`;
 }
 function jobCard(j, {href, stampHtml = "", foot = "", showPrice = false} = {}){
-  return `<a class="job" href="${href}">${myRole() !== "admin" && !isRefJob(j) ? `<span class="co-from">掲載元：${esc(coNameOf(j))}${j.pay ? `<em>代金は先払い制</em>` : ""}</span>` : ""}
+  return `<a class="job" href="${href}">${myRole() !== "admin" && !isRefJob(j) ? `<span class="co-from">掲載元：${esc(coNameOf(j))}${viaRef(j) ? `<em>代金は先払い制</em>` : ""}</span>` : ""}
     ${j.status === "open" && j.audience === "priority" ? `<span class="aud-tag">${myRole() === "admin" ? "既存業者に先行公開中" : "既存業者さまへ先行公開"}</span>` : ""}
     ${tagsHtml(tradeLabels(j.trades))}
     <h3>${esc(j.title)}</h3>
@@ -3041,7 +3043,7 @@ function estResultHtml(e){
   if(e.jobId) return `<p style="margin:0 0 10px">${stageTag("won")} 工事請書の内容で、業者に発注する案件を作りました。</p><a class="btn sub" href="#/admin/job/${esc(e.jobId)}">案件を開く</a>`;
   if(e.status === "ordered") return `<p style="margin:0 0 12px">${stageTag("won")} 受注しました。上の工事の内容が<b>最終の工事請書</b>です。直したら保存してください。請書の金額 <b>${yenFull(estTotals(e).sub)}</b>（税抜）が収支の請負金額になります${e.estRows?.length ? `（見積は ${yenFull(estTotals({rows:e.estRows}).sub)}）` : ""}。</p>
     <div class="est-btns"><button type="button" class="btn sub" data-act="est-pdf" data-type="ukesho">工事請書PDF</button><button type="button" class="btn" data-act="est-publish">この請書で業者に公開</button><button type="button" class="btn sub" data-act="est-job">直してから公開</button><button type="button" class="btn sub" data-act="est-self">自社施工で完了</button><button type="button" class="textlink" data-act="est-unorder">受注待ちに戻す</button></div>
-    <ul class="small est-btn-help"><li><b>この請書で業者に公開</b>：請書の工事を実行単価で案件にして、「既存業者のみ」か「全体」を選んで公開します。${tenant() ? `全体に公開した案件は、普通の案件と同じく、発注するときに工事代金と運営手数料（${Math.round(opFee() * 100)}%）をReforeへ先払いします（既存業者のみは手数料なし）。` : ""}</li><li><b>直してから公開</b>：案件を下書きで作り、編集画面を開きます。</li><li><b>自社施工で完了</b>：業者には公開せず、自分たちで施工して完了にします（修繕など）。請書の金額が売上になり、管理会社への請求に入ります。材料費などは収支の✎で入れられます。</li></ul>`;
+    <ul class="small est-btn-help"><li><b>この請書で業者に公開</b>：請書の工事を実行単価で案件にして、「既存業者のみ」か「全体」を選んで公開します。${tenant() ? `全体に公開した案件は、発注するときに運営手数料（工事代金の${Math.round(opFee() * 100)}%）をReforeへ先払いします。工事代金は職人さんに直接お支払いください（既存業者のみは手数料なし）。` : ""}</li><li><b>直してから公開</b>：案件を下書きで作り、編集画面を開きます。</li><li><b>自社施工で完了</b>：業者には公開せず、自分たちで施工して完了にします（修繕など）。請書の金額が売上になり、管理会社への請求に入ります。材料費などは収支の✎で入れられます。</li></ul>`;
   if(e.status === "self") return `<p style="margin:0">${stageTag("done")} 自社施工で完了しました（完了日 ${fmtDate(e.selfDoneAt ? isoOf(e.selfDoneAt) : "")}）。請書の金額 <b>${yenFull(estTotals(e).sub)}</b>（税抜）で、管理会社への請求に入ります。</p>
     <div class="est-btns" style="margin-top:10px"><button type="button" class="btn sub" data-act="est-pdf" data-type="invoice">御請求書PDF</button>${e.ledgerId ? `<a class="btn sub" href="#/admin/money/edit/${esc(e.ledgerId)}">材料費などを入れる（収支）</a>` : ""}<button type="button" class="textlink" data-act="est-unself">受注（請書）に戻す</button></div>`;
   if(e.status === "tachiai") return `<p style="margin:0">${stageTag("tachiai")} 工事はなく、立会費 ${yenFull(itemsTotal((e.billRows || []).map(r => ({qty:r.qty, unitPrice:r.price}))))}（税抜）で完了にしました。御請求書は立会費だけで出ます。</p>
@@ -4086,7 +4088,7 @@ async function viewWorkDetail(id){
       <button class="btn sub block">メールを送ったので「報告済み」にする</button></form>`
       : `<div class="note" style="margin:0 0 12px">完了報告を受け付けました。${esc(coNameOf(job))}が内容を確認しています。</div>${photoUploadOn() && rs[0]?.status === "submitted" ? photoReportForm(id, false, true, rs[0].id) : ""}`;
   } else if(job.status === "completed"){
-    step = `<div class="note" style="margin:0">${isRefJob(job) ? "Reforeが完了を確認しました。月末に「請求書」タブから、その月の案件をまとめて請求してください。" : job.pay ? `${esc(coNameOf(job))}が完了を確認しました。「請求書」タブから、この案件の請求書をReforeに発行してください（代金は先払い済みです）。` : `${esc(coNameOf(job))}が完了を確認しました。${esc(coNameOf(job))}の締め日で、「請求書」タブからまとめて請求してください。`}</div>`;
+    step = `<div class="note" style="margin:0">${isRefJob(job) ? "Reforeが完了を確認しました。月末に「請求書」タブから、その月の案件をまとめて請求してください。" : viaRef(job) ? `${esc(coNameOf(job))}が完了を確認しました。「請求書」タブから、この案件の請求書をReforeに発行してください（代金は先払い済みです）。` : `${esc(coNameOf(job))}が完了を確認しました。${esc(coNameOf(job))}の締め日で、「請求書」タブからまとめて請求してください。`}</div>`;
   } else if(job.status === "paid"){
     step = `<div class="note" style="margin:0">お支払いが完了しました。</div>`;
   }
@@ -4516,7 +4518,7 @@ async function viewAdminInvoices(ym){
   const jobMap = new Map(jobs.map(j => [j.id, j]));
   const diffOf = i => i.lines.filter(l => jobMap.get(l.jobId) && Number(jobMap.get(l.jobId).price) !== Number(l.amount));
   const waiting = new Map(), inInv = new Set(invs.flatMap(i => (i.lines || []).map(l => l.jobId)));
-  jobs.filter(j => j.assignedTo && (T ? !j.pay && ["completed", "paid"].includes(j.status) && periodOf(j.completedAt, j.coClose) === ym : invoiceable(j) && jobMonth(j) === ym)).forEach(j => { if(T ? !inInv.has(j.id) : !byC.has(j.assignedTo)) waiting.set(j.assignedTo, (waiting.get(j.assignedTo) || 0) + 1); });
+  jobs.filter(j => j.assignedTo && (T ? !viaRef(j) && ["completed", "paid"].includes(j.status) && periodOf(j.completedAt, j.coClose) === ym : invoiceable(j) && jobMonth(j) === ym)).forEach(j => { if(T ? !inInv.has(j.id) : !byC.has(j.assignedTo)) waiting.set(j.assignedTo, (waiting.get(j.assignedTo) || 0) + 1); });
   const sum = invs.reduce((a, i) => a + i.total, 0), unpaid = invs.filter(i => i.status === "issued").reduce((a, i) => a + i.total, 0);
   const rows = invs.sort((a, b) => a.status.localeCompare(b.status)).map(i => `<div class="row-item">
       <span class="row-main"><b>${esc(i.from.name)}${i.from.tradeName ? ` <span class="small">${esc(i.from.tradeName)}</span>` : ""}</b>
@@ -6232,7 +6234,7 @@ const ACTIONS = {
   // 既存業者だけに先行公開していた案件を、全体に公開する
   async "aud-all"(el){
     const id = el.dataset.id;
-    if(!await ask({title:"全体に公開しますか？", body:"既存業者以外の協力業者にも、この案件が表示されて応募できるようになります。工種と対応エリアが合う業者には、新着案件のメールでお知らせします。" + (tenant() ? `\n\n全体に公開した案件は、発注するときに工事代金と運営手数料（${Math.round(opFee() * 100)}%）をReforeへ先払いします。` : ""), ok:"全体に公開する"})) return;
+    if(!await ask({title:"全体に公開しますか？", body:"既存業者以外の協力業者にも、この案件が表示されて応募できるようになります。工種と対応エリアが合う業者には、新着案件のメールでお知らせします。" + (tenant() ? `\n\n全体に公開した案件は、発注するときに運営手数料（工事代金の${Math.round(opFee() * 100)}%）をReforeへ先払いします。工事代金は職人さんに直接お支払いください。` : ""), ok:"全体に公開する"})) return;
     await api().saveJob(id, {audience:"all", autoAllAt:null});
     const j = await api().getJob(id); notifyNewJob(id, j);
     toast("全体に公開しました"); route();
@@ -6630,7 +6632,7 @@ const ACTIONS = {
     if(el.dataset.aud) await api().saveJob(id, {audience:el.dataset.aud, autoAllAt:null});
     await api().setJobStatus(id, status);
     if(status === "open" && el.dataset.aud){ const j = await api().getJob(id); if(j && !j.parentId) notifyNewJob(id, j); }
-    if(status === "completed"){ const j = await api().getJob(id); if(j?.assignedTo) notifyMail(id, "完了確認されました", `${meName()}が作業の完了を確認しました。${!tenant() ? "月末に「請求書」タブからまとめて請求してください。" : j.pay ? "「請求書」タブから、この案件の請求書をReforeに発行してください。" : "締め日に「請求書」タブからまとめて請求してください。"}`, {to:j.assignedTo}); }
+    if(status === "completed"){ const j = await api().getJob(id); if(j?.assignedTo) notifyMail(id, "完了確認されました", `${meName()}が作業の完了を確認しました。${!tenant() ? "月末に「請求書」タブからまとめて請求してください。" : viaRef(j) ? "「請求書」タブから、この案件の請求書をReforeに発行してください。" : "締め日に「請求書」タブからまとめて請求してください。"}`, {to:j.assignedTo}); }
     toast({open:"公開しました", closed:"締め切りました", completed:"完了確認にしました。業者さんの評価をつけてください"}[status]); route();
   },
   async assign(el){ S.ldCache = null;
@@ -7549,7 +7551,7 @@ document.addEventListener("change", e => {
 /* =========================================================
    工務店（マルチテナント）・運営・職人のメンバー
    ・Refore（COMPANY_ID）は今までどおり。ほかの工務店は companies/{cid} と、案件などの companyId で分ける
-   ・工務店が「全体に公開」した案件は、発注するときに工事代金（税込）＋運営手数料をReforeへ先払い（銀行振込・運営が入金を確認して発注確定）
+   ・工務店が「全体に公開」した案件は、発注するときに運営手数料（工事代金の10%）だけをReforeへ先払い（運営が入金を確認して発注確定）。工事代金は工務店の締め日で、職人さんから工務店へ直接請求
    ・「既存業者のみ」の案件は先払いなし。職人さんは工務店の締め日で、その工務店へまとめて請求
    ・月額（プラン・メンバー・収支オプション・追加枠）は、運営が毎月請求書を発行
    ========================================================= */
@@ -7665,6 +7667,7 @@ const trialNote = c => { const d = trialLeft(c); return d === null ? "" : d > 0 
 const CLOSE_DAYS = [[10, "10日"], [15, "15日"], [20, "20日"], [25, "25日"], [0, "末日"]];
 const coCloseLabel = d => (CLOSE_DAYS.find(x => x[0] === Number(d || 0)) || CLOSE_DAYS[4])[1];
 const CO_STATUS = {active:"利用中", stopped:"利用停止"};
+const payLabel = p => p.feeOnly && ["held", "billed", "sent"].includes(p.status) ? "手数料の入金確認済み" : PAY_STATUS[p.status] || p.status;
 const PAY_STATUS = {waiting:"振込待ち", reported:"振込の連絡あり（入金確認待ち）", held:"入金確認済み（お預かり中）", billed:"職人の請求あり", sent:"職人に支払済み", refund:"返金が必要", refunded:"返金済み"};
 
 // 職人さんの公開用の登録情報（工務店・運営だけが見る。振込先・住所は入れない。メールはお知らせの送り先）
@@ -7697,7 +7700,7 @@ function coInfo(){
   const c = S.company || {}, i = c.info || {};
   return {name:c.name || "", zip:i.zip || "", address:i.address || "", address2:i.address2 || "", tel:i.tel || "", fax:i.fax || "", email:i.email || c.notifyEmail || "", invoiceNumber:i.invoiceNumber || ""};
 }
-const coTermsOf = j => j.pay ? "代金は工務店からReforeへ先払い済みです。完了確認のあと、株式会社Refore宛てに本件の請求書を発行してください。"
+const coTermsOf = j => viaRef(j) ? "代金は工務店からReforeへ先払い済みです。完了確認のあと、株式会社Refore宛てに本件の請求書を発行してください。"
   : `締め日（毎月${coCloseLabel(S.company?.closeDay)}）でまとめて${S.company?.name || "工務店"}宛てにご請求ください（翌月末日払い）。`;
 // 今月の投稿数（プランの上限＋追加枠まで）。初めて公開するときに数える
 async function coPostGuard(id, x){
@@ -7724,12 +7727,12 @@ function coNavExtra(){
 }
 function coPostNote(){
   const c = S.company || {}, p = planOf(c);
-  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${isTrial(c) ? esc(trialNote(c)) + "。" : ""}${esc(p.name)}：今月 ${p.limit}件まで公開できます${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。既存業者のみの案件は先払い・運営手数料はありません。</p>`;
+  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${isTrial(c) ? esc(trialNote(c)) + "。" : ""}${esc(p.name)}：今月 ${p.limit}件まで公開できます${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。全体に公開した案件は発注時に運営手数料（${Math.round(opFee() * 100)}%）をReforeへ先払い、工事代金は職人さんへ直接お支払いです。既存業者のみの案件は手数料はありません。</p>`;
 }
 // 職人さんが見る工務店の案件の帯（掲載元・代金・請求先）
 function coJobBanner(j){
   if(!j || isRefJob(j)) return "";
-  return `<div class="co-banner"><b>掲載元：${esc(coNameOf(j))}</b>${j.pay ? `<span class="pill approved">代金は先払い制で安心</span><span class="small">完了確認のあと、この案件の請求書をReforeに発行します</span>` : `<span class="pill pending">既存業者として受ける案件</span><span class="small">${esc(coNameOf(j))}の締め日で、まとめて${esc(coNameOf(j))}に請求します</span>`}</div>`;
+  return `<div class="co-banner"><b>掲載元：${esc(coNameOf(j))}</b>${viaRef(j) ? `<span class="pill approved">代金は先払い制で安心</span><span class="small">完了確認のあと、この案件の請求書をReforeに発行します</span>` : `<span class="pill pending">${j.pay ? "全体公開の案件" : "既存業者として受ける案件"}</span><span class="small">${esc(coNameOf(j))}の締め日で、まとめて${esc(coNameOf(j))}に請求します</span>`}</div>`;
 }
 
 /* ---------- 先払い（工務店 → Refore、銀行振込） ---------- */
@@ -7740,7 +7743,7 @@ async function assignOrPrepay(jobId, uid, order, extra = {}){
     const amt = calcAmount(j.price, taxModeOf(j)), fee = Math.round(amt.total * opFee());
     const c = S.crafts.get(uid) || {};
     const pay = {id:`${jobId}_${Date.now().toString(36)}`, jobId, companyId:S.cid, coName:S.company?.name || "", craftsmanId:uid, craftsmanName:c.tradeName || c.name || "",
-      jobTitle:j.title || "", jobNo:j.jobNo || "", amount:amt.total, base:amt.base, fee, total:amt.total + fee, status:"waiting", createdAt:Date.now(), month:curMonth()};
+      jobTitle:j.title || "", jobNo:j.jobNo || "", amount:amt.total, base:amt.base, fee, total:viaRef(j) ? amt.total + fee : fee, feeOnly:!viaRef(j), status:"waiting", createdAt:Date.now(), month:curMonth()};
     await api().requestPrepay(jobId, uid, order, pay);
     return "prepay";
   }
@@ -7751,10 +7754,13 @@ async function prepayPanel(job){
   const p = job.payId ? await api().getPayment(job.payId) : null;
   if(!p) return `<section class="panel"><h2>先払い待ち</h2><p class="small">支払いの情報が見つかりません。発注先を選び直してください。</p><button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></section>`;
   const c = S.crafts.get(p.craftsmanId), bank = opCfg().bank;
-  return `<section class="panel prepay"><h2>先払いをお願いします</h2>
-    <p style="margin:0 0 10px">${esc(c?.tradeName || c?.name || p.craftsmanName)}さんを発注先に選びました。下の金額をReforeの口座に振り込んでください。運営が入金を確認すると発注が確定し、職人さんに現場情報と発注書が届きます。</p>
-    <div class="sumbox"><span>職人への工事代金（税込）</span><span>${yenFull(p.amount)}</span><span>運営手数料（${Math.round(opFee() * 100)}%）</span><span>${yenFull(p.fee)}</span><span class="big">お振込金額</span><span class="big">${yenFull(p.total)}</span></div>
-    <dl class="kv"><dt>振込先</dt><dd>${bank ? esc(bank) : "（運営が振込先を登録すると、ここに表示されます）"}</dd><dt>振込名義</dt><dd>${esc(S.company?.name || "")}（工事番号 ${esc(job.jobNo || job.id.slice(-6))}）</dd><dt>状態</dt><dd><span class="pill ${p.status === "reported" ? "approved" : "pending"}">${esc(PAY_STATUS[p.status] || p.status)}</span>${p.reportedAt ? `　${fmtTime(p.reportedAt)} に振込の連絡` : ""}</dd></dl>
+  const who = esc(c?.tradeName || c?.name || p.craftsmanName);
+  return `<section class="panel prepay"><h2>${p.feeOnly ? "運営手数料の先払いをお願いします" : "先払いをお願いします"}</h2>
+    ${p.feeOnly ? `<p style="margin:0 0 10px">${who}さんを発注先に選びました。運営手数料をReforeにお支払いください。運営が入金を確認すると発注が確定し、職人さんに現場情報と発注書が届きます。<br><b>工事代金は職人さんに直接お支払いください</b>（職人さんから締め日に${esc(S.company?.name || "")}宛てに請求書が届きます）。</p>
+    <div class="sumbox"><span>工事代金（税込）<small>職人さんへ直接</small></span><span>${yenFull(p.amount)}</span><span class="big">運営手数料（${Math.round(opFee() * 100)}%）</span><span class="big">${yenFull(p.fee)}</span></div>`
+    : `<p style="margin:0 0 10px">${who}さんを発注先に選びました。下の金額をReforeの口座に振り込んでください。運営が入金を確認すると発注が確定し、職人さんに現場情報と発注書が届きます。</p>
+    <div class="sumbox"><span>職人への工事代金（税込）</span><span>${yenFull(p.amount)}</span><span>運営手数料（${Math.round(opFee() * 100)}%）</span><span>${yenFull(p.fee)}</span><span class="big">お振込金額</span><span class="big">${yenFull(p.total)}</span></div>`}
+    <dl class="kv"><dt>振込先</dt><dd>${bank ? esc(bank) : "（運営が振込先を登録すると、ここに表示されます）"}</dd><dt>振込名義</dt><dd>${esc(S.company?.name || "")}（工事番号 ${esc(job.jobNo || job.id.slice(-6))}）</dd><dt>状態</dt><dd><span class="pill ${p.status === "reported" ? "approved" : "pending"}">${esc(payLabel(p))}</span>${p.reportedAt ? `　${fmtTime(p.reportedAt)} に振込の連絡` : ""}</dd></dl>
     ${p.status === "waiting" && SUBSCRIPTION_ON && stripeCfg().prepay ? `<div class="note" style="margin-top:10px"><b>カードでも払えます（Stripe）</b><br><span class="small">Stripe の画面で金額の欄に <b>${yenFull(p.total)}</b> を入れてお支払いください。運営が入金を確認すると発注が確定します。</span>
       <div class="row" style="margin-top:8px"><button class="btn" data-act="pp-stripe" data-id="${esc(p.id)}">カードで払う（${yenFull(p.total)}）</button></div></div>` : ""}
     <div class="row" style="margin-top:10px">${p.status === "waiting" ? `<button class="btn ${SUBSCRIPTION_ON && stripeCfg().prepay ? "sub" : ""}" data-act="pp-reported" data-id="${esc(p.id)}">振り込みました（運営に知らせる）</button>` : ""}<button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></div>
@@ -7767,7 +7773,7 @@ function feeReceiptHtml(p){
     <div class="total"><span>金額（税込）</span><strong>${yenFull(p.fee)}</strong></div>
     <table class="t"><tr><th>但し書き</th><td>運営手数料として（${esc(p.jobTitle)}${p.jobNo ? `　工事番号 ${esc(p.jobNo)}` : ""}）</td></tr>
       <tr><th>内訳</th><td>工事代金（税込）${yenFull(p.amount)} × ${Math.round(opFee() * 100)}%</td></tr>
-      <tr><th>お預かりした工事代金</th><td>${yenFull(p.amount)}（職人さんへの支払いに充てます）</td></tr></table>
+      ${p.feeOnly ? "" : `<tr><th>お預かりした工事代金</th><td>${yenFull(p.amount)}（職人さんへの支払いに充てます）</td></tr>`}</table>
     <p style="margin:12px 0 0">上記正に領収いたしました。</p><div class="foot">この領収書は GENPUKU Pro 協力業者ポータルから発行しています。</div></div>`;
 }
 // 工務店の「請求書」画面の上：締め日と、先払いの一覧
@@ -7776,10 +7782,10 @@ async function coInvoiceHead(){
   return `<section class="panel"><h2>締め日 <small>既存業者のみの案件の請求</small></h2>
     <div class="row"><label class="field" style="min-width:200px;margin:0"><span>職人さんからの請求の締め日</span><select data-coclose ${coAdmin() ? "" : "disabled"}>${CLOSE_DAYS.map(([d, l]) => `<option value="${d}" ${d === Number(c.closeDay || 0) ? "selected" : ""}>毎月${l}</option>`).join("")}</select></label>
     <span class="small">締め日までに完了を確認した案件が、その月の請求書にまとまります。下の月は「締め日の月」です。</span></div></section>
-    <section class="panel"><h2>先払い（ポータル案件） <small>工事代金＋運営手数料をReforeへ</small></h2>
-    ${pays.length ? pays.map(p => `<div class="doc-row"><span class="row-main"><b>${esc(p.jobTitle)}</b><span class="small">${esc(p.craftsmanName)}　${yenFull(p.total)}（うち手数料 ${yenFull(p.fee)}）　${fmtTime(p.createdAt)}</span></span>
-      <span class="row"><span class="pill ${["held", "billed", "sent", "refunded"].includes(p.status) ? "approved" : "pending"}">${esc(PAY_STATUS[p.status] || p.status)}</span>${p.confirmedAt ? `<button class="btn sub" data-act="pp-receipt" data-id="${esc(p.id)}">手数料の領収書</button>` : `<a class="btn sub" href="#/admin/job/${esc(p.jobId)}">案件を開く</a>`}</span></div>`).join("") : `<p class="small" style="margin:0">まだありません。全体に公開した案件で発注先を選ぶと、ここに並びます。</p>`}
-    <p class="small" style="margin:8px 0 0">ポータル案件の職人さんへの支払いはReforeが行います（職人さんはReforeに請求します）。</p></section>`;
+    <section class="panel"><h2>運営手数料の先払い（全体公開の案件） <small>手数料をReforeへ・工事代金は職人さんへ直接</small></h2>
+    ${pays.length ? pays.map(p => `<div class="doc-row"><span class="row-main"><b>${esc(p.jobTitle)}</b><span class="small">${esc(p.craftsmanName)}　${p.feeOnly ? `手数料 ${yenFull(p.fee)}（工事代金 ${yenFull(p.amount)} の${Math.round(opFee() * 100)}%）` : `${yenFull(p.total)}（うち手数料 ${yenFull(p.fee)}）`}　${fmtTime(p.createdAt)}</span></span>
+      <span class="row"><span class="pill ${["held", "billed", "sent", "refunded"].includes(p.status) ? "approved" : "pending"}">${esc(payLabel(p))}</span>${p.confirmedAt ? `<button class="btn sub" data-act="pp-receipt" data-id="${esc(p.id)}">手数料の領収書</button>` : `<a class="btn sub" href="#/admin/job/${esc(p.jobId)}">案件を開く</a>`}</span></div>`).join("") : `<p class="small" style="margin:0">まだありません。全体に公開した案件で発注先を選ぶと、ここに並びます。</p>`}
+    <p class="small" style="margin:8px 0 0">全体公開の案件も、工事代金は締め日に職人さんから届く請求書で、職人さんへ直接お支払いください。</p></section>`;
 }
 async function coSetPriority(uid, on){
   const list = new Set(S.company?.priority || []); on ? list.add(uid) : list.delete(uid);
@@ -7989,11 +7995,11 @@ async function craftCoInvoices(jobs){
   const mine = jobs.filter(j => !isRefJob(j) && ["completed", "paid"].includes(j.status));
   if(!mine.length) return "";
   const uid = S.user.uid, invs = await api().listInvoices({craftsmanId:uid}).catch(() => []), byId = new Map(invs.map(v => [v.id, v]));
-  const each = mine.filter(j => j.pay).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  const each = mine.filter(viaRef).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   // 工務店宛て（既存業者として受けた案件）：発行済みの請求書に入っていない案件を、工務店ごとに並べる
   const coInvs = invs.filter(v => v.type === "co"), billedBy = new Map();
   coInvs.forEach(v => (v.lines || []).forEach(l => billedBy.set(l.jobId, v)));
-  const byCo = {}; mine.filter(j => !j.pay).forEach(j => (byCo[j.companyId] ||= []).push(j));
+  const byCo = {}; mine.filter(j => !viaRef(j)).forEach(j => (byCo[j.companyId] ||= []).push(j));
   const st = v => v?.status === "paid" ? `<span class="pill approved">支払済み</span>` : v ? `<span class="pill pending">発行済み・支払待ち</span>` : `<span class="pill withdrawn">未発行</span>`;
   const amt = j => { const b = Number(j.price) || 0; return b + Math.floor(b * TAX_RATE); };
   const coSec = ([cid, js]) => {
@@ -8014,7 +8020,7 @@ async function craftCoInvoices(jobs){
     ${each.length ? `<section class="panel"><h2>ポータル案件 <small>案件ごとに株式会社Refore宛て（代金は先払い済み）</small></h2>
       ${each.map(j => { const v = byId.get(`${uid}_j_${j.id}`), a = calcAmount(j.price, taxModeOf(j)); return `<div class="doc-row"><span class="row-main"><b>${esc(j.title)}</b><span class="small">掲載元：${esc(coNameOf(j))}　完了確認 ${fmtDay(isoOf(j.completedAt || Date.now()))}　${yenFull(a.total)}（税込）</span></span>
         <span class="row">${st(v)}${v ? `<button class="btn sub" data-act="inv-pdf" data-id="${esc(v.id)}">PDF</button>` : `<button class="btn" data-act="civ-job" data-job="${esc(j.id)}">請求書を発行</button>`}</span></div>`; }).join("")}</section>` : ""}
-    ${Object.keys(byCo).length ? `<h3 style="margin:16px 0 8px;font-size:15px">既存業者として受けた案件 <span class="small">工務店宛て</span></h3>${Object.entries(byCo).map(coSec).join("")}` : ""}`;
+    ${Object.keys(byCo).length ? `<h3 style="margin:16px 0 8px;font-size:15px">工務店から受けた案件 <span class="small">工務店宛て（全体公開の案件もこちら）</span></h3>${Object.entries(byCo).map(coSec).join("")}` : ""}`;
 }
 document.addEventListener("change", e => {
   const t = e.target;
@@ -8099,7 +8105,7 @@ async function viewOpHome(cos, pays){
   const monthly = act.map(c => coMonthly(c, mem.filter(m => m.companyId === c.id && !m.owner).length, ym));
   const sum = k => monthly.reduce((a, m) => a + m[k], 0);
   const feeNow = pays.filter(p => p.confirmedAt && isoOf(p.confirmedAt).slice(0, 7) === ym && !["refund", "refunded"].includes(p.status)).reduce((a, p) => a + p.fee, 0);
-  const held = pays.filter(p => ["held", "billed"].includes(p.status)).reduce((a, p) => a + p.amount, 0);
+  const held = pays.filter(p => !p.feeOnly && ["held", "billed"].includes(p.status)).reduce((a, p) => a + p.amount, 0);
   const wait = pays.filter(p => ["waiting", "reported"].includes(p.status)), refund = pays.filter(p => p.status === "refund");
   return `<div class="page-head"><div><h1>今月の収入</h1><p class="lead">運営の画面です。全工務店の契約・入金・手数料が見えます。各社の見積や収支の中身は運営にも見えません。</p></div></div>
     <div class="kpis"><div class="panel kpi"><span class="l">運営手数料（${Math.round(opFee() * 100)}%）</span><span class="v num">${yenFull(feeNow)}</span><span class="s">今月入金を確認した先払いの分</span></div>
@@ -8118,8 +8124,8 @@ async function viewOpHome(cos, pays){
 function opPayRow(p){
   const btn = ["waiting", "reported"].includes(p.status) ? `<button class="btn" data-act="op-confirm" data-id="${esc(p.id)}">入金を確認して発注を確定</button>`
     : p.status === "refund" ? `<button class="btn sub" data-act="op-refunded" data-id="${esc(p.id)}">返金した</button>` : "";
-  return `<div class="doc-row"><span class="row-main"><b>${esc(p.coName)}　${yenFull(p.total)}</b><span class="small">${esc(p.jobTitle)}　職人：${esc(p.craftsmanName)}　工事代金 ${yenFull(p.amount)}＋手数料 ${yenFull(p.fee)}</span><span class="small">${fmtTime(p.createdAt)} 選定${p.reportedAt ? `　${fmtTime(p.reportedAt)} ${p.method === "stripe" ? "<b>カード（Stripe）で支払い</b>：Stripe の「支払い」で金額を確かめてください" : "振込の連絡"}` : ""}${p.confirmedAt ? `　${fmtTime(p.confirmedAt)} 入金確認` : ""}</span></span>
-    <span class="row"><span class="pill ${["held", "billed", "sent", "refunded"].includes(p.status) ? "approved" : "pending"}">${esc(PAY_STATUS[p.status] || p.status)}</span>${btn}</span></div>`;
+  return `<div class="doc-row"><span class="row-main"><b>${esc(p.coName)}　${yenFull(p.total)}</b><span class="small">${esc(p.jobTitle)}　職人：${esc(p.craftsmanName)}　${p.feeOnly ? `手数料のみ（工事代金 ${yenFull(p.amount)} は工務店から職人へ直接）` : `工事代金 ${yenFull(p.amount)}＋手数料 ${yenFull(p.fee)}`}</span><span class="small">${fmtTime(p.createdAt)} 選定${p.reportedAt ? `　${fmtTime(p.reportedAt)} ${p.method === "stripe" ? "<b>カード（Stripe）で支払い</b>：Stripe の「支払い」で金額を確かめてください" : "振込の連絡"}` : ""}${p.confirmedAt ? `　${fmtTime(p.confirmedAt)} 入金確認` : ""}</span></span>
+    <span class="row"><span class="pill ${["held", "billed", "sent", "refunded"].includes(p.status) ? "approved" : "pending"}">${esc(payLabel(p))}</span>${btn}</span></div>`;
 }
 function viewOpCos(cos){
   const ym = curMonth(), mem = S.opUsers.filter(u => u.role === "co" && u.status !== "suspended");
@@ -8153,8 +8159,9 @@ async function viewOpCompany(cid){
 function viewOpPays(pays){
   const g = s => pays.filter(p => s.includes(p.status)).sort((a, b) => b.createdAt - a.createdAt);
   const sec = (t, l) => l.length ? `<section class="panel"><h2>${t} <small>${l.length}件</small></h2>${l.map(opPayRow).join("")}</section>` : "";
-  return `<h1>入金</h1><p class="lead">工務店が「全体に公開」した案件の先払いです。振込を確認したら「入金を確認して発注を確定」を押すと、職人さんに発注書と現場情報が届きます。振込先は「設定」で登録します。</p>
-    ${sec("入金の確認待ち", g(["waiting", "reported"]))}${sec("返金が必要", g(["refund"]))}${sec("お預かり中・職人の請求あり", g(["held", "billed"]))}${sec("職人に支払済み・返金済み", g(["sent", "refunded"]))}
+  const fo = l => l.filter(p => p.feeOnly), old = l => l.filter(p => !p.feeOnly);
+  return `<h1>入金</h1><p class="lead">工務店が「全体に公開」した案件の運営手数料（${Math.round(opFee() * 100)}%）の先払いです。入金を確認したら「入金を確認して発注を確定」を押すと、職人さんに発注書と現場情報が届きます。工事代金は工務店から職人さんへ直接支払われます。振込先は「設定」で登録します。</p>
+    ${sec("入金の確認待ち", g(["waiting", "reported"]))}${sec("返金が必要", g(["refund"]))}${sec("手数料の入金確認済み", fo(g(["held", "billed", "sent"])))}${sec("お預かり中・職人の請求あり（前の仕組みの案件）", old(g(["held", "billed"])))}${sec("職人に支払済み・返金済み", [...old(g(["sent"])), ...g(["refunded"])])}
     ${pays.length ? "" : `<div class="empty">まだありません。</div>`}`;
 }
 async function viewOpInvs(){
@@ -8213,7 +8220,7 @@ Object.assign(ACTIONS, {
     const url = stripeCfg().prepay; if(!url) throw new Error("Stripe の先払い用の支払いリンクがまだ設定されていません");
     const q = new URLSearchParams({client_reference_id:`${S.cid}__pp__${String(p.id).replace(/[^A-Za-z0-9_-]/g, "")}`, prefilled_email:S.user?.email || ""});
     const full = `${url}${url.includes("?") ? "&" : "?"}${q}`;
-    if(!await ask({title:`カードで ${yenFull(p.total)} を払います`, body:`Stripe の支払い画面を新しいタブで開きます。\n\n金額の欄に「${p.total}」円を入れてください（工事代金 ${yenFull(p.amount)}＋運営手数料 ${yenFull(p.fee)}）。\n金額がちがうと発注が確定できません。${stripeTest() ? "\n\n【テストモード】カード番号 4242 4242 4242 4242・有効期限は未来の日付・セキュリティコードは好きな3桁。" : ""}`, ok:"支払い画面を開く"})) return;
+    if(!await ask({title:`カードで ${yenFull(p.total)} を払います`, body:`Stripe の支払い画面を新しいタブで開きます。\n\n金額の欄に「${p.total}」円を入れてください（${p.feeOnly ? `運営手数料：工事代金 ${yenFull(p.amount)} の${Math.round(opFee() * 100)}%。工事代金は職人さんへ直接` : `工事代金 ${yenFull(p.amount)}＋運営手数料 ${yenFull(p.fee)}`}）。\n金額がちがうと発注が確定できません。${stripeTest() ? "\n\n【テストモード】カード番号 4242 4242 4242 4242・有効期限は未来の日付・セキュリティコードは好きな3桁。" : ""}`, ok:"支払い画面を開く"})) return;
     openTab(full);
     await api().updatePayment(p.id, {status:"reported", reportedAt:Date.now(), method:"stripe"});
     notifyMail(p.jobId, "先払いをカード（Stripe）で支払いました", `${p.coName}　${yenFull(p.total)}　Stripe で入金を確認してください`, {kind:"op"});
@@ -8302,7 +8309,7 @@ Object.assign(ACTIONS, {
     toast("請求書を発行しました"); route();
   },
   async "civ-co"(el){
-    const [cid, p] = el.dataset.key.split("|"), jobs = (await api().listJobs({assignedTo:S.user.uid})).filter(j => j.companyId === cid && !j.pay && ["completed", "paid"].includes(j.status) && periodOf(j.completedAt, j.coClose) === p);
+    const [cid, p] = el.dataset.key.split("|"), jobs = (await api().listJobs({assignedTo:S.user.uid})).filter(j => j.companyId === cid && !viaRef(j) && ["completed", "paid"].includes(j.status) && periodOf(j.completedAt, j.coClose) === p);
     if(!jobs.length) return;
     const r = await issueCraftInvoice(`${S.user.uid}_${cid}_${p}`, {type:"co", companyId:cid, coName:jobs[0].coName || "", month:p}, jobs, jobs[0].coName || "工務店", periodLabel(p, jobs[0].coClose));
     if(!r) return;
@@ -8312,9 +8319,9 @@ Object.assign(ACTIONS, {
   // 運営
   async "op-confirm"(el){
     const p = await api().getPayment(el.dataset.id);
-    if(!await ask({title:"入金を確認しましたか？", body:`${p.coName}　${yenFull(p.total)}\n「${p.jobTitle}」の発注を確定し、${p.craftsmanName}さんに発注書と現場情報を届けます。`, ok:"入金を確認した"})) return;
+    if(!await ask({title:"入金を確認しましたか？", body:`${p.coName}　${yenFull(p.total)}\n「${p.jobTitle}」の発注を確定し、${p.craftsmanName}さんに発注書と現場情報を届けます。${p.method === "stripe" ? "\nStripe の「支払い」で、この金額が入っているか確かめてください。" : ""}`, ok:"入金を確認した"})) return;
     await api().confirmPrepay(p.id);
-    notifyMail(p.jobId, "発注されました", `「${p.jobTitle}」（${p.coName}）をあなたに発注しました。代金は先払い済みです。ポータルで発注内容と金額を確認して、「承諾する」を押してください。`, {to:p.craftsmanId, kind:"op"});
+    notifyMail(p.jobId, "発注されました", `「${p.jobTitle}」（${p.coName}）をあなたに発注しました。${p.feeOnly ? `工事代金は、完了後に${p.coName}の締め日で${p.coName}宛てにご請求ください。` : "代金は先払い済みです。"}ポータルで発注内容と金額を確認して、「承諾する」を押してください。`, {to:p.craftsmanId, kind:"op"});
     toast("発注を確定しました"); route();
   },
   async "op-refunded"(el){ if(!await ask({title:"返金しましたか？", ok:"返金した"})) return; await api().updatePayment(el.dataset.id, {status:"refunded", refundedAt:Date.now()}); toast("返金済みにしました"); route(); },
