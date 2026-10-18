@@ -5620,6 +5620,9 @@ function memoPreset(row, k, area = 0){
 }
 // チェックから工事の行を作る・直す・消す（行は「その他の工事」に出る。手で直してもよい）。チェックの工事は工種「クリーニング」
 const CK_CAT = "クリーニング";
+// 見積の並び：クリーニングの工事は下に（その下は諸経費・立会費だけ）。ほかは入れた順のまま
+const estTail = r => r.noteRow ? 0 : r.cat === "諸経費" || /諸経費|立会費/.test(r.name || "") ? 2 : r.cat === CK_CAT || tradeGroupOf(tradeOfItem(r)) === "クリーニング" ? 1 : 0;
+const estTailSort = rows => rows.map((r, k) => ({r, k})).sort((a, b) => estTail(a.r) - estTail(b.r) || a.k - b.k).map(x => x.r);
 function memoCheckSync(f){
   const box = f.querySelector("#memo-rows"), wax = f.elements.c_wax?.value || "";
   const wl = f.querySelector('[data-cklabel="waxh"]'); if(wl) wl.textContent = wax === "無" ? "剥離" : "WAX剥離";   // WAX無しなら「剥離」
@@ -5861,7 +5864,7 @@ async function memoCollect(form){
     return {company, toName:isOtherCo(company) ? g("toName") : "", honor:isOtherCo(company) ? (g("honor") || "御中") : "御中", person:g("person"), building:bName, room, name, staff, st, kind0:g("kind") || "原状回復",
       contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", ckText, g("orderNote")].filter(Boolean).join("\n"), checks, kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"),
-      staffObj:staff ? {name:staff, phone:st?.phone || ""} : null, rows:estRows, note:[g("mFree"), dimNote].filter(Boolean).join("\n"), memoHtml:memoSnap(form)};
+      staffObj:staff ? {name:staff, phone:st?.phone || ""} : null, rows:estTailSort(estRows), note:[g("mFree"), dimNote].filter(Boolean).join("\n"), memoHtml:memoSnap(form)};
 }
 // 工事メモの画面をそのまま覚える（入れた値を画面に書き込み、長い一覧は選んだ1つだけにして小さくする）
 function memoSnap(f){
@@ -6909,7 +6912,7 @@ const ACTIONS = {
     S.ldCache = null; toast("提出済み（受注待ち）にしました"); route();
   },
   async "er-sort"(){ const list = $("#er-list"), rank = l => { const i = EST_LOCS.indexOf(l); return i < 0 ? 999 : i; };
-    [...list.children].map((el, k) => ({el, k, l:el.querySelector("[name=e_loc]")?.value.trim() || ""})).sort((a, b) => rank(a.l) - rank(b.l) || a.k - b.k).forEach(x => list.appendChild(x.el)); estSync(list.closest("form")); },
+    [...list.children].map((el, k) => ({el, k, l:el.querySelector("[name=e_loc]")?.value.trim() || "", t:estTail({name:el.querySelector("[name=e_name]")?.value || "", cat:el.dataset.cat || "", noteRow:!el.querySelector("[name=e_loc]")})})).sort((a, b) => a.t - b.t || rank(a.l) - rank(b.l) || a.k - b.k).forEach(x => list.appendChild(x.el)); estSync(list.closest("form")); },
   async "er-bulk"(){
     const r = await estBulkDialog(); if(!r) return;
     const list = $("#er-list");
