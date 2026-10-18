@@ -1506,7 +1506,7 @@ const zaiWord = i => i.zai ? "材工" : i.tema ? "手間のみ" : "";
 const CLOTH_ANY = "材工 白 織物";   // 品番がなんでもいいとき
 const dimFace = (i, k) => i.dims?.[k]?.loc || i.dims?.[k]?.part ? [i.dims[k].loc, i.dims[k].part].filter(Boolean).join(" ") : `${isCF(i.name) ? "床" : /天井/.test(i.name || "") ? "天井" : "壁"}${k + 1}`;
 // クッションフロア：床ごとに 縦×横 を入れると、材料（幅1.82m）を何mで何本切るかを出す（1本ごとに10cmの余り。少なく済む向きで）
-const isCF = name => /クッションフロア|ＣＦ|(^|[^A-Za-z])CF([^A-Za-z]|$)/.test(name || "") && !/未満|撤去|補修|リペア|洗浄|クリーニング|WAX/.test(name || "");
+const isCF = name => /クッションフロア|ＣＦ|(^|[^A-Za-z])CF([^A-Za-z]|$)/.test(name || "") && !/撤去|補修|リペア|洗浄|クリーニング|WAX/.test(name || "");
 const CF_W = 1.82, CF_ADD = 0.1;
 function cfCuts(ds){
   const len = v => Math.ceil(Math.round((v + CF_ADD) * 100) / 10 - 1e-9) / 10, cuts = new Map();
@@ -2780,7 +2780,7 @@ function estDocHtml(e, type, seal, billing = {}){
   if(type !== "est") return estDocHtml0(e, type, seal, billing);
   const key = e.estRows?.length ? "estRows" : "rows", rows = e[key] || [];
   if(!clothDetailRows(rows).length) return estDocHtml0(e, type, seal, billing);
-  const mark = list => (list || []).map(r => r.dims?.length && !r.noteRow && !isCF(r.name) ? {...r, spec:[r.spec, "別紙参照"].filter(Boolean).join("・")} : r);
+  const mark = list => (list || []).map(r => r.dims?.length && !r.noteRow && !isCF(r.name) && isAreaUnit(r.unit) ? {...r, spec:[r.spec, "別紙参照"].filter(Boolean).join("・")} : r);
   const e2 = {...e, [key]:mark(rows), ...(e.baseRows ? {baseRows:mark(e.baseRows)} : {})};
   return `<div class="pdfwrap">${estDocHtml0(e2, type, seal, billing)}${clothDetailHtml({...e, rows})}</div>`;
 }
@@ -2847,7 +2847,7 @@ function estDocHtml0(e, type, seal, billing = {}){
 // 見積書の別紙「クロス張替え詳細」：寸法メモから、箇所ごと・天井/壁ごとに足した㎡と金額
 function clothDetailRows(rows){
   const g = new Map();
-  (rows || []).filter(r => !r.noteRow && !r._del && r.dims?.length && !isCF(r.name)).forEach(r => {
+  (rows || []).filter(r => !r.noteRow && !r._del && r.dims?.length && !isCF(r.name) && isAreaUnit(r.unit)).forEach(r => {
     const nm = String(r.name || ""), base = /天井/.test(nm) && !/壁/.test(nm) ? "天井" : /壁/.test(nm) && !/天井/.test(nm) ? "壁" : "";
     r.dims.forEach(d => { const part = d.part || base, loc = d.loc || r.loc || "", name = `クロス貼替${part ? `(${part})` : ""}${d.acc || r.accent ? "（アクセント）" : ""}`, k = [loc, name, r.price].join("|");
       if(!g.has(k)) g.set(k, {loc, name, qty:0, unit:"㎡", price:r.price}); g.get(k).qty += Number(d.a) || 0; }); });
@@ -5445,6 +5445,7 @@ function memoDimHtml(){
     <span class="md-part"><button type="button" class="mq-b mc on" data-act="dpart" data-v="壁">壁</button><button type="button" class="mq-b mc" data-act="dpart" data-v="天井">天井</button><input type="hidden" name="d_part" value="壁"></span></span><input type="number" name="d_h" min="0" step="0.01" inputmode="decimal" placeholder="高さ" aria-label="高さ（m）"><i>×</i><input type="number" name="d_l" min="0" step="0.01" inputmode="decimal" placeholder="長さ" aria-label="長さ（m）"><span class="md-a">—</span>
     <label class="md-ck"><input type="checkbox" name="d_acc"> アクセント</label><button type="button" class="i-x" data-act="md-rm" aria-label="この面を消す">×</button></div>`;
 }
+const isAreaUnit = u => /^(㎡|m2|m²|平米)$/i.test(String(u || "").trim());
 const isCloth = name => /クロス|壁紙/.test(name || "") && !/クリーニング|襖|洗浄/.test(name || "");
 const r2 = n => Math.round(n * 100) / 100;
 const up1 = n => Math.ceil(r2(n) * 10 - 1e-9) / 10;   // クロスの㎡の合計は、小数点第2位を繰り上げ（例：46.98 → 47.0）
@@ -5472,11 +5473,17 @@ function memoDimCalc(row){
     d.querySelector(".md-a").textContent = h > 0 && l > 0 ? `${r2(h * l)}㎡` : "—"; d.classList.toggle("acc", d.querySelector("[name=d_acc]").checked); });
   row.querySelector(".md-acc").hidden = !acc;
   const cf = isCF(row.querySelector("[name=m_name]").value) ? cfCuts(ds) : null;
-  row.querySelector(".md-sum").innerHTML = ds.length ? `数量 <b>${main}㎡</b>${acc ? `　＋ アクセント <b class="acc">${acc}㎡</b>（別の行になります）` : ""}${cf?.list.length ? `<br>材料 <b>${cf.text}</b>（合計${cf.total}m・幅1.82m・1本ごとに10cm足しています）` : ""}` : "";
-  if(ds.length){ row.querySelector("[name=m_qty]").value = main || ""; const u = row.querySelector("[name=m_unit]"); if(!u.value) u.value = "㎡"; }
-  // クッションフロアの材料単価：切る長さ（m）× 材料の単価 を、㎡あたりにならして入れる（材料費が実際に頼む長さの分になる）
-  const cm = cf?.list.length && main ? (S.materials || []).find(x => x.id === row.dataset.matId) : null;
-  if(cm?.unitPrice && cm.unit !== "㎡"){ const mp = row.querySelector("[name=m_mp]"); if(mp) mp.value = Math.round(cm.unitPrice * cf.total / main); }
+  const area = isAreaUnit(row.querySelector("[name=m_unit]").value || "㎡");
+  row.querySelector(".md-sum").innerHTML = ds.length ? `${area ? "数量" : "面積"} <b>${main}㎡</b>${acc ? `　＋ アクセント <b class="acc">${acc}㎡</b>（別の行になります）` : ""}${cf?.list.length ? `<br>材料 <b>${cf.text}</b>（合計${cf.total}m・幅1.82m・1本ごとに10cm足しています）` : ""}` : "";
+  // 数量に面積を入れるのは㎡の工事だけ。「部分貼替」「3㎡未満」など式の工事は、数量（1式）はそのままで寸法だけ残す（材料の量に使う）
+  if(ds.length){ const u = row.querySelector("[name=m_unit]"), q = row.querySelector("[name=m_qty]"); if(!u.value) u.value = "㎡";
+    if(isAreaUnit(u.value)) q.value = main || ""; else if(!q.value) q.value = 1; }
+  // 材料単価を、実際に頼む量（CFは切る長さ、クロスは面積×1.3）÷ 工事の数量 にならして入れる（式の工事でも材料費が合う）
+  const cm = ds.length && main ? (S.materials || []).find(x => x.id === row.dataset.matId) : null, qn = Number(row.querySelector("[name=m_qty]").value) || 0, mp = row.querySelector("[name=m_mp]");
+  if(cm?.unitPrice && mp && qn){
+    if(cf?.list.length && cm.unit !== "㎡") mp.value = Math.round(cm.unitPrice * cf.total / qn);
+    else if(!area) mp.value = Math.round(cm.unitPrice * (Number(row.dataset.matRate) > 0 ? Number(row.dataset.matRate) : 1) * main / qn);
+  }
 }
 document.addEventListener("input", e => {
   const t = e.target, row = t.closest?.(".memo-row"); if(!row) return;
