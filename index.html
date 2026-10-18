@@ -5789,7 +5789,8 @@ function memoSnap(f){
   f.querySelectorAll("select").forEach(sl => [...sl.options].forEach(o => o.toggleAttribute("selected", o.selected)));
   f.querySelectorAll(".memo-wac, .memo-ac").forEach(b => { b.hidden = true; b.innerHTML = ""; });
   f.querySelectorAll("select[data-lazy]").forEach(sl => { const o = sl.selectedOptions[0]; sl.innerHTML = `<option value="">${sl.dataset.lazy === "ws" ? "未定（募集する）" : ""}</option>${o && o.value ? `<option value="${esc(o.value)}" selected>${esc(o.textContent)}</option>` : ""}`; delete sl.dataset.filled; });
-  const h = f.innerHTML; if(h.length > 700000) throw new Error("工事メモが大きすぎて保存できません。行を減らしてください"); return h;
+  const tp = document.createElement("template"); tp.innerHTML = f.innerHTML; tp.content.querySelectorAll("button[disabled]").forEach(b => b.disabled = false);   // 保存中に押せなくしたボタンを、そのまま残さない
+  const h = tp.innerHTML; if(h.length > 700000) throw new Error("工事メモが大きすぎて保存できません。行を減らしてください"); return h;
 }
 async function viewMemo(lid = ""){
   S.estCo = "";   // 前に開いた見積の管理会社の単価が残らないように
@@ -5812,8 +5813,9 @@ async function viewMemo(lid = ""){
   if(lid && !L) return `${back("#/admin/money", "収支")}<div class="empty">収支の案件が見つかりません。</div>`;
   S.memoRow = L || null;
   setTimeout(() => { const f = document.querySelector("form[data-form=memo]"); if(!f) return;
-    if(D){ f.innerHTML = D.html; f.dataset.draft = D.id; memoReprice(f); memoCalc(); return; }   // 下書きは入れかけの画面をそのまま戻す
-    if(E){ if(E.memoHtml){ f.innerHTML = E.memoHtml; memoCalc(); } else { f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); memoFillFromEst(f, E); } memoDocLock(f); const h = $("#memo-no"); if(h) h.textContent = E.no ? `工事番号は ${E.no} です` : ""; return; }
+    const unlock = () => f.querySelectorAll("button[disabled]").forEach(b => b.disabled = false);   // 前に押せないまま保存されたボタンも押せるようにする
+    if(D){ f.innerHTML = D.html; unlock(); f.dataset.draft = D.id; memoReprice(f); memoCalc(); return; }   // 下書きは入れかけの画面をそのまま戻す
+    if(E){ if(E.memoHtml){ f.innerHTML = E.memoHtml; unlock(); memoCalc(); } else { f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); memoFillFromEst(f, E); } memoDocLock(f); const h = $("#memo-no"); if(h) h.textContent = E.no ? `工事番号は ${E.no} です` : ""; return; }
     f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); if(L) memoFromLedger(f, L); memoCalc(); }, 0);
   return `${back("#/admin/home", "ホーム")}${E ? hub : `<div class="page-head"><div><h1>工事メモ・見積</h1><p class="lead">現場でスマホから入れます。工事は単価表から選び、見積の金額・業者の金額・利益もここで見られます。そのまま見積になります。</p></div></div>`}
     ${L ? `<p class="panel small" style="margin:0 0 12px">収支の案件「<b>${esc(L.name)}</b>」（${esc(L.jobNo || "工事番号なし")}）の見積を作ります。</p>` : ""}
