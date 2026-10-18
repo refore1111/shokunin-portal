@@ -2163,6 +2163,8 @@ class DemoBackend {
   async savePayment(p){ (this.data.payments ||= {})[p.id] = clone(p); this.save(); }
   async updatePayment(id, d){ Object.assign(this.data.payments[id], d); this.save(); }
   async getOpSettings(){ return clone(this.data.opSettings || {}); }
+  async getOpConnect(){ return clone(this.data.opConnect || {}); }
+  async saveOpConnect(d){ this.data.opConnect = clone(d); this.save(); }
   async saveOpSettings(d){ this.data.opSettings = clone(d); this.save(); }
   async listCoBills(f = {}){ let a = Object.values(this.data.coBills || {}); if(f.companyId) a = a.filter(x => x.companyId === f.companyId); if(f.month) a = a.filter(x => x.month === f.month); return clone(a); }
   async saveCoBill(b){ (this.data.coBills ||= {})[b.id] = clone(b); this.save(); }
@@ -2605,6 +2607,9 @@ class FirebaseBackend {
   async savePayment(p){ await this.col("payments").doc(p.id).set(p); }
   async updatePayment(id, d){ await this.col("payments").doc(id).update(d); }
   async getOpSettings(){ const s = await this.col("opdata").doc("settings").get().catch(() => null); return s?.exists ? s.data() : {}; }
+  async getOpConnect(){ const s = await this.col("opdata").doc("connect").get().catch(() => null); return s?.exists ? s.data() : {}; }
+  async saveOpConnect(d){ await this.col("opdata").doc("connect").set(d); }
+  async idToken(){ return firebase.auth().currentUser ? firebase.auth().currentUser.getIdToken() : ""; }
   async saveOpSettings(d){ await this.col("opdata").doc("settings").set(d); }
   async listCoBills(f = {}){ let q = this.col("cobills"); if(f.companyId) q = q.where("companyId", "==", f.companyId); if(f.month) q = q.where("month", "==", f.month); return this.docs(await q.get()); }
   async saveCoBill(b){ await this.col("cobills").doc(b.id).set(b); }
@@ -6013,7 +6018,7 @@ async function route(){
     if(a === "job") html = await viewJobDetail(b);
     else if(a === "applied") html = await viewApplied();
     else if(a === "work") html = b ? await viewWorkDetail(b) : await viewWork();
-    else if(a === "profile") html = viewProfileForm(p, false);
+    else if(a === "profile") html = viewProfileForm(p, false) + craftStripePanel(p);
     else if(a === "invoice") html = await viewInvoice(b);
     else if(a === "schedule") html = await viewMySchedule(b);
     else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
@@ -7564,6 +7569,7 @@ document.addEventListener("change", e => {
 const STRIPE = {
   links:{beginner:"", pro:"", master:"", calendar:"", money:"", docs:"", staff:"", extra:""},
   portal:"", prepay:"",
+  api:"",   // 自動化サーバー（Cloudflare Workers）の URL。stripe-worker フォルダの README を見て作る
 };
 const SUBSCRIPTION_ON = false;   // サブスク（プラン・月額のカード決済・投稿数の上限・オプション）を使うときは true に
 // プラン（税別）。incl = 追加料金なしで使えるオプション（staff は従業員追加が無制限）
@@ -7584,7 +7590,15 @@ const PLAN_KEYS = ["free", "beginner", "pro", "master"];
 const DAY_MS = 86400000;
 // 次回の請求日（カード決済の日）。プラン・オプションを下げる手続きは、この日の前日まで今の内容で使える
 // 本番で Stripe の URL が入っているときだけ、Stripe の画面に進む（デモはこれまでどおりその場で切り替える）
-const stripeCfg = () => { const o = opCfg().stripe || {}; const links = {...STRIPE.links}; Object.entries(o.links || {}).forEach(([k, v]) => { if(v) links[k] = v; }); return {links, portal:o.portal || STRIPE.portal, prepay:o.prepay || STRIPE.prepay || ""}; };
+const stripeCfg = () => { const o = opCfg().stripe || {}; const links = {...STRIPE.links}; Object.entries(o.links || {}).forEach(([k, v]) => { if(v) links[k] = v; }); return {links, portal:o.portal || STRIPE.portal, prepay:o.prepay || STRIPE.prepay || "", api:(o.api || STRIPE.api || "").replace(/\/+$/, "")}; };
+// 自動で分けて自動で確定できるか（デモは画面だけで同じ動きを見せる）
+const stripeAuto = () => SUBSCRIPTION_ON && (!!stripeCfg().api || api()?.mode === "demo");
+async function stripeApi(path, body){
+  const tok = await api().idToken?.(); if(!tok) throw new Error("ログインしなおしてください");
+  const r = await fetch(stripeCfg().api + path, {method:"POST", headers:{"Content-Type":"application/json", Authorization:`Bearer ${tok}`}, body:JSON.stringify(body || {})});
+  const d = await r.json().catch(() => ({})); if(!r.ok || d.error) throw new Error(d.error || "Stripe の処理でエラーになりました");
+  return d;
+}
 const connectOf = uid => ((opCfg().connect || {})[uid] || "");
 const stripeTest = () => Object.values(stripeCfg().links).concat([stripeCfg().portal, stripeCfg().prepay]).some(u => /\/test_/.test(u || ""));
 // Stripe の URL が1つでも入っていれば Stripe の画面に進む（入っていなければ、デモのようにその場で切り替える）
@@ -7668,7 +7682,7 @@ const trialNote = c => { const d = trialLeft(c); return d === null ? "" : d > 0 
 const CLOSE_DAYS = [[10, "10日"], [15, "15日"], [20, "20日"], [25, "25日"], [0, "末日"]];
 const coCloseLabel = d => (CLOSE_DAYS.find(x => x[0] === Number(d || 0)) || CLOSE_DAYS[4])[1];
 const CO_STATUS = {active:"利用中", stopped:"利用停止"};
-const payLabel = p => p.split && ["held", "billed", "sent"].includes(p.status) ? "入金確認済み（Stripeで職人さんへ分配）" : PAY_STATUS[p.status] || p.status;
+const payLabel = p => p.split && ["held", "billed", "sent"].includes(p.status) ? (p.auto ? "自動で確定（Stripeで職人さんへ分配）" : "入金確認済み（Stripeで職人さんへ分配）") : PAY_STATUS[p.status] || p.status;
 const PAY_STATUS = {waiting:"振込待ち", reported:"振込の連絡あり（入金確認待ち）", held:"入金確認済み（お預かり中）", billed:"職人の請求あり", sent:"職人に支払済み", refund:"返金が必要", refunded:"返金済み"};
 
 // 職人さんの公開用の登録情報（工務店・運営だけが見る。振込先・住所は入れない。メールはお知らせの送り先）
@@ -7717,7 +7731,7 @@ async function coPostGuard(id, x){
 async function afterLogin(){
   S.cid = null; S.company = null; S.me = null;
   const p = S.profile; if(!p) return;
-  S.opCfg = await api().getOpSettings().catch(() => ({}));
+  { const [o, cn] = await Promise.all([api().getOpSettings().catch(() => ({})), api().getOpConnect().catch(() => ({}))]); S.opCfg = {...o, connect:cn}; }
   if(p.role === "co"){ S.cid = p.companyId; S.company = await api().getCompany(p.companyId).catch(() => null); await applyScheduled().catch(e => console.warn(e)); }
 
 }
@@ -7759,12 +7773,15 @@ async function prepayPanel(job){
     <p style="margin:0 0 10px">${esc(c?.tradeName || c?.name || p.craftsmanName)}さんを発注先に選びました。下の金額をReforeの口座に振り込んでください。運営が入金を確認すると発注が確定し、職人さんに現場情報と発注書が届きます。</p>
     <div class="sumbox"><span>職人への工事代金（税込）</span><span>${yenFull(p.amount)}</span><span>運営手数料（${Math.round(opFee() * 100)}%）</span><span>${yenFull(p.fee)}</span><span class="big">お振込金額</span><span class="big">${yenFull(p.total)}</span></div>
     <dl class="kv"><dt>振込先</dt><dd>${bank ? esc(bank) : "（運営が振込先を登録すると、ここに表示されます）"}</dd><dt>振込名義</dt><dd>${esc(S.company?.name || "")}（工事番号 ${esc(job.jobNo || job.id.slice(-6))}）</dd><dt>状態</dt><dd><span class="pill ${p.status === "reported" ? "approved" : "pending"}">${esc(payLabel(p))}</span>${p.reportedAt ? `　${fmtTime(p.reportedAt)} に振込の連絡` : ""}</dd></dl>
-    ${p.status === "waiting" && SUBSCRIPTION_ON && p.payLink ? `<div class="note" style="margin-top:10px"><b>カードで払えます（Stripe）</b><br><span class="small">お支払いと同時に、工事代金 ${yenFull(p.amount)} は${who}さんへ、運営手数料 ${yenFull(p.fee)} はReforeへ自動で分けられます。金額は入力済みです。</span>
+    ${["waiting", "reported"].includes(p.status) && p.stripeSession && p.method === "stripe" && stripeAuto() ? `<div class="note" style="margin-top:10px"><b>お支払いを確認しています</b><br><span class="small">Stripe でお支払いが済むと、数秒〜1分ほどで自動で発注が確定します。画面が変わらないときは、もう一度開いてください。</span><div class="row" style="margin-top:8px"><button class="btn sub" data-act="reload">もう一度読み込む</button><button class="btn sub" data-act="pp-auto" data-id="${esc(p.id)}">支払い画面をもう一度開く</button></div></div>`
+    : p.status === "waiting" && stripeAuto() && connectOf(p.craftsmanId) ? `<div class="note" style="margin-top:10px"><b>カードで払えます（Stripe）</b><br><span class="small">お支払いと同時に、工事代金 ${yenFull(p.amount)} は${who}さんへ、運営手数料 ${yenFull(p.fee)} はReforeへ自動で分けられ、そのまま発注が確定します。</span>
+      <div class="row" style="margin-top:8px"><button class="btn" data-act="pp-auto" data-id="${esc(p.id)}">カードで払う（${yenFull(p.total)}）</button></div></div>`
+    : p.status === "waiting" && SUBSCRIPTION_ON && p.payLink ? `<div class="note" style="margin-top:10px"><b>カードで払えます（Stripe）</b><br><span class="small">お支払いと同時に、工事代金 ${yenFull(p.amount)} は${who}さんへ、運営手数料 ${yenFull(p.fee)} はReforeへ自動で分けられます。金額は入力済みです。</span>
       <div class="row" style="margin-top:8px"><button class="btn" data-act="pp-split" data-id="${esc(p.id)}">カードで払う（${yenFull(p.total)}）</button></div></div>`
     : p.status === "waiting" && SUBSCRIPTION_ON && connectOf(p.craftsmanId) ? `<div class="note" style="margin-top:10px"><b>カード払いの準備中です</b><br><span class="small">運営がカードの支払い画面を用意すると、ここに「カードで払う」が出ます（工事代金は職人さんへ、手数料はReforeへ自動で分かれます）。振込でもお支払いいただけます。</span></div>`
     : p.status === "waiting" && SUBSCRIPTION_ON && stripeCfg().prepay ? `<div class="note" style="margin-top:10px"><b>カードでも払えます（Stripe）</b><br><span class="small">Stripe の画面で金額の欄に <b>${yenFull(p.total)}</b> を入れてお支払いください。運営が入金を確認すると発注が確定します。</span>
       <div class="row" style="margin-top:8px"><button class="btn" data-act="pp-stripe" data-id="${esc(p.id)}">カードで払う（${yenFull(p.total)}）</button></div></div>` : ""}
-    <div class="row" style="margin-top:10px">${p.status === "waiting" ? `<button class="btn ${SUBSCRIPTION_ON && (p.payLink || stripeCfg().prepay) ? "sub" : ""}" data-act="pp-reported" data-id="${esc(p.id)}">振り込みました（運営に知らせる）</button>` : ""}<button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></div>
+    <div class="row" style="margin-top:10px">${p.status === "waiting" ? `<button class="btn ${SUBSCRIPTION_ON && (p.payLink || stripeCfg().prepay || (stripeAuto() && connectOf(p.craftsmanId))) ? "sub" : ""}" data-act="pp-reported" data-id="${esc(p.id)}">振り込みました（運営に知らせる）</button>` : ""}<button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></div>
     <p class="small" style="margin:8px 0 0">発注が確定すると、運営手数料の領収書が「請求書」の画面からダウンロードできます。</p></section>`;
 }
 function feeReceiptHtml(p){
@@ -8124,7 +8141,8 @@ async function viewOpHome(cos, pays){
 }
 function opPayRow(p){
   const acct = connectOf(p.craftsmanId);
-  const conn = ["waiting", "reported"].includes(p.status) && SUBSCRIPTION_ON ? `<div class="connect-box">${acct ? `<b>Stripe Connect で分ける支払いリンク</b>
+  const conn = ["waiting", "reported"].includes(p.status) && SUBSCRIPTION_ON ? `<div class="connect-box">${acct && stripeAuto() ? `<b>自動</b><span class="small">工務店がカードで払うと、工事代金は${esc(p.craftsmanName)}さんへ・手数料はReforeへ自動で分けられ、発注も自動で確定します（運営の作業はいりません）。振込の連絡があったときだけ、下のボタンで確定してください。${p.stripeMismatch ? `<br><b class="warn">Stripe の金額（${yenFull(p.stripeMismatch)}）が合わないため自動で確定していません。Stripe で確かめてください。</b>` : ""}</span>`
+      : acct ? `<b>Stripe Connect で分ける支払いリンク</b>
       <span class="small">Stripe の「支払いリンク」→「＋作成」で、金額 <b>${yenFull(p.total)}</b>（1回限り）の商品を作り、「支払い後」タブで「接続アカウントと支払いを分割」→ 相手 <b>${esc(acct)}</b>（${esc(p.craftsmanName)}）・Refore の取り分 <b>${yenFull(p.fee)}</b> にして作成し、URL を貼ってください。</span>
       <div class="row" style="margin-top:6px"><input type="url" id="pl_${esc(p.id)}" value="${esc(p.payLink || "")}" placeholder="https://buy.stripe.com/test_..." style="flex:1;min-width:200px"><button class="btn sub" data-act="op-paylink" data-id="${esc(p.id)}">${p.payLink ? "貼り直す" : "工務店に出す"}</button></div>`
       : `<span class="small">${esc(p.craftsmanName)}さんは Stripe Connect に未登録です（「協力業者」で acct_… を登録すると、カードで分けて払えるようになります）。振込で受けて、前の流れで職人さんに支払ってください。</span>`}</div>` : "";
@@ -8184,10 +8202,18 @@ async function viewOpBills(ym){
       return `<div class="doc-row"><span class="row-main"><b>${esc(c.name)}</b><span class="small">${b ? `${yenFull(b.total)}（税込）　${fmtDate(b.issuedAt)} 発行` : `今の内容なら ${yenFull(mo.total)}（税別）`}</span></span>
         <span class="row">${b ? `<span class="pill ${b.status === "paid" ? "approved" : "pending"}">${b.status === "paid" ? "入金済み" : "入金待ち"}</span><button class="btn sub" data-act="cobill-pdf" data-id="${esc(b.id)}">PDF</button>${b.status === "paid" ? "" : `<button class="btn sub" data-act="op-bill-paid" data-id="${esc(b.id)}">入金済みにする</button>`}` : mo.trial ? `<span class="pill withdrawn">お試し中（請求なし）</span>` : `<button class="btn" data-act="op-bill-make" data-cid="${esc(c.id)}" data-month="${ym}">請求書を作る</button>`}</span></div>`; }).join("") : `<p class="small">工務店がまだありません。</p>`}</section>`;
 }
+function craftStripePanel(p){
+  if(!stripeAuto() || p.status !== "approved") return "";
+  const on = !!connectOf(S.user?.uid);
+  return `<section class="panel" style="margin-top:16px"><h2>Stripe の受け取り登録 <small>${on ? "登録済み" : "未登録"}</small></h2>
+    <p class="small" style="margin:0 0 10px">${on ? "工務店が全体公開の案件をカードで先払いすると、工事代金が自動であなたの Stripe に入り、登録した口座に振り込まれます。入金や振込の予定は Stripe の画面で見られます。"
+      : "登録すると、工務店が全体公開の案件をカードで先払いしたとき、工事代金が自動であなたに届きます（Reforeへの請求書も不要になります）。本人確認書類と振込先の口座を用意してください。"}</p>
+    <button class="btn ${on ? "sub" : ""}" data-act="craft-stripe">${on ? "Stripe の画面を開く（入金・振込の確認）" : "Stripe で受け取りの登録をする"}</button></section>`;
+}
 function opConnectPanel(list){
   const ok = list.filter(c => c.status === "approved");
   return `<section class="panel" style="margin-top:16px"><h2>Stripe Connect <small>職人さんの受け取りアカウント</small></h2>
-    <p class="small" style="margin:0 0 8px">Stripe の「Connect」→「接続アカウント」で職人さんを追加し、登録用リンクを職人さんに送ります。職人さんが本人確認と振込口座を登録したら、そのアカウントID（acct_…）をここに入れてください。全体公開の案件の先払いを、工事代金は職人さんへ・手数料はReforeへ自動で分けて受け取れるようになります。</p>
+    <p class="small" style="margin:0 0 8px">${stripeCfg().api ? "職人さんは「登録情報」の画面から自分で Stripe の受け取り登録ができます（登録するとここに自動で入ります）。手で直すときだけ使ってください。" : "Stripe の「Connect」→「接続アカウント」で職人さんを追加し、登録用リンクを職人さんに送ります。職人さんが本人確認と振込口座を登録したら、そのアカウントID（acct_…）をここに入れてください。"}全体公開の案件の先払いを、工事代金は職人さんへ・手数料はReforeへ自動で分けて受け取れるようになります。</p>
     ${ok.length ? ok.map(c => `<div class="doc-row"><span class="row-main"><b>${esc(c.tradeName || c.name)}</b><span class="small">${esc(c.name)}　${connectOf(c.uid) ? "登録済み" : "未登録"}</span></span>
       <span class="row"><input id="ac_${esc(c.uid)}" value="${esc(connectOf(c.uid))}" placeholder="acct_..." style="width:210px"><button class="btn sub" data-act="op-acct" data-uid="${esc(c.uid)}">保存</button></span></div>`).join("") : `<p class="small">承認済みの協力業者はまだいません。</p>`}</section>`;
 }
@@ -8218,6 +8244,7 @@ function viewOpSettings(){
     <p class="small" style="margin:0">Stripe の管理画面 →「商品カタログ」で商品と料金を作り、「支払いリンク」で URL を作って貼ります。月額のものは「継続」、追加枠は「1回限り」、先払いは「お客様が金額を指定する」で作ります。完了後のページは「確認ページを表示」のままで大丈夫です。</p>
     ${[["beginner", "ビギナープラン（月額）"], ["pro", "プロプラン（月額）"], ["master", "マスタープラン（月額）"], ["calendar", "予定表カレンダー（月額）"], ["money", "収支閲覧（月額）"], ["docs", "工事メモ・見積・請求書（月額）"], ["staff", "従業員追加 1人（月額）"], ["extra", "追加枠 1件（1回払い）"]].map(([k, l]) => `<label class="field"><span>${esc(l)}</span><input name="sl_${k}" type="url" value="${esc(o.stripe.links[k] || STRIPE.links[k] || "")}" placeholder="https://buy.stripe.com/test_..."></label>`).join("")}
     <label class="field"><span>先払い（工事代金＋運営手数料）<small>「お客様が金額を指定する」で作ったリンク</small></span><input name="sl_prepay" type="url" value="${esc(o.stripe.prepay || STRIPE.prepay || "")}" placeholder="https://buy.stripe.com/test_..."></label>
+    <label class="field"><span>自動化サーバー（Cloudflare Workers）<small>入れると、先払いのカード払い・振り分け・発注確定が自動になります</small></span><input name="sl_api" type="url" value="${esc(o.stripe.api || STRIPE.api || "")}" placeholder="https://genpuku-stripe.xxxx.workers.dev"></label>
     <label class="field"><span>カスタマーポータル <small>カードの変更・領収書・解約</small></span><input name="sl_portal" type="url" value="${esc(o.stripe.portal || STRIPE.portal || "")}" placeholder="https://billing.stripe.com/p/login/test_..."></label>
     <h2>振込先・書類</h2>
     <label class="field"><span>振込先 <small>先払いと月額の請求書に載ります</small></span><input name="bank" value="${esc(o.bank)}" placeholder="例：○○銀行 ○○支店（普通）1234567 カ）リフォア"></label>
@@ -8237,6 +8264,30 @@ Object.assign(ACTIONS, {
     await api().updatePayment(p.id, {status:"reported", reportedAt:Date.now(), method:"stripe"});
     notifyMail(p.jobId, "先払いをカード（Stripe）で支払いました", `${p.coName}　${yenFull(p.total)}　Stripe で入金を確認してください`, {kind:"op"});
     toast("運営に知らせました。Stripe でのお支払いを確認すると発注が確定します"); route();
+  },
+  async reload(){ route(); },
+  async "pp-auto"(el){
+    const p = await api().getPayment(el.dataset.id); if(!p) return;
+    if(api().mode === "demo" && !stripeCfg().api){
+      if(!await ask({title:`カードで ${yenFull(p.total)} を払います（デモ）`, body:`本番では、ここで Stripe の支払い画面が開きます（金額は入力済み）。\n払うと同時に、工事代金 ${yenFull(p.amount)} は${p.craftsmanName}さんへ、運営手数料 ${yenFull(p.fee)} はReforeへ自動で分けられ、運営の作業なしで発注が確定します。\n\nデモでは、払ったことにして進めます。`, ok:"払ったことにする"})) return;
+      await api().updatePayment(p.id, {split:true, method:"stripe", stripeSession:"cs_demo_" + Date.now().toString(36)});
+      await api().confirmPrepay(p.id);
+      await api().updatePayment(p.id, {auto:true});
+      toast("支払いが確認され、自動で発注が確定しました（工事代金は職人さんへ・手数料はReforeへ）"); route(); return;
+    }
+    toast("Stripe の支払い画面を用意しています…");
+    const d = await stripeApi("/checkout", {payId:p.id});
+    location.href = d.url;
+  },
+  async "craft-stripe"(){
+    if(api().mode === "demo" && !stripeCfg().api){
+      if(!await ask({title:"Stripe の受け取り登録（デモ）", body:"本番では、ここで Stripe の登録画面が開き、本人確認と振込先の口座を登録します（5分ほど）。\n登録が済むと、全体公開の案件の工事代金が、工務店の支払いと同時にあなたの Stripe に入り、口座に振り込まれます。\n\nデモでは、登録したことにして進めます。", ok:"登録したことにする"})) return;
+      const connect = {...((S.opCfg || {}).connect || {}), [S.user.uid]:"acct_demo_" + S.user.uid};
+      await api().saveOpConnect(connect); S.opCfg = {...(S.opCfg || {}), connect};
+      toast("Stripe の受け取り登録が済みました"); route(); return;
+    }
+    toast("Stripe の登録画面を用意しています…");
+    const d = await stripeApi("/connect/onboard"); location.href = d.url;
   },
   async "pp-split"(el){
     const p = await api().getPayment(el.dataset.id); if(!p?.payLink) return;
@@ -8357,7 +8408,7 @@ Object.assign(ACTIONS, {
     const uid = el.dataset.uid, v = ($("#ac_" + uid)?.value || "").trim();
     if(v && !/^acct_[A-Za-z0-9]+$/.test(v)) throw new Error("Stripe のアカウントID（acct_ で始まる）を入れてください");
     const connect = {...((S.opCfg || {}).connect || {})}; if(v) connect[uid] = v; else delete connect[uid];
-    const d = {...(S.opCfg || {}), connect}; await api().saveOpSettings(d); S.opCfg = d;
+    await api().saveOpConnect(connect); S.opCfg = {...(S.opCfg || {}), connect};
     toast(v ? "Stripe のアカウントを登録しました" : "登録を外しました"); route();
   },
   async "op-refunded"(el){ if(!await ask({title:"返金しましたか？", ok:"返金した"})) return; await api().updatePayment(el.dataset.id, {status:"refunded", refundedAt:Date.now()}); toast("返金済みにしました"); route(); },
@@ -8500,9 +8551,8 @@ Object.assign(FORMS, {
     const trial = {name:f.tn.value.trim() || o.trial.name, days:Number(f.td.value) || 30, limit:Number(f.tl.value) || 1};
     const d = {plans, trial, fee:(Number(f.fee.value) || 0) / 100, memberFee:Number(f.memberFee.value) || 0, moneyFee:Number(f.moneyFee.value) || 0, extraFee:Number(f.extraFee.value) || 0, bank:f.bank.value.trim(), opName:f.opName.value.trim(), opInvoiceNumber:f.opInvoiceNumber.value.trim()};
     const surl = n => { const v = (f["sl_" + n]?.value || "").trim(); if(v && !/^https:\/\/(buy|billing|checkout)\.stripe\.com\//.test(v)) throw new Error("Stripe の URL（https://buy.stripe.com/… など）を入れてください：" + v); return v; };
-    d.connect = {...((S.opCfg || {}).connect || {})};
-    d.stripe = {links:Object.fromEntries(["beginner", "pro", "master", "calendar", "money", "docs", "staff", "extra"].map(k => [k, surl(k)])), prepay:surl("prepay"), portal:surl("portal")};
-    await api().saveOpSettings(d); S.opCfg = d; toast("保存しました"); route();
+    d.stripe = {links:Object.fromEntries(["beginner", "pro", "master", "calendar", "money", "docs", "staff", "extra"].map(k => [k, surl(k)])), prepay:surl("prepay"), portal:surl("portal"), api:(() => { const v = (f.sl_api?.value || "").trim().replace(/\/+$/, ""); if(v && !/^https:\/\//.test(v)) throw new Error("自動化サーバーの URL は https:// で始まるものを入れてください"); return v; })()};
+    await api().saveOpSettings(d); S.opCfg = {...d, connect:(S.opCfg || {}).connect || {}}; toast("保存しました"); route();
   }
 });
 document.addEventListener("change", e => {
