@@ -6018,7 +6018,7 @@ async function route(){
     if(a === "job") html = await viewJobDetail(b);
     else if(a === "applied") html = await viewApplied();
     else if(a === "work") html = b ? await viewWorkDetail(b) : await viewWork();
-    else if(a === "profile") html = viewProfileForm(p, false) + craftStripePanel(p);
+    else if(a === "profile") html = craftStripePanel(p) + viewProfileForm(p, false);
     else if(a === "invoice") html = await viewInvoice(b);
     else if(a === "schedule") html = await viewMySchedule(b);
     else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
@@ -8205,7 +8205,7 @@ async function viewOpBills(ym){
 function craftStripePanel(p){
   if(!stripeAuto() || p.status !== "approved") return "";
   const on = !!connectOf(S.user?.uid);
-  return `<section class="panel" style="margin-top:16px"><h2>Stripe の受け取り登録 <small>${on ? "登録済み" : "未登録"}</small></h2>
+  return `<section class="panel" style="margin:0 0 16px;${on ? "" : "border:2px solid var(--kon)"}"><h2>Stripe の受け取り登録 <small>${on ? "登録済み" : "未登録"}</small></h2>
     <p class="small" style="margin:0 0 10px">${on ? "工務店が全体公開の案件をカードで先払いすると、工事代金が自動であなたの Stripe に入り、登録した口座に振り込まれます。入金や振込の予定は Stripe の画面で見られます。"
       : "登録すると、工務店が全体公開の案件をカードで先払いしたとき、工事代金が自動であなたに届きます（Reforeへの請求書も不要になります）。本人確認書類と振込先の口座を用意してください。"}</p>
     <button class="btn ${on ? "sub" : ""}" data-act="craft-stripe">${on ? "Stripe の画面を開く（入金・振込の確認）" : "Stripe で受け取りの登録をする"}</button></section>`;
