@@ -966,7 +966,7 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .est-form input[readonly],form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled{background:#EEF1F5;color:var(--sub);cursor:not-allowed}
 .memo-price{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:12px;color:var(--sub);margin:-2px 0 4px}
-.memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-spec{flex:1 1 100%;flex-wrap:wrap}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}
+.memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-spec{flex:1 1 100%;flex-wrap:wrap}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}.mp-pf{margin-left:10px;white-space:nowrap;color:var(--ok,#2E7D4F)}.mp-pf.danger-text{color:var(--danger,#C0392B)}
 .memo-sum{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px 18px;margin:6px 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 -2px 8px rgba(0,0,0,.06);font-size:13px}
 .memo-sum b{font-family:var(--num);font-size:16px;margin-left:4px}
 .mq-b{padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:inherit;font:inherit;font-size:13px;cursor:pointer;line-height:1.3}.mq-b:hover{border-color:var(--sub)}
@@ -5421,14 +5421,15 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("[name=d_acc]")) memoDimCalc(t.closest(".memo-row")); });
 function memoCalc(){
   const f = document.querySelector("form[data-form=memo]"); if(!f) return;
-  let sell = 0, cost = 0, mat = 0;
+  let sell = 0, cost = 0, mat = 0; const fee = coFee(S.estCo, S.ledgerCfg || {});
   f.querySelectorAll(".memo-row").forEach(r => {
     const v = n => Number(r.querySelector(`[name=${n}]`)?.value) || 0, name = r.querySelector("[name=m_name]").value.trim();
     const acc = isCloth(name) ? up1(memoDims(r).filter(d => d.acc).reduce((a, d) => a + d.a, 0)) : 0, q = v("m_qty") + acc;
     const a = Math.round(q * v("m_sell")), b = Math.round(q * v("m_cost")), m = Math.round(q * v("m_mp")); sell += a; cost += b; mat += m;
-    r.querySelector(".mp-amt").innerHTML = name && q ? `見積 <b>${yenFull(a)}</b>　業者 ${yenFull(b)}${m ? `　材料 ${yenFull(m)}` : ""}` : "";
+    const rn = Math.round(a * (1 - fee / 100)), rp = rn - b - m;   // この行の利益（手数料を引いたあと）
+    r.querySelector(".mp-amt").innerHTML = name && q ? `見積 <b>${yenFull(a)}</b>　業者 ${yenFull(b)}${m ? `　材料 ${yenFull(m)}` : ""}<span class="mp-pf${rp < 0 ? " danger-text" : ""}">利益 <b>${yenFull(rp)}</b>（${rn ? (rp / rn * 100).toFixed(1) : "0.0"}%）</span>` : "";
   });
-  const fee = coFee(S.estCo, S.ledgerCfg || {}), net = Math.round(sell * (1 - fee / 100)), profit = net - cost - mat;
+  const net = Math.round(sell * (1 - fee / 100)), profit = net - cost - mat;
   $("#memo-sum").innerHTML = `<span>見積金額（税抜）<b>${yenFull(sell)}</b></span>${fee ? `<span>手数料${fee}%引き後 <b>${yenFull(net)}</b></span>` : ""}<span>業者金額 <b>${yenFull(cost)}</b></span>${mat ? `<span>材料 <b>${yenFull(mat)}</b></span>` : ""}
     <span>利益 <b class="${profit < 0 ? "danger-text" : ""}">${yenFull(profit)}</b></span><span>利益率 <b>${net ? (profit / net * 100).toFixed(1) : "0.0"}%</b></span>`;
 }
