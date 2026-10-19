@@ -125,6 +125,18 @@ async function stripe(env, method, path, body) {
   const d = await r.json(); if (d.error) fail("Stripe: " + d.error.message);
   return d;
 }
+// Stripe の新しい API（Accounts v2）：JSON で送る
+const STRIPE_V2 = "2026-09-30.preview";
+async function stripe2(env, method, path, body) {
+  const r = await fetch(`https://api.stripe.com/v2/${path}`, { method, headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, "Stripe-Version": STRIPE_V2, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json(); if (d.error) fail("Stripe: " + (d.error.message || d.error.code || "error"));
+  return d;
+}
+// 職人さんが工事代金を受け取れる状態か（Accounts v2 の recipient 設定）
+async function transfersActive(env, acct) {
+  const a = await stripe2(env, "GET", `core/accounts/${acct}?include=configuration.recipient`);
+  return a?.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers?.status === "active";
+}
 const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
 // Stripe の署名を確かめる（なりすましの通知を受けないため）
 export async function verifyStripeSig(raw, header, secret, now = Date.now()) {
@@ -148,8 +160,7 @@ async function checkout(req, env) {
   if (!["waiting", "reported"].includes(p.status)) fail("この支払いはもう済んでいます");
   const acct = ((await getDoc(env, "opdata/connect", me.token)) || {})[p.craftsmanId];
   if (!acct) fail("職人さんが Stripe の受け取り登録をまだしていません。振込でお支払いください");
-  const a = await stripe(env, "GET", `accounts/${acct}`);
-  if (a.capabilities?.transfers !== "active") fail("職人さんの Stripe の受け取り登録がまだ終わっていません。振込でお支払いいただくか、登録が終わるまでお待ちください");
+  if (!(await transfersActive(env, acct))) fail("職人さんの Stripe の受け取り登録がまだ終わっていません。振込でお支払いいただくか、登録が終わるまでお待ちください");
   const total = Math.round(Number(p.total)), fee = Math.round(Number(p.fee));
   if (!(total > 0) || !(fee >= 0) || fee >= total) fail("金額が正しくありません");
   const back = `${env.PORTAL_URL}#/admin/job/${encodeURIComponent(p.jobId)}`;
@@ -207,18 +218,27 @@ async function onboard(req, env) {
   const bot = await botToken(env);
   let acct = ((await getDoc(env, "opdata/connect", bot)) || {})[me.uid];
   if (acct) {
-    const a = await stripe(env, "GET", `accounts/${acct}`);
-    if (a.details_submitted) { const l = await stripe(env, "POST", `accounts/${acct}/login_links`, {}); return { url: l.url, done: a.capabilities?.transfers === "active" }; }
+    // 登録が済んでいれば、入金・振込を見る Stripe の画面へ
+    if (await transfersActive(env, acct)) {
+      try { const l = await stripe(env, "POST", `accounts/${acct}/login_links`, {}); return { url: l.url, done: true }; }
+      catch (e) { return { url: null, done: true }; }   // 簡易ダッシュボードが開けないときは「登録済み」だけ返す
+    }
   } else {
-    // Express 相当（Stripe が本人確認を集め、職人さんは簡易ダッシュボードで入金・振込を見る。手数料と損失は Refore 持ち）
-    const a = await stripe(env, "POST", "accounts", { country: "JP", email: me.email || undefined,
-      controller: { stripe_dashboard: { type: "express" }, fees: { payer: "application" }, losses: { payments: "application" }, requirement_collection: "stripe" },
-      capabilities: { transfers: { requested: true } }, business_profile: { name: prof.tradeName || prof.name || undefined, product_description: "内装・クリーニング等の工事" }, metadata: { uid: me.uid } });
+    // Accounts v2：受け取り専用（recipient）。Stripe が本人確認を集め、職人さんは簡易ダッシュボードで入金・振込を見る。手数料と損失は Refore 持ち
+    const a = await stripe2(env, "POST", "core/accounts", {
+      contact_email: me.email || undefined,
+      display_name: prof.tradeName || prof.name || undefined,
+      dashboard: "express",
+      identity: { country: "jp" },
+      defaults: { responsibilities: { fees_collector: "application", losses_collector: "application" } },
+      configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
+      metadata: { uid: me.uid },
+    });
     acct = a.id;
     // opdata/connect の、この職人さんの1項目だけを書き換える（ほかの人の登録は消さない）
     await commit(env, [{ update: { name: docName(env, "opdata/connect"), fields: { [me.uid]: { stringValue: acct } } }, updateMask: { fieldPaths: [me.uid] } }], bot);
   }
   const back = `${env.PORTAL_URL}#/profile`;
-  const l = await stripe(env, "POST", "account_links", { account: acct, refresh_url: back, return_url: back, type: "account_onboarding" });
+  const l = await stripe2(env, "POST", "core/account_links", { account: acct, use_case: { type: "account_onboarding", account_onboarding: { configurations: ["recipient"], refresh_url: back, return_url: back } } });
   return { url: l.url, done: false };
 }
