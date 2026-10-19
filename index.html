@@ -3614,11 +3614,11 @@ async function viewMoney(kiArg, sheetArg, subArg){
   S.ledger = {ki, sheet, list, rows};
   return `<div class="page-head"><div><h1>収支 <small class="small">${esc(kiLabel(ki))}</small></h1></div>
       <div class="row"><a class="btn sub" href="${url(ki - 1)}" aria-label="前の期">‹ ${ki - 1}期</a><a class="btn sub" href="${url(ki + 1)}" aria-label="次の期">${ki + 1}期 ›</a>
-        <a class="btn" href="#/admin/money/edit/new">＋ 案件を追加</a></div></div>
+        <a class="btn" href="#/admin/money/edit/new">＋ 案件を追加</a><button type="button" class="btn sub" data-act="co-add-open">＋ 管理会社を追加</button></div></div>
     <form class="lsearch" data-form="lsearch" data-ki="${esc(ki)}" role="search"><input type="search" name="q" value="${esc(sheet === "検索" ? sub : "")}" placeholder="案件を探す（物件名・工事番号・管理会社・担当・業者）" aria-label="収支の案件を探す" enterkeyhint="search"><button class="btn sub">探す</button>${sheet === "検索" ? `<a class="textlink" href="${url(ki, "全体")}">やめる</a>` : ""}</form>
     <nav class="sheets" aria-label="シート">${["全体", ...companies, "個人成績"].map(s => `<a href="${url(ki, s)}" ${s === sheet ? 'aria-current="true"' : ""}>${esc(s)}</a>`).join("")}</nav>
     ${body}
-    <details class="panel"${allCos.length ? "" : " open"}><summary class="textlink">管理会社の追加・設定（元請手数料・締め日・取引終了）・作業金額</summary>
+    <details class="panel" id="co-cfg"${allCos.length ? "" : " open"}><summary class="textlink">管理会社の追加・設定（元請手数料・締め日・取引終了）・作業金額</summary>
       <form data-form="moneycfg" class="stack" style="margin-top:10px">
         <div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap;padding:10px;border:1px dashed var(--line,#ccc);border-radius:6px"><label class="field" style="max-width:360px;margin:0"><span><b>管理会社を追加</b> <small>${allCos.length ? "新しく取引する会社" : "まずは取引している管理会社を入れてください"}</small></span><input type="text" name="newCo" placeholder="例：〇〇不動産"></label>
           <label class="field" style="max-width:200px;margin:0"><span>元請手数料（%）</span><input type="number" step="0.1" min="0" name="newFee" placeholder="0（手数料なし）"></label>
@@ -7264,6 +7264,7 @@ const ACTIONS = {
     else { await api().setJobStatus(cid, "open"); toast(`${label}だけを募集に出しました`); }
     S.ldCache = null; route();
   },
+  "co-add-open"(){ const d = $("#co-cfg"); if(!d) return; d.open = true; const i = d.querySelector("[name=newCo]"); i.scrollIntoView({behavior:"smooth", block:"center"}); setTimeout(() => i.focus(), 300); },
   async "est-self"(){
     const e = await saveEst(estNow(), true);
     if(!(e.rows || []).some(r => !r.noteRow && r.name)) throw new Error("工事の内容を入れてください");
