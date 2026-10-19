@@ -239,6 +239,6 @@ async function onboard(req, env) {
     await commit(env, [{ update: { name: docName(env, "opdata/connect"), fields: { [me.uid]: { stringValue: acct } } }, updateMask: { fieldPaths: [me.uid] } }], bot);
   }
   const back = `${env.PORTAL_URL}#/profile`;
-  const l = await stripe2(env, "POST", "core/account_links", { account: acct, use_case: { type: "account_onboarding", account_onboarding: { configurations: ["recipient"], refresh_url: back, return_url: back } } });
+  const l = await stripe2(env, "POST", "core/account_links", { account: acct, use_case: { type: "account_onboarding", account_onboarding: { refresh_url: back, return_url: back } } });
   return { url: l.url, done: false };
 }
