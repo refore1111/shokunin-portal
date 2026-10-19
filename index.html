@@ -2192,6 +2192,49 @@ function authError(e){
   };
   return new Error(m[e.code] || e.message);
 }
+// 読み取りの節約：一覧・設定は、一度読んだら覚えておく。
+//  ・収支・案件・見積・請求・単価表などは「変更・保存したときだけ」読み直す（時間では読み直さない）
+//  ・案件・応募・完了報告・請求書は、新着バッジ用にもともと動いている受信（無料の差分だけ）で変化に気づいたら読み直す
+//  ・そのほかの一覧は5分で読み直す。ブラウザを読み込み直したときは全部読み直す
+//  ・状態が大事なもの（案件1件・支払い・書類など）は覚えない
+const READ_TTL = 5 * 60 * 1000;
+const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedgerCfg", "listJobs", "opListJobs", "listEstimates", "getEstimate", "listBills", "getBilling",
+  "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders", "listCoBills"]);
+const READ_CACHE_OK = new Set([...READ_KEEP_UNTIL_CHANGE, "listCraftsmen", "getNotifySettings", "listAdmins", "getAdminInfo", "listRatings",
+  "listThreads", "listInvoices", "listApplications", "listReports", "getCompany", "listCompanies", "listMembers", "listCrew", "listInvites", "listPayments",
+  "getOpSettings", "getOpConnect", "opListInvoices", "opListUsers", "listMemos", "getMemoDrafts"]);
+// 受信しているコレクションが変わったら、読み直す一覧
+const READ_WATCH_DROP = {jobs:["listJobs", "opListJobs", "getAdminInfo"], applications:["listApplications"], reports:["listReports"], invoices:["listInvoices"], threads:["listThreads"]};
+// 書き込みでも、覚えた一覧に関係ないもの
+const READ_CACHE_KEEP = new Set(["addPushToken", "removePushToken", "uploadReportPhoto", "uploadPhotos", "idToken", "getIdToken", "watchMessages", "onAuth",
+  "getProfile", "getJob", "getDocument", "getJobPrivate", "getInvoice", "getThread", "getPayment", "getInvite", "countPosted", "getOwnerProfile", "resetPassword"]);
+function withReadCache(be){
+  const cache = new Map();
+  const clear = (...methods) => { if(!methods.length) return cache.clear(); for(const key of [...cache.keys()]) if(methods.some(m => key.includes(`|${m}|`))) cache.delete(key); };
+  const wrapped = new Proxy(be, {get(t, k){
+    const v = t[k];
+    if(typeof v !== "function" || k === "constructor") return v;
+    if(READ_CACHE_OK.has(k)) return (...a) => {
+      const key = `${S.user?.uid || ""}|${S.cid || ""}|${k}|${JSON.stringify(a)}`, hit = cache.get(key);
+      if(hit && (READ_KEEP_UNTIL_CHANGE.has(k) || Date.now() - hit.at < READ_TTL)) return hit.p.then(r => Array.isArray(r) ? [...r] : r);
+      const pr = v.apply(t, a); cache.set(key, {at:Date.now(), p:pr});
+      pr.catch(() => cache.delete(key));
+      return pr.then(r => Array.isArray(r) ? [...r] : r);
+    };
+    // 受信（新着バッジなど）：2回目からの変化で、関係する一覧を忘れる
+    if(k === "watch" || k === "watchThreads") return (...a) => {
+      const name = k === "watchThreads" ? "threads" : a[0], i = a.length - 1, cb = a[i];
+      let first = true;
+      a[i] = (...x) => { if(!first) clear(...(READ_WATCH_DROP[name] || [])); first = false; return cb(...x); };
+      return v.apply(t, a);
+    };
+    if(k === "markRead") return (...a) => { clear("listThreads"); return v.apply(t, a); };
+    if(READ_CACHE_KEEP.has(k)) return v.bind(t);
+    return (...a) => { clear(); const r = v.apply(t, a); if(r && typeof r.then === "function") return r.finally(() => clear()); return r; };   // 書き込み：前後で忘れる
+  }});
+  wrapped.clearReadCache = clear;
+  return wrapped;
+}
 class FirebaseBackend {
   constructor(){
     this.mode = "firebase";
@@ -9127,7 +9170,7 @@ async function boot(){
     if(FIREBASE_CONFIG.apiKey && !FORCE_DEMO){
       const fb = m => loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-${m}-compat.js`);
       await fb("app"); await Promise.all([fb("auth"), fb("firestore")]);   // app のあとは並べて読む
-      S.api = new FirebaseBackend();
+      S.api = withReadCache(new FirebaseBackend());
     } else {
       S.api = new DemoBackend();
     }
