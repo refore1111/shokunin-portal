@@ -1226,6 +1226,9 @@ const EST_EXTRA = [{"id": "x_000", "cat": "表装工事", "name": "クロス部�
 // 見積の箇所（雛形の箇所）
 const EST_LOCS = ["洋室", "洋室収納", "通路", "通路収納", "トイレ", "洗濯機置場", "洗面所", "和室", "キッチン", "DK", "LD", "LDK", "室内", "洋室①", "洋室②", "洋室③", "汚損箇所", "浴室", "玄関"];
 // 材料・外部の発注先（ポータルに登録しない会社）。kind：material＝材料発注書、work＝工事の発注書
+// 新しい工務店はサラの状態から（単価表・発注先・材料・見積だけの項目・標準の見積単価・管理会社は、Reforeの初期値を入れない）
+const defPrices = () => tenant() ? [] : clone(DEFAULT_PRICES), defSups = () => tenant() ? [] : clone(DEFAULT_SUPPLIERS), defMats = () => tenant() ? [] : clone(DEFAULT_MATERIALS);
+const estExtra = () => tenant() ? [] : EST_EXTRA, defSell = n => tenant() ? undefined : DEFAULT_SELL[n];
 const DEFAULT_SUPPLIERS = [
   {id:"s_takizawa", name:"株式会社タキザワ", kind:"material", email:"", fax:"", tel:"", terms:"工事完了月末締め、翌々月10日支払い"},
   {id:"s_kitsutaka", name:"キツタカ", kind:"work", email:"", fax:"", tel:"", terms:"工事完了月末締め、翌月末支払い"},
@@ -2012,7 +2015,7 @@ class DemoBackend {
   async getJobPrivate(id){ const d = clone(this.data.jobPrivate[id] || {}); if(myRole() !== "admin") delete d.manager; return d; }
   async getInvoice(id){ return clone((this.data.invoices || {})[id] || null); }
   async getProperties(){ return clone(this.sd().properties || []); }
-  async getPrices(){ return clone(this.sd().prices || DEFAULT_PRICES); }
+  async getPrices(){ return clone(this.sd().prices || defPrices()); }
   async getStaff(){ return clone(this.sd().staff || []); }
   async listAdmins(){ return Object.values(this.data.users).filter(u => tenant() ? (u.role === "co" && u.companyId === S.cid) : u.role === "admin").map(clone); }
   async listEstimates(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().estimates || {})); }
@@ -2034,11 +2037,11 @@ class DemoBackend {
   async getAdminInfo(id){ return {manager:this.data.jobPrivate[id]?.manager || ""}; }
   async listRatings(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().ratings || {})); }
   async saveRating(r){ (this.sd().ratings ||= {})[r.id] = clone(r); this.save(); }
-  async getSuppliers(){ return clone(this.sd().suppliers || DEFAULT_SUPPLIERS); }
+  async getSuppliers(){ return clone(this.sd().suppliers || defSups()); }
   async getMemoDrafts(){ return clone(this.sd().memoDrafts || []); }
   async saveMemoDrafts(list){ this.sd().memoDrafts = clone(list); this.save(); }
   async saveSuppliers(list){ this.sd().suppliers = clone(list); this.save(); }
-  async getMaterials(){ return clone(this.sd().materials || DEFAULT_MATERIALS); }
+  async getMaterials(){ return clone(this.sd().materials || defMats()); }
   async saveMaterials(list){ this.sd().materials = clone(list); this.save(); }
   async getSeal(){ return this.sd().seal || ""; }
   async saveSeal(data){ this.sd().seal = data || ""; this.save(); }
@@ -2191,49 +2194,6 @@ function authError(e){
     "auth/network-request-failed":"通信できませんでした。電波の良い場所でお試しください"
   };
   return new Error(m[e.code] || e.message);
-}
-// 読み取りの節約：一覧・設定は、一度読んだら覚えておく。
-//  ・収支・案件・見積・請求・単価表などは「変更・保存したときだけ」読み直す（時間では読み直さない）
-//  ・案件・応募・完了報告・請求書は、新着バッジ用にもともと動いている受信（無料の差分だけ）で変化に気づいたら読み直す
-//  ・そのほかの一覧は5分で読み直す。ブラウザを読み込み直したときは全部読み直す
-//  ・状態が大事なもの（案件1件・支払い・書類など）は覚えない
-const READ_TTL = 5 * 60 * 1000;
-const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedgerCfg", "listJobs", "opListJobs", "listEstimates", "getEstimate", "listBills", "getBilling",
-  "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders", "listCoBills"]);
-const READ_CACHE_OK = new Set([...READ_KEEP_UNTIL_CHANGE, "listCraftsmen", "getNotifySettings", "listAdmins", "getAdminInfo", "listRatings",
-  "listThreads", "listInvoices", "listApplications", "listReports", "getCompany", "listCompanies", "listMembers", "listCrew", "listInvites", "listPayments",
-  "getOpSettings", "getOpConnect", "opListInvoices", "opListUsers", "listMemos", "getMemoDrafts"]);
-// 受信しているコレクションが変わったら、読み直す一覧
-const READ_WATCH_DROP = {jobs:["listJobs", "opListJobs", "getAdminInfo"], applications:["listApplications"], reports:["listReports"], invoices:["listInvoices"], threads:["listThreads"]};
-// 書き込みでも、覚えた一覧に関係ないもの
-const READ_CACHE_KEEP = new Set(["addPushToken", "removePushToken", "uploadReportPhoto", "uploadPhotos", "idToken", "getIdToken", "watchMessages", "onAuth",
-  "getProfile", "getJob", "getDocument", "getJobPrivate", "getInvoice", "getThread", "getPayment", "getInvite", "countPosted", "getOwnerProfile", "resetPassword"]);
-function withReadCache(be){
-  const cache = new Map();
-  const clear = (...methods) => { if(!methods.length) return cache.clear(); for(const key of [...cache.keys()]) if(methods.some(m => key.includes(`|${m}|`))) cache.delete(key); };
-  const wrapped = new Proxy(be, {get(t, k){
-    const v = t[k];
-    if(typeof v !== "function" || k === "constructor") return v;
-    if(READ_CACHE_OK.has(k)) return (...a) => {
-      const key = `${S.user?.uid || ""}|${S.cid || ""}|${k}|${JSON.stringify(a)}`, hit = cache.get(key);
-      if(hit && (READ_KEEP_UNTIL_CHANGE.has(k) || Date.now() - hit.at < READ_TTL)) return hit.p.then(r => Array.isArray(r) ? [...r] : r);
-      const pr = v.apply(t, a); cache.set(key, {at:Date.now(), p:pr});
-      pr.catch(() => cache.delete(key));
-      return pr.then(r => Array.isArray(r) ? [...r] : r);
-    };
-    // 受信（新着バッジなど）：2回目からの変化で、関係する一覧を忘れる
-    if(k === "watch" || k === "watchThreads") return (...a) => {
-      const name = k === "watchThreads" ? "threads" : a[0], i = a.length - 1, cb = a[i];
-      let first = true;
-      a[i] = (...x) => { if(!first) clear(...(READ_WATCH_DROP[name] || [])); first = false; return cb(...x); };
-      return v.apply(t, a);
-    };
-    if(k === "markRead") return (...a) => { clear("listThreads"); return v.apply(t, a); };
-    if(READ_CACHE_KEEP.has(k)) return v.bind(t);
-    return (...a) => { clear(); const r = v.apply(t, a); if(r && typeof r.then === "function") return r.finally(() => clear()); return r; };   // 書き込み：前後で忘れる
-  }});
-  wrapped.clearReadCache = clear;
-  return wrapped;
 }
 class FirebaseBackend {
   constructor(){
@@ -2405,12 +2365,12 @@ class FirebaseBackend {
     await b.commit();
   }
   // 材料・外部の発注先、材料マスタ、社印（master/…）と、案件ごとの材料・外部発注（jobs/{id}/admin/matorders）
-  async getSuppliers(){ const s = await this.smaster("suppliers").get(); return s.exists ? (s.data().items || []) : clone(DEFAULT_SUPPLIERS); }
+  async getSuppliers(){ const s = await this.smaster("suppliers").get(); return s.exists ? (s.data().items || []) : defSups(); }
   // 工事メモの下書き（入れかけの画面をそのまま覚える。会社のみんなで見られる）
   async getMemoDrafts(){ const s = await this.smaster("memodrafts").get(); return s.exists ? (s.data().items || []) : []; }
   async saveMemoDrafts(list){ await this.smaster("memodrafts").set({items:list, updatedAt:Date.now()}); }
   async saveSuppliers(list){ await this.smaster("suppliers").set({items:list, updatedAt:Date.now()}); }
-  async getMaterials(){ const s = await this.smaster("materials").get(); return s.exists ? (s.data().items || []) : clone(DEFAULT_MATERIALS); }
+  async getMaterials(){ const s = await this.smaster("materials").get(); return s.exists ? (s.data().items || []) : defMats(); }
   async saveMaterials(list){ await this.smaster("materials").set({items:list, updatedAt:Date.now()}); }
   async getSeal(){ const s = await this.smaster("seal").get(); return s.exists ? (s.data().data || "") : ""; }
   async saveSeal(data){ await this.smaster("seal").set({data:data || "", updatedAt:Date.now()}); }
@@ -2452,7 +2412,7 @@ class FirebaseBackend {
   // 単価表：master/prices にまとめて保存（未登録なら初期値）
   async getPrices(){
     const s = await this.smaster("prices").get();
-    return s.exists ? (s.data().items || []) : clone(DEFAULT_PRICES);
+    return s.exists ? (s.data().items || []) : defPrices();
   }
   async savePrices(list){
     // 見積単価（標準・管理会社ごと）・手間請け・見積だけの項目の印も消さずに保存する
@@ -2822,10 +2782,10 @@ function coSell(p, co){
   return k != null && m[k] !== "" && m[k] != null ? Number(m[k]) : null;
 }
 function estPrices(co = S.estCo){
-  const base = (S.prices || DEFAULT_PRICES).map(p => ({id:p.id, cat:p.cat || "その他", name:p.name, unit:p.unit, sell:coSell(p, co) ?? Number(p.sellPrice ?? DEFAULT_SELL[p.name] ?? 0), cost:Number(p.unitPrice) || 0, note:/材工/.test(p.note || "") ? "" : (p.note || ""), off:!!p.off, onlyCo:p.onlyCo || "",
+  const base = (S.prices || defPrices()).map(p => ({id:p.id, cat:p.cat || "その他", name:p.name, unit:p.unit, sell:coSell(p, co) ?? Number(p.sellPrice ?? defSell(p.name) ?? 0), cost:Number(p.unitPrice) || 0, note:/材工/.test(p.note || "") ? "" : (p.note || ""), off:!!p.off, onlyCo:p.onlyCo || "",
     workSup:p.workSup || "", matSup:p.matSup || "", matId:p.matId || "", matRate:p.matRate, matPrice:p.matPrice, matUrl:p.matUrl || ""}));
   const have = new Set(base.map(p => p.name));
-  return [...base, ...EST_EXTRA.filter(x => !have.has(x.name))].filter(p => p.name && !p.off && (!p.onlyCo || !co || coSame(p.onlyCo, co)));
+  return [...base, ...estExtra().filter(x => !have.has(x.name))].filter(p => p.name && !p.off && (!p.onlyCo || !co || coSame(p.onlyCo, co)));
 }
 const estAmt = r => r.noteRow ? 0 : Math.round((Number(r.qty) || 0) * (Number(r.price) || 0));
 function estTotals(e){
@@ -2958,7 +2918,7 @@ async function estAttachLedger(e){
   const no = e.no || (e.company ? await nextJobNo(e.company) : ""), ym = (e.issuedAt || todayIso()).slice(0, 7), now = Date.now();
   const lid = "l_" + newId();
   await api().saveLedger({id:lid, manual:true, ki:kiOfMonth(ym), month:"", jobNo:no, name:[e.building, e.room].filter(Boolean).join(" ") || "（物件未入力）", company:e.company || "",
-    contract:ordered ? estTotals(e).sub : 0, kind:EST_LEDGER_KIND[e.kind] || "原状回復", staff:e.staff?.name || "", staff2:"", vendors:[], note:"見積から", arranged:ordered, done:false,
+    contract:ordered ? estTotals(e).sub : 0, kind:EST_LEDGER_KIND[e.kind] || "原状回復", staff:e.staff?.name || "", staff2:"", vendors:[], note:"", arranged:ordered, done:false,
     stage:EST_TO_STAGE[e.status] || "est", estimateId:e.id, estAmount:t.sub, ...(e.jobId ? {jobRef:e.jobId} : {}), createdAt:now, updatedAt:now});
   const ne = {...e, ledgerId:lid, no, updatedAt:now}; await api().saveEstimate(ne); S.ldCache = null;
   return ne;
@@ -3022,7 +2982,7 @@ function readEst(form){
     staff:staffName ? {name:staffName, phone:sp?.phone || S.est?.staff?.phone || ""} : null, periodStart:g("periodStart"), periodEnd:g("periodEnd"), status:g("status") || "draft", note:g("note"), rows};
 }
 async function viewEstEdit(id){
-  [S.props, S.prices, S.staff, S.billing] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => []), api().getBilling().catch(() => ({}))]);
+  [S.props, S.prices, S.staff, S.billing] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => defPrices()), api().getStaff().catch(() => []), api().getBilling().catch(() => ({}))]);
   const billing = {...BILLING_DEFAULT, ...S.billing};
   let e = id === "new" ? null : await api().getEstimate(id);
   if(id !== "new" && !e) return `${estBack()}<div class="empty">見積が見つかりません。</div>`;
@@ -3198,7 +3158,7 @@ const LEDGER_EST_KIND = {原状回復:"退去工事", 修繕:"修繕工事", フ
 // 受注で案件を作ったとき：工事メモで「材料の発注先」を選んだ工事から、材料屋さんごとの発注書の下書きを作る
 // 材料の発注書に入れるのは表装工事だけ。アクセントクロスは、材料の発注先を選んでいなくても、その行だけでタキザワの発注書に入れる
 async function matOrdersFromEst(e, jid){
-  const [sups, mats] = await Promise.all([api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), api().getMaterials().catch(() => clone(DEFAULT_MATERIALS))]);
+  const [sups, mats] = await Promise.all([api().getSuppliers().catch(() => defSups()), api().getMaterials().catch(() => defMats())]);
   const taki = (sups.find(x => /タキザワ/.test(x.name || "")) || {}).id || "";
   const hy = r => r.cat === CF_CAT || isCloth(r.name);
   const net = (e.rows || []).filter(r => !r.noteRow && r.name && Number(r.qty) > 0 && r.sup?.mat === "net");   // ネットで買うもの（どの工事でも）
@@ -3239,7 +3199,7 @@ const rowSelf = r => !r.noteRow && r.name && r.sup?.work === "self";
 // 外部の工事の発注先（キツタカなど、ポータルに登録しない業者）を選んだ工事：その会社ごとに工事の発注書の下書きを作る
 async function workOrdersFromEst(e, jid){
   const rows = (e.rows || []).filter(r => !r.noteRow && r.name && /^s:/.test(r.sup?.work || "")); if(!rows.length) return 0;
-  const sups = await api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), by = new Map();
+  const sups = await api().getSuppliers().catch(() => defSups()), by = new Map();
   rows.forEach(r => { const sid = r.sup.work.slice(2); if(!by.has(sid)) by.set(sid, []); by.get(sid).push(r); });
   const old = await api().getMatOrders(jid).catch(() => []), add = [];
   by.forEach((list, sid) => { const sup = sups.find(x => x.id === sid) || {id:sid, name:list[0].sup.workName || "外部の業者"};
@@ -3265,7 +3225,7 @@ async function estToJob(e){
   const old = e.ledgerId ? (await api().listLedger()).find(x => x.id === e.ledgerId) : null;
   const {vendors, manual, ki, ...keep} = old || {};
   await api().saveLedger({...keep, id:jid, jobId:jid, contract:estTotals(e).sub, company:e.company || keep.company || "", kind:EST_LEDGER_KIND[e.kind] || keep.kind || "",
-    extraVendors:[...(keep.extraVendors || []), ...(vendors || [])], stage:"won", estimateId:e.id, note:keep.note || `見積 ${e.no || ""}`.trim(), updatedAt:Date.now()});
+    extraVendors:[...(keep.extraVendors || []), ...(vendors || [])], stage:"won", estimateId:e.id, note:cleanNote(keep.note), updatedAt:Date.now()});
   if(old) await api().deleteLedger(old.id);
   const mo = await matOrdersFromEst(e, jid).catch(err => { console.error(err); return 0; });
   const wo = await workOrdersFromEst(e, jid).catch(err => { console.error(err); return 0; });
@@ -3350,9 +3310,12 @@ function coFee(company, cfg = {}){
   if(!company) return 0;
   const set = Object.entries(cfg.fees || {}).find(([k]) => coKey(k) === coKey(company) || coSame(k, company));
   if(set && set[1] !== "" && set[1] != null) return Number(set[1]) || 0;
-  const d = Object.entries(DEFAULT_CO_FEE).find(([k]) => coSame(k, company));
+  const d = tenant() ? null : Object.entries(DEFAULT_CO_FEE).find(([k]) => coSame(k, company));
   return d ? d[1] : 0;
 }
+// 前に自動で入れていた備考（工事メモから・見積から・見積 番号・自社施工・立会のみ）は、意味がなく工程と重なるので出さない
+const AUTO_NOTE = /^(工事メモから|見積から|自社施工|立会のみ|見積(\s*[A-Za-z]+-\d{4}-\d+)?)$/;
+const cleanNote = n => String(n || "").split("\n").map(l => l.trim()).filter(l => l && !AUTO_NOTE.test(l)).join("\n");
 function calcLedger(r, cfg){
   const fee = coFee(r.company, cfg), staffRate = cfg.staffRate ?? 0.5;
   // 取り込んだ表の「-8%」「作業金額」は、表の値をそのまま使う（手で直した行があるため）
@@ -3365,7 +3328,7 @@ function calcLedger(r, cfg){
   const staffFee = lost ? 0 : r.staffFeeOv ?? (r.staff && contract ? Math.round(netEx * staffRate / 100) : 0), staff2Fee = lost ? 0 : r.staff2FeeOv ?? (r.staff2 && contract ? Math.round(netEx * staffRate / 100) : 0);
   const profit = net - cost, refore = profit - staffFee - staff2Fee;
   const month = r.month || (lost && cost ? isoOf(r.lostAt || r.updatedAt || r.createdAt || Date.now()).slice(0, 7) : "");
-  return {...r, contract, contractIn, netEx, month, rawMonth:r.month || "", lost, fee, net, cost, staffFee, staff2Fee, profit, refore, rate:net ? profit / net : 0, reforeRate:net ? refore / net : 0};
+  return {...r, note:cleanNote(r.note), contract, contractIn, netEx, month, rawMonth:r.month || "", lost, fee, net, cost, staffFee, staff2Fee, profit, refore, rate:net ? profit / net : 0, reforeRate:net ? refore / net : 0};
 }
 // ポータルの案件（発注先・分離発注・材料／外部発注から自動）＋手入力・取り込みの行
 // 収支の集計は、案件ごとに読む物が多いので、操作がないあいだ（20秒）は覚えておく
@@ -4372,7 +4335,7 @@ async function viewJobEdit(id){
   const job = id ? await api().getJob(id) : {trades:[], pref:"東京都", status:"draft", photos:[]};
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
   const priv = id ? await api().getJobPrivate(id) : {};
-  [S.props, S.prices, S.staff, S.ledgerCfg] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => []), api().getLedgerCfg().catch(() => ({}))]);
+  [S.props, S.prices, S.staff, S.ledgerCfg] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => defPrices()), api().getStaff().catch(() => []), api().getLedgerCfg().catch(() => ({}))]);
   await ledgerCosLoad();
   // 新しい案件は、前回選んだ担当者を最初から選んでおく
   let lastStaff = ""; try { lastStaff = localStorage.getItem("refore_last_staff") || ""; } catch(e) {}
@@ -4726,7 +4689,7 @@ const MANAGERS = ["FLEX TOKYO", "Nワークス", "アイレントホーム", "�
 const managerKey = c => { const x = jobNoPrefix(c); return x !== "O" ? x : coLoose(c); };
 function managerList(){
   const list = ledgerCos();
-  return list.length ? list : MANAGERS.filter(c => !coEnded(c));
+  return list.length || tenant() ? list : MANAGERS.filter(c => !coEnded(c));
 }
 const managerPick = cur => { cur = String(cur || "").trim(); return cur ? managerList().find(c => managerKey(c) === managerKey(cur)) || cur : ""; };
 function managerOptions(cur){
@@ -4802,7 +4765,7 @@ function supRowHtml(p = {kind:"material"}){
 }
 // 設定：材料マスタの行
 function matRowHtml(m = {}){
-  const sups = S.suppliers || DEFAULT_SUPPLIERS;
+  const sups = S.suppliers || defSups();
   return `<div class="price-row mat-row" data-id="${esc(m.id || "")}">
     <select name="mm_sup" aria-label="発注先">${sups.map(x => `<option value="${esc(x.id)}" ${x.id === m.sup ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>
     <input type="text" name="mm_name" value="${esc(m.name)}" placeholder="品名（例：クロス）" aria-label="品名">
@@ -4898,7 +4861,7 @@ async function viewDocEdit(jobId, docId){
 async function viewMatOrder(jobId, oid){
   const job = await api().getJob(jobId);
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
-  [S.suppliers, S.materials] = await Promise.all([api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), api().getMaterials().catch(() => clone(DEFAULT_MATERIALS))]);
+  [S.suppliers, S.materials] = await Promise.all([api().getSuppliers().catch(() => defSups()), api().getMaterials().catch(() => defMats())]);
   const orders = await api().getMatOrders(jobId).catch(() => []);
   const fam = (await api().listJobs({}).catch(() => [])).filter(j => j.id === jobId || j.parentId === (job.parentId || jobId) || j.id === job.parentId);
   const famItems = (await Promise.all(fam.map(j => api().getJobPrivate(j.id).then(p => [...(p?.items?.length ? p.items : j.items || []), ...(p?.selfItems || [])]).catch(() => j.items || [])))).flat();   // 自社でやるクロスも材料はいる
@@ -5010,7 +4973,7 @@ async function refreshFamilyOthers(jobId){
   }
 }
 async function moDoc(jobId, oid){
-  const [job, priv, orders, sups, seal] = await Promise.all([api().getJob(jobId), api().getJobPrivate(jobId), api().getMatOrders(jobId), api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), api().getSeal().catch(() => "")]);
+  const [job, priv, orders, sups, seal] = await Promise.all([api().getJob(jobId), api().getJobPrivate(jobId), api().getMatOrders(jobId), api().getSuppliers().catch(() => defSups()), api().getSeal().catch(() => "")]);
   const o = orders.find(x => x.id === oid); if(!o) throw new Error("発注書が見つかりません");
   const sup = sups.find(x => x.id === o.supplierId) || {};
   const full = {...o, terms:o.terms || sup.terms || ""};
@@ -5024,7 +4987,7 @@ function staffRowHtml(p = {}){
     <button type="button" class="i-x" data-act="rm-staff" aria-label="この担当者を削除">×</button></div>`;
 }
 function priceRowHtml(p = {unit:"式"}){
-  const co = S.priceCo || "", std = p.sellPrice ?? DEFAULT_SELL[p.name] ?? "", by = p.sellBy || {};
+  const co = S.priceCo || "", std = p.sellPrice ?? defSell(p.name) ?? "", by = p.sellBy || {};
   return `<div class="price-row${p.estOnly ? " est-only" : ""}${p.onlyCo ? " only-co" : ""}" data-id="${esc(p.id || "")}"${p.estOnly ? ' data-est="1"' : ""} data-only="${esc(p.onlyCo || "")}" title="${p.onlyCo ? esc(p.onlyCo) + "だけの項目" : ""}" data-sell="${esc(std)}" data-sellby="${esc(JSON.stringify(by))}">
     <input type="text" name="p_cat" value="${esc(p.cat)}" list="cat-list-p" placeholder="分類（例：表装工事）" aria-label="分類">
     <input type="text" name="p_name" value="${esc(p.name)}" placeholder="作業名（例：クロス張替え 壁）" aria-label="作業名">
@@ -5061,7 +5024,7 @@ function priceSupHtml(p = {}){
 // 見積だけの項目：単価表に入れたもの＋まだ入れていない雛形の項目
 function estOnlyRows(){
   const have = new Set((S.prices || []).map(p => p.name));
-  return [...(S.prices || []).filter(p => p.estOnly && !p.off), ...EST_EXTRA.filter(x => !x.noteRow && !have.has(x.name)).map(x => ({id:"", cat:x.cat, name:x.name, unit:x.unit, unitPrice:x.cost, sellPrice:x.sell, note:x.note, estOnly:true}))];
+  return [...(S.prices || []).filter(p => p.estOnly && !p.off), ...estExtra().filter(x => !x.noteRow && !have.has(x.name)).map(x => ({id:"", cat:x.cat, name:x.name, unit:x.unit, unitPrice:x.cost, sellPrice:x.sell, note:x.note, estOnly:true}))];
 }
 // 管理会社を切り替える前に、見積単価の欄の値をその行に覚えておく
 function priceSellStash(){
@@ -5110,8 +5073,8 @@ async function viewSettings(tab){
   }
   S.admins = await api().listAdmins().catch(() => []);
   S.billingCfg = await api().getBilling().catch(() => ({}));
-  [S.suppliers, S.materials, S.seal] = await Promise.all([api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), api().getMaterials().catch(() => clone(DEFAULT_MATERIALS)), api().getSeal().catch(() => "")]);
-  [S.props, S.delJobs, S.prices, S.staff] = await Promise.all([api().getProperties(), api().listJobs({}), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => [])]);
+  [S.suppliers, S.materials, S.seal] = await Promise.all([api().getSuppliers().catch(() => defSups()), api().getMaterials().catch(() => defMats()), api().getSeal().catch(() => "")]);
+  [S.props, S.delJobs, S.prices, S.staff] = await Promise.all([api().getProperties(), api().listJobs({}), api().getPrices().catch(() => defPrices()), api().getStaff().catch(() => [])]);
   const pm = propCoMerge(S.props); if(pm){ await api().saveProperties(pm); S.props = pm; if(S.propFilter?.company && !pm.some(p => p.company === S.propFilter.company)) S.propFilter.company = ""; }
   S.delSel = new Set([...(S.delSel || [])].filter(id => S.delJobs.some(j => j.id === id)));
   S.delFilter ||= {status:"", q:""};
@@ -5140,7 +5103,7 @@ async function viewSettings(tab){
           <p class="small">管理会社を選ぶと、見積単価の列がその管理会社だけの単価になります。空のままの作業は標準の見積単価を使います。見積と工事メモで、宛先の管理会社に合わせた単価が入ります。</p></div>
         <div class="price-head" aria-hidden="true"><span>分類</span><span>作業名</span><span>単位</span><span id="ph-sell">見積単価${S.priceCo ? `<br><b>${esc(S.priceCo)}</b>` : ""}</span><span>業者単価</span><span>手間のみ単価</span><span>備考・品番</span><span></span></div>
         <div class="items-ed" id="price-ed">${[...S.prices.filter(p => !p.estOnly), ...estOnlyRows()].map(priceRowHtml).join("")}</div>
-        <div class="row between" style="flex-wrap:wrap"><span class="row" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button><button type="button" class="btn sub" data-act="add-default-prices">標準の単価を追加</button><button type="button" class="btn sub" data-act="price-co-import" title="管理会社の単価表から作ったファイルを読み込み、その管理会社の見積単価に入れます">管理会社の見積単価を取り込む</button></span><button class="btn">単価表を保存</button></div>
+        <div class="row between" style="flex-wrap:wrap"><span class="row" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button>${tenant() ? "" : `<button type="button" class="btn sub" data-act="add-default-prices">標準の単価を追加</button>`}<button type="button" class="btn sub" data-act="price-co-import" title="管理会社の単価表から作ったファイルを読み込み、その管理会社の見積単価に入れます">管理会社の見積単価を取り込む</button></span><button class="btn">単価表を保存</button></div>
       </form>
       <datalist id="cat-list-p">${[...new Set([...PRICE_CATS, ...S.prices.map(p => p.cat)].filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
       <datalist id="unit-list-p">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist></section>
@@ -5922,7 +5885,7 @@ async function caseHubHtml(E, lrows){
   const k = E.status === "draft" ? 0 : E.status === "sent" ? 1 : E.status === "ordered" ? 2 : ["self", "tachiai"].includes(E.status) || done ? 6
     : !jobs.length ? 2 : allDone || (!work.length && root && ["completed", "paid"].includes(root.status)) ? 5 : work.some(j => ["working", "finished"].includes(j.status)) ? 4 : 3;
   const b = (step, label, main = false, extra = "") => `<button type="button" class="btn${main ? "" : " sub"}" data-act="hub" data-step="${step}"${extra}>${label}</button>`;
-  const xl = coSame(E.company, "アイレントホーム") ? b("xlsx", "見積エクセル") : "";   // アイレントホームは見積をエクセルでも出す
+  const xl = !tenant() && coSame(E.company, "アイレントホーム") ? b("xlsx", "見積エクセル") : "";   // アイレントホームは見積をエクセルでも出す
   let next = "", backTo = "";
   if(E.status === "lost") next = `<b>失注</b>${b("reopen", "受注待ちに戻す")}`;
   else if(k === 0){ next = `<b>次にやること：見積を出す</b>${b("pdf", "見積書PDF", false, ' data-type="est"')}${xl}${b("sent", "提出済みにする", true)}`; }
@@ -6013,7 +5976,7 @@ async function memoCollect(form){
     // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
     const adds = rows.filter(x => x.save && x.p.cost > 0);
     if(adds.length){
-      const prices = await api().getPrices().catch(() => clone(S.prices || DEFAULT_PRICES));
+      const prices = await api().getPrices().catch(() => clone(S.prices || defPrices()));
       let added = 0;
       for(const x of adds){
         const same = prices.find(y => y.name === x.p.name);
@@ -6067,8 +6030,8 @@ function memoSnap(f){
 }
 async function viewMemo(lid = ""){
   S.estCo = "";   // 前に開いた見積の管理会社の単価が残らないように
-  [S.prices, S.props, S.staff, S.suppliers] = await Promise.all([api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getProperties().catch(() => []), api().getStaff().catch(() => []), api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS))]);
-  S.materials = await api().getMaterials().catch(() => clone(DEFAULT_MATERIALS));
+  [S.prices, S.props, S.staff, S.suppliers] = await Promise.all([api().getPrices().catch(() => defPrices()), api().getProperties().catch(() => []), api().getStaff().catch(() => []), api().getSuppliers().catch(() => defSups())]);
+  S.materials = await api().getMaterials().catch(() => defMats());
   if(!S.suppliers.some(x => /MOZU/i.test(x.name || ""))){ S.suppliers = [...S.suppliers, {id:"s_mozu", name:"MOZU", kind:"material", email:"", fax:"", tel:"", terms:"", url:MOZU_URL}]; api().saveSuppliers(S.suppliers).catch(e => console.error(e)); }
   else if(S.suppliers.some(x => /MOZU/i.test(x.name || "") && !x.url && !x.urlOff)){ S.suppliers = S.suppliers.map(x => /MOZU/i.test(x.name || "") && !x.url && !x.urlOff ? {...x, url:MOZU_URL} : x); api().saveSuppliers(S.suppliers).catch(e => console.error(e)); }   // MOZUはネットの注文サイトから頼む   // 材料屋さんにMOZUを入れておく
   const cos = await ledgerCosLoad();
@@ -6881,13 +6844,13 @@ const ACTIONS = {
         const f = inp.files[0]; if(!f) return;
         const data = JSON.parse(await f.text()), list = data.rows || [];
         if(data.kind !== "coSell" || !list.length) throw new Error("管理会社の見積単価のファイルではありません");
-        const prices = await api().getPrices().catch(() => clone(S.prices || DEFAULT_PRICES));
+        const prices = await api().getPrices().catch(() => clone(S.prices || defPrices()));
         const nk = v => normKey(String(v || "").replace(/　/g, " "));
         const find = n => prices.find(x => !x.off && nk(x.name) === nk(n));
         let set = 0, added = 0; const cos = {};
         for(const x of list){
           const sell = Math.max(0, Math.round(Number(x.sell) || 0)); cos[x.co] = (cos[x.co] || 0) + 1;
-          let hits = (x.targets || []).map(t => { let p = find(t); if(!p){ const ex = EST_EXTRA.find(e => !e.noteRow && e.name === t); if(ex){ p = {id:"p_" + newId(), cat:ex.cat, name:ex.name, unit:ex.unit, unitPrice:ex.cost, sellPrice:ex.sell, note:ex.note || "", estOnly:true}; prices.push(p); } } return p; }).filter(Boolean);
+          let hits = (x.targets || []).map(t => { let p = find(t); if(!p){ const ex = estExtra().find(e => !e.noteRow && e.name === t); if(ex){ p = {id:"p_" + newId(), cat:ex.cat, name:ex.name, unit:ex.unit, unitPrice:ex.cost, sellPrice:ex.sell, note:ex.note || "", estOnly:true}; prices.push(p); } } return p; }).filter(Boolean);
           if(!hits.length){ const p = find(x.name); if(p) hits = [p]; }
           if(!hits.length){ prices.push({id:"p_" + newId(), cat:x.cat || "未分類", name:x.name, unit:x.unit || "式", unitPrice:0, note:`${x.co}の単価表`, estOnly:true, onlyCo:x.co, sellBy:{[x.co]:sell}}); added++; continue; }
           hits.forEach(p => { p.sellBy = {...(p.sellBy || {})}; const k = Object.keys(p.sellBy).find(c => coSame(c, x.co)); if(k && k !== x.co) delete p.sellBy[k]; p.sellBy[x.co] = sell; set++; });
@@ -7288,8 +7251,8 @@ const ACTIONS = {
     const d = await saveEst({...e, status:"self", selfDoneAt:at}, true);
     const base = {contract:estTotals(d).sub, stage:"done", done:true, doneAt:at, month, arranged:true, self:true, estimateId:d.id, estAmount:estTotals(d.estRows?.length ? {rows:d.estRows} : d).sub, updatedAt:now};
     const row = d.ledgerId ? (await api().listLedger()).find(x => x.id === d.ledgerId) : null;
-    if(row) await api().saveLedger({...row, ...base, note:row.note || "自社施工"});
-    else { const lid = "l_" + newId(); await api().saveLedger({id:lid, manual:true, ki:kiOfMonth(month), jobNo:d.no || "", name:estTitle(d), company:d.company || "", kind:EST_LEDGER_KIND[d.kind] || "", staff:d.staff?.name || "", vendors:[], note:"自社施工", createdAt:now, ...base}); await api().saveEstimate({...d, ledgerId:lid}); }
+    if(row) await api().saveLedger({...row, ...base, note:cleanNote(row.note)});
+    else { const lid = "l_" + newId(); await api().saveLedger({id:lid, manual:true, ki:kiOfMonth(month), jobNo:d.no || "", name:estTitle(d), company:d.company || "", kind:EST_LEDGER_KIND[d.kind] || "", staff:d.staff?.name || "", vendors:[], note:"", createdAt:now, ...base}); await api().saveEstimate({...d, ledgerId:lid}); }
     S.ldCache = null; toast(`自社施工で完了にしました（${fmtDate(d0)}）。管理会社への請求に入ります`); route();
   },
   async "est-unself"(){
@@ -7310,7 +7273,7 @@ const ACTIONS = {
     const month = curMonth(), base = {contract:amt, stage:"tachiai", done:true, doneAt:Date.now(), arranged:false, month, estimateId:e.id, estAmount:estTotals(e).sub, updatedAt:Date.now()};
     const row = e.ledgerId ? (await api().listLedger()).find(x => x.id === e.ledgerId) : null;
     if(row) await api().saveLedger({...row, ...base});
-    else { const lid = "l_" + newId(); await api().saveLedger({id:lid, manual:true, ki:kiOfMonth(month), jobNo:e.no || "", name:estTitle(e), company:e.company || "", kind:EST_LEDGER_KIND[e.kind] || "", staff:e.staff?.name || "", vendors:[], note:"立会のみ", ...base}); await api().saveEstimate({...d, ledgerId:lid}); }
+    else { const lid = "l_" + newId(); await api().saveLedger({id:lid, manual:true, ki:kiOfMonth(month), jobNo:e.no || "", name:estTitle(e), company:e.company || "", kind:EST_LEDGER_KIND[e.kind] || "", staff:e.staff?.name || "", vendors:[], note:"", ...base}); await api().saveEstimate({...d, ledgerId:lid}); }
     toast(`立会費 ${yenFull(amt)} で完了にしました。御請求書は立会費だけで出ます`); route();
   },
   async "est-lost"(){
@@ -7773,7 +7736,7 @@ const FORMS = {
     const L0 = form.dataset.lid ? (await api().listLedger()).find(x => x.id === form.dataset.lid) : null;
     const lid = L0 ? L0.id : "l_" + newId(), jobNo = L0?.jobNo || await nextJobNo(c.company);
     if(L0) await api().saveLedger({...L0, jobNo, name:c.name || L0.name, estimateId:eid, stage:"est", staff:L0.staff || c.staff, kind:L0.kind || c.kind0, updatedAt:now});
-    else await api().saveLedger({id:lid, manual:true, ki:kiNow(), month:"", jobNo, name:c.name, company:c.company, contract:0, kind:c.kind0, staff:c.staff, staff2:"", vendors:[], note:"工事メモから", arranged:false, done:false, stage:"est", estimateId:eid, createdAt:now, updatedAt:now});
+    else await api().saveLedger({id:lid, manual:true, ki:kiNow(), month:"", jobNo, name:c.name, company:c.company, contract:0, kind:c.kind0, staff:c.staff, staff2:"", vendors:[], note:"", arranged:false, done:false, stage:"est", estimateId:eid, createdAt:now, updatedAt:now});
     const {name, st, kind0, staffObj, ...ec} = c;
     await api().saveEstimate({...ec, id:eid, ledgerId:lid, no:jobNo, status:"draft", fromMemo:true, staff:staffObj, photoUrls:[], issuedAt:todayIso(), validity:billing.validity, terms:billing.terms, createdAt:now, updatedAt:now});
     if(form.dataset.draft){ const dl = await api().getMemoDrafts().catch(() => null); if(dl) await api().saveMemoDrafts(dl.filter(x => x.id !== form.dataset.draft)).catch(() => {}); }
@@ -7887,7 +7850,7 @@ const FORMS = {
     if(list.some(p => !p.estOnly && !(p.unitPrice > 0))) throw new Error("単価表の業者単価を入力してください（見積だけの項目は0でもかまいません）");
     // 雛形の見積だけの項目を×で消したときは「使わない」として残す（次に開いても出てこない）
     const kept = new Set(list.map(x => x.name));
-    EST_EXTRA.filter(x => !x.noteRow && !kept.has(x.name)).forEach(x => list.push({id:"p_" + newId(), name:x.name, cat:x.cat, unit:x.unit || "式", unitPrice:0, note:"", estOnly:true, off:true}));
+    estExtra().filter(x => !x.noteRow && !kept.has(x.name)).forEach(x => list.push({id:"p_" + newId(), name:x.name, cat:x.cat, unit:x.unit || "式", unitPrice:0, note:"", estOnly:true, off:true}));
     const names = list.map(p => p.name);
     const dup = names.find((n, i) => names.indexOf(n) !== i);
     if(dup) throw new Error(`単価表に同じ作業名があります（${dup}）`);
@@ -7914,7 +7877,7 @@ const FORMS = {
     if(adds.length){
       const bad = adds.find(i => !i.unit || !(i.unitPrice > 0));
       if(bad) throw new Error(`単価表に追加する「${bad.name}」の単位と単価を入力してください`);
-      const prices = await api().getPrices().catch(() => clone(DEFAULT_PRICES));
+      const prices = await api().getPrices().catch(() => defPrices());
       for(const i of adds){
         const same = prices.find(x => x.name === i.name);
         if(same && (same.unit !== i.unit || Number(same.unitPrice) !== i.unitPrice))
@@ -9170,7 +9133,7 @@ async function boot(){
     if(FIREBASE_CONFIG.apiKey && !FORCE_DEMO){
       const fb = m => loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-${m}-compat.js`);
       await fb("app"); await Promise.all([fb("auth"), fb("firestore")]);   // app のあとは並べて読む
-      S.api = withReadCache(new FirebaseBackend());
+      S.api = new FirebaseBackend();
     } else {
       S.api = new DemoBackend();
     }
