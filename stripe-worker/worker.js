@@ -218,12 +218,15 @@ async function onboard(req, env) {
   const bot = await botToken(env);
   let acct = ((await getDoc(env, "opdata/connect", bot)) || {})[me.uid];
   if (acct) {
-    // 登録が済んでいれば、入金・振込を見る Stripe の画面へ
-    if (await transfersActive(env, acct)) {
+    // 前に作ったアカウントが、今の Stripe（キーを入れ替えたときなど）に無ければ作り直す
+    let active = false;
+    try { active = await transfersActive(env, acct); } catch (e) { if (/no such|not found|resource_missing|does not exist/i.test(e.message)) acct = null; else throw e; }
+    if (acct && active) {
       try { const l = await stripe(env, "POST", `accounts/${acct}/login_links`, {}); return { url: l.url, done: true }; }
       catch (e) { return { url: null, done: true }; }   // 簡易ダッシュボードが開けないときは「登録済み」だけ返す
     }
-  } else {
+  }
+  if (!acct) {
     // Accounts v2：受け取り専用（recipient）。Stripe が本人確認を集め、職人さんは簡易ダッシュボードで入金・振込を見る。手数料と損失は Refore 持ち
     const a = await stripe2(env, "POST", "core/accounts", {
       contact_email: me.email || undefined,
