@@ -2189,49 +2189,6 @@ function authError(e){
   };
   return new Error(m[e.code] || e.message);
 }
-// 読み取りの節約：一覧・設定は、一度読んだら覚えておく。
-//  ・収支・案件・見積・請求・単価表などは「変更・保存したときだけ」読み直す（時間では読み直さない）
-//  ・案件・応募・完了報告・請求書は、新着バッジ用にもともと動いている受信（無料の差分だけ）で変化に気づいたら読み直す
-//  ・そのほかの一覧は5分で読み直す。ブラウザを読み込み直したときは全部読み直す
-//  ・状態が大事なもの（案件1件・支払い・書類など）は覚えない
-const READ_TTL = 5 * 60 * 1000;
-const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedgerCfg", "listJobs", "opListJobs", "listEstimates", "getEstimate", "listBills", "getBilling",
-  "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders", "listCoBills"]);
-const READ_CACHE_OK = new Set([...READ_KEEP_UNTIL_CHANGE, "listCraftsmen", "getNotifySettings", "listAdmins", "getAdminInfo", "listRatings",
-  "listThreads", "listInvoices", "listApplications", "listReports", "getCompany", "listCompanies", "listMembers", "listCrew", "listInvites", "listPayments",
-  "getOpSettings", "getOpConnect", "opListInvoices", "opListUsers", "listMemos", "getMemoDrafts"]);
-// 受信しているコレクションが変わったら、読み直す一覧
-const READ_WATCH_DROP = {jobs:["listJobs", "opListJobs", "getAdminInfo"], applications:["listApplications"], reports:["listReports"], invoices:["listInvoices"], threads:["listThreads"]};
-// 書き込みでも、覚えた一覧に関係ないもの
-const READ_CACHE_KEEP = new Set(["addPushToken", "removePushToken", "uploadReportPhoto", "uploadPhotos", "idToken", "getIdToken", "watchMessages", "onAuth",
-  "getProfile", "getJob", "getDocument", "getJobPrivate", "getInvoice", "getThread", "getPayment", "getInvite", "countPosted", "getOwnerProfile", "resetPassword"]);
-function withReadCache(be){
-  const cache = new Map();
-  const clear = (...methods) => { if(!methods.length) return cache.clear(); for(const key of [...cache.keys()]) if(methods.some(m => key.includes(`|${m}|`))) cache.delete(key); };
-  const wrapped = new Proxy(be, {get(t, k){
-    const v = t[k];
-    if(typeof v !== "function" || k === "constructor") return v;
-    if(READ_CACHE_OK.has(k)) return (...a) => {
-      const key = `${S.user?.uid || ""}|${S.cid || ""}|${k}|${JSON.stringify(a)}`, hit = cache.get(key);
-      if(hit && (READ_KEEP_UNTIL_CHANGE.has(k) || Date.now() - hit.at < READ_TTL)) return hit.p.then(r => Array.isArray(r) ? [...r] : r);
-      const pr = v.apply(t, a); cache.set(key, {at:Date.now(), p:pr});
-      pr.catch(() => cache.delete(key));
-      return pr.then(r => Array.isArray(r) ? [...r] : r);
-    };
-    // 受信（新着バッジなど）：2回目からの変化で、関係する一覧を忘れる
-    if(k === "watch" || k === "watchThreads") return (...a) => {
-      const name = k === "watchThreads" ? "threads" : a[0], i = a.length - 1, cb = a[i];
-      let first = true;
-      a[i] = (...x) => { if(!first) clear(...(READ_WATCH_DROP[name] || [])); first = false; return cb(...x); };
-      return v.apply(t, a);
-    };
-    if(k === "markRead") return (...a) => { clear("listThreads"); return v.apply(t, a); };
-    if(READ_CACHE_KEEP.has(k)) return v.bind(t);
-    return (...a) => { clear(); const r = v.apply(t, a); if(r && typeof r.then === "function") return r.finally(() => clear()); return r; };   // 書き込み：前後で忘れる
-  }});
-  wrapped.clearReadCache = clear;
-  return wrapped;
-}
 class FirebaseBackend {
   constructor(){
     this.mode = "firebase";
@@ -3352,7 +3309,7 @@ function calcLedger(r, cfg){
   const lost = r.stage === "lost";
   // 収支は税込で出す：請負金額は請書の税込（税抜＋消費税）。保存している請負金額（contract）は税抜のまま（管理会社への請求で使う）
   const contract = lost ? 0 : Number(r.contract) || 0, netEx = lost ? 0 : (r.netOv ?? Math.round(contract * (1 - fee / 100)));
-  const contractIn = inTax(contract), net = lost ? 0 : r.netOv != null ? inTax(Number(r.netOv) || 0) : Math.round(contractIn * (1 - fee / 100));
+  const contractIn = r.contractTaxIn != null && exTax(r.contractTaxIn) === contract ? Number(r.contractTaxIn) : inTax(contract), net = lost ? 0 : r.netOv != null ? inTax(Number(r.netOv) || 0) : Math.round(contractIn * (1 - fee / 100));
   const cost = (r.vendors || []).reduce((a, v) => a + (Number(v.amount) || 0), 0);
   // 作業金額は、手数料を引いた請負金額（税抜）の0.5%（Numbersと同じ）
   const staffFee = lost ? 0 : r.staffFeeOv ?? (r.staff && contract ? Math.round(netEx * staffRate / 100) : 0), staff2Fee = lost ? 0 : r.staff2FeeOv ?? (r.staff2 && contract ? Math.round(netEx * staffRate / 100) : 0);
@@ -3438,7 +3395,7 @@ async function ledgerDataLoad(){
     const vendors = [...fv, ...mv, ...(L.extraVendors || [])], vcols = vendorCols([...mv, ...fv], L.extraVendors || []);
     const doneAt = j.completedAt || j.finishedAt;
     return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), monthSet:!!L.month, jobNo:j.jobNo || "", name:j.title, company:L.company || info.manager || "",
-      contract:L.contract || 0, kind:L.kind || "", staff:L.staff ?? (j.staff?.name || ""), staff2:L.staff2 || "", vendors, vcols, extraVendors:L.extraVendors || [], note:L.note || "",
+      contract:L.contract || 0, contractTaxIn:L.contractTaxIn ?? null, kind:L.kind || "", staff:L.staff ?? (j.staff?.name || ""), staff2:L.staff2 || "", vendors, vcols, extraVendors:L.extraVendors || [], note:L.note || "",
       arranged:!!j.assignedTo, done:L.stage === "arr" && !L.done ? false : ["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status, ki:L.ki, stage:L.stage || (j.assignedTo || L.contract ? "won" : ""), estimateId:L.estimateId || "", doneCheck:L.doneCheck || "", billId:L.billId || "", billedOutside:!!L.billedOutside, ord:L.ord ?? null};
   }));
   const rows = [...auto, ...stored.filter(r => !r.jobId)].map(r => calcLedger(r, cfg));
@@ -3461,6 +3418,8 @@ async function ledgerCosLoad(){ if(!S.ledgerCoNames) await ledgerData().catch(()
 const inKi = (r, ki) => r.month ? kiOfMonth(r.month) === ki : (r.ki ?? kiNow()) === ki;
 const yoy = (a, b) => b ? `${(a / b * 100).toFixed(1)}%` : "";
 const inTax = v => (Number(v) || 0) + Math.floor((Number(v) || 0) * TAX_RATE);   // 税抜 → 税込（収支は税込で出す）
+// 税込 → 税抜（収支の入力で請負金額を税込で打ったとき用。税込に戻すと同じ金額になる税抜を探す）
+const exTax = v => { v = Number(v) || 0; let x = Math.round(v / (1 + TAX_RATE)); while(x > 0 && inTax(x) > v) x--; while(inTax(x + 1) <= v) x++; return x; };
 const sumLedger = rs => { const n = rs.filter(r => !r.lost).length, gross = rs.reduce((a, r) => a + (r.lost ? 0 : Number(r.contractIn ?? r.contract) || 0), 0), sales = rs.reduce((a, r) => a + (Number(r.net) || 0), 0), net = rs.reduce((a, r) => a + r.net, 0), profit = rs.reduce((a, r) => a + r.profit, 0), refore = rs.reduce((a, r) => a + r.refore, 0);
   return {n, gross, sales, net, profit, refore, avgS:n ? Math.round(sales / n) : 0, avgP:n ? Math.round(profit / n) : 0, rate:sales ? profit / sales : 0}; };
 // 月次（各シートの月次と同じ：前年同期比つき。手数料がある会社は「8%」の列も）
@@ -3648,7 +3607,7 @@ async function viewMoneyEdit(id){
         <div class="two"><label class="field"><span>工事番号</span><input type="text" name="jobNo" value="${esc(r.jobNo)}" placeholder="例：FT-2627-122"></label>
           <label class="field"><span>物件名称</span><input type="text" name="name" value="${esc(r.name)}" required></label></div>`}
         <div class="two"><label class="field"><span>管理会社</span><input type="text" name="company" value="${esc(r.coName || r.company)}" list="money-co"><datalist id="money-co">${companies.map(c => `<option value="${esc(c)}">`).join("")}</datalist></label>
-          <label class="field"><span>請負金額 <small>税抜で入れる（収支には税込で出ます）</small></span><input type="number" name="contract" value="${esc(r.contract || "")}" inputmode="numeric" placeholder="例：513595"></label></div>
+          <label class="field"><span>請負金額 <small>税込で入れる（請書の税込金額）</small></span><input type="number" name="contract" value="${esc(r.contract ? r.contractIn : "")}" inputmode="numeric" placeholder="例：513595"></label></div>
         <div class="two"><label class="field"><span>完了月 <small>${auto ? "空なら作業完了・完了確認の日から自動" : "空なら未完了"}</small></span><input type="month" name="month" value="${esc(auto ? (r.monthSet ? r.month : "") : (r.rawMonth ?? r.month ?? ""))}"></label>
           <label class="field"><span>工事種類</span><select name="kind"><option value="">—</option>${[...new Set([...LEDGER_KINDS, r.kind].filter(Boolean))].map(k => `<option ${k === r.kind ? "selected" : ""}>${esc(k)}</option>`).join("")}</select></label></div>
         <div class="two"><label class="field"><span>立会担当 <small>作業金額 ${esc(cfg.staffRate ?? 0.5)}%</small></span><select name="staff">${staffOpts(r.staff)}</select></label>
@@ -7592,7 +7551,7 @@ const FORMS = {
   async money(form){
     const f = form.elements, id = form.dataset.id, jobId = form.dataset.job;
     const vend = [...form.querySelectorAll(".vend-row")].map(r => ({name:r.querySelector("[name=v_name]").value.trim(), amount:Number(r.querySelector("[name=v_amount]").value) || 0})).filter(v => v.name || v.amount);
-    const base = {...(f.doneCheck ? {doneCheck:f.doneCheck.value} : {}), company:f.company.value.trim(), contract:Number(f.contract.value) || 0, month:f.month.value || "", kind:f.kind.value.trim(), staff:f.staff.value, staff2:f.staff2.value, note:f.note.value.trim(), updatedAt:Date.now()};
+    const base = {...(f.doneCheck ? {doneCheck:f.doneCheck.value} : {}), company:f.company.value.trim(), contract:exTax(f.contract.value), contractTaxIn:Number(f.contract.value) || 0, month:f.month.value || "", kind:f.kind.value.trim(), staff:f.staff.value, staff2:f.staff2.value, note:f.note.value.trim(), updatedAt:Date.now()};
     let row;
     const prevRow = (await api().listLedger()).find(x => x.id === (jobId || id)) || {};
     if(jobId) row = {...prevRow, id:jobId, jobId, ...base, extraVendors:vend};
@@ -8979,7 +8938,7 @@ async function boot(){
     if(FIREBASE_CONFIG.apiKey && !FORCE_DEMO){
       const fb = m => loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-${m}-compat.js`);
       await fb("app"); await Promise.all([fb("auth"), fb("firestore")]);   // app のあとは並べて読む
-      S.api = withReadCache(new FirebaseBackend());
+      S.api = new FirebaseBackend();
     } else {
       S.api = new DemoBackend();
     }
