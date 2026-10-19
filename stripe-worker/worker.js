@@ -220,7 +220,7 @@ async function onboard(req, env) {
   if (acct) {
     // 前に作ったアカウントが、今の Stripe（キーを入れ替えたときなど）に無ければ作り直す
     let active = false;
-    try { active = await transfersActive(env, acct); } catch (e) { if (/no such|not found|resource_missing|does not exist/i.test(e.message)) acct = null; else throw e; }
+    try { active = await transfersActive(env, acct); } catch (e) { if (/no such|not found|resource_missing|does not exist|permission denied|does not have permission/i.test(e.message)) acct = null; else throw e; }
     if (acct && active) {
       try { const l = await stripe(env, "POST", `accounts/${acct}/login_links`, {}); return { url: l.url, done: true }; }
       catch (e) { return { url: null, done: true }; }   // 簡易ダッシュボードが開けないときは「登録済み」だけ返す
