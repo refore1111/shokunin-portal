@@ -9055,7 +9055,7 @@ Object.assign(ACTIONS, {
       toast("Stripe の受け取り登録が済みました"); route(); return;
     }
     toast("Stripe の登録画面を用意しています…");
-    const d = await stripeApi("/connect/onboard"); location.href = d.url;
+    const d = await stripeApi("/connect/onboard"); if(!d.url){ toast("Stripe の受け取り登録は済んでいます"); return; } location.href = d.url;
   },
   async "pp-split"(el){
     const p = await api().getPayment(el.dataset.id); if(!p?.payLink) return;
