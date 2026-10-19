@@ -851,6 +851,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .hub-flow{display:flex;gap:3px;margin:12px 0 8px}.hub-flow span{flex:1;font-size:10.5px;color:var(--sub);text-align:center}.hub-flow i{display:block;height:7px;border-radius:4px;background:#E1E5EC;margin-bottom:3px}
 .hub-flow .on i{background:var(--ok,#2E7D4F)}.hub-flow .now i{background:var(--kon-text,#1B2A55)}.hub-flow .now{color:var(--ink);font-weight:700}
 .hub-next{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border:2px solid var(--kon-text,#1B2A55);border-radius:8px;background:#F5F7FB}.hub-next>b{flex:1 1 100%}
+.site-card .sc-r{display:grid;grid-template-columns:84px 1fr;gap:8px;padding:7px 0;border-top:1px solid var(--line,#e5e5e5);align-items:baseline}.site-card .sc-r:first-of-type{border-top:0}
+.site-card .sc-k{font-size:13px;color:var(--sub)}.site-card .sc-v{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;word-break:break-all}.site-card .sc-v.warn{color:#9A6A12}.site-card h2{margin-bottom:4px}
 .hub-fix{display:flex;flex-wrap:wrap;gap:8px;align-items:center;width:100%;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line,#ddd)}.hub-fix>span{flex-basis:100%}
 .hub-back{margin-top:6px}.hub-back .btn{border:0;background:none;color:var(--sub);padding:0;min-height:0;font-weight:400;text-decoration:underline}
 .hub-money{margin:10px 0 0}.hub-docs{margin-top:12px}.hub-docs h3{font-size:15px;margin:0 0 6px}
@@ -2190,49 +2192,6 @@ function authError(e){
   };
   return new Error(m[e.code] || e.message);
 }
-// 読み取りの節約：一覧・設定は、一度読んだら覚えておく。
-//  ・収支・案件・見積・請求・単価表などは「変更・保存したときだけ」読み直す（時間では読み直さない）
-//  ・案件・応募・完了報告・請求書は、新着バッジ用にもともと動いている受信（無料の差分だけ）で変化に気づいたら読み直す
-//  ・そのほかの一覧は5分で読み直す。ブラウザを読み込み直したときは全部読み直す
-//  ・状態が大事なもの（案件1件・支払い・書類など）は覚えない
-const READ_TTL = 5 * 60 * 1000;
-const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedgerCfg", "listJobs", "opListJobs", "listEstimates", "getEstimate", "listBills", "getBilling",
-  "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders", "listCoBills"]);
-const READ_CACHE_OK = new Set([...READ_KEEP_UNTIL_CHANGE, "listCraftsmen", "getNotifySettings", "listAdmins", "getAdminInfo", "listRatings",
-  "listThreads", "listInvoices", "listApplications", "listReports", "getCompany", "listCompanies", "listMembers", "listCrew", "listInvites", "listPayments",
-  "getOpSettings", "getOpConnect", "opListInvoices", "opListUsers", "listMemos", "getMemoDrafts"]);
-// 受信しているコレクションが変わったら、読み直す一覧
-const READ_WATCH_DROP = {jobs:["listJobs", "opListJobs", "getAdminInfo"], applications:["listApplications"], reports:["listReports"], invoices:["listInvoices"], threads:["listThreads"]};
-// 書き込みでも、覚えた一覧に関係ないもの
-const READ_CACHE_KEEP = new Set(["addPushToken", "removePushToken", "uploadReportPhoto", "uploadPhotos", "idToken", "getIdToken", "watchMessages", "onAuth",
-  "getProfile", "getJob", "getDocument", "getJobPrivate", "getInvoice", "getThread", "getPayment", "getInvite", "countPosted", "getOwnerProfile", "resetPassword"]);
-function withReadCache(be){
-  const cache = new Map();
-  const clear = (...methods) => { if(!methods.length) return cache.clear(); for(const key of [...cache.keys()]) if(methods.some(m => key.includes(`|${m}|`))) cache.delete(key); };
-  const wrapped = new Proxy(be, {get(t, k){
-    const v = t[k];
-    if(typeof v !== "function" || k === "constructor") return v;
-    if(READ_CACHE_OK.has(k)) return (...a) => {
-      const key = `${S.user?.uid || ""}|${S.cid || ""}|${k}|${JSON.stringify(a)}`, hit = cache.get(key);
-      if(hit && (READ_KEEP_UNTIL_CHANGE.has(k) || Date.now() - hit.at < READ_TTL)) return hit.p.then(r => Array.isArray(r) ? [...r] : r);
-      const pr = v.apply(t, a); cache.set(key, {at:Date.now(), p:pr});
-      pr.catch(() => cache.delete(key));
-      return pr.then(r => Array.isArray(r) ? [...r] : r);
-    };
-    // 受信（新着バッジなど）：2回目からの変化で、関係する一覧を忘れる
-    if(k === "watch" || k === "watchThreads") return (...a) => {
-      const name = k === "watchThreads" ? "threads" : a[0], i = a.length - 1, cb = a[i];
-      let first = true;
-      a[i] = (...x) => { if(!first) clear(...(READ_WATCH_DROP[name] || [])); first = false; return cb(...x); };
-      return v.apply(t, a);
-    };
-    if(k === "markRead") return (...a) => { clear("listThreads"); return v.apply(t, a); };
-    if(READ_CACHE_KEEP.has(k)) return v.bind(t);
-    return (...a) => { clear(); const r = v.apply(t, a); if(r && typeof r.then === "function") return r.finally(() => clear()); return r; };   // 書き込み：前後で忘れる
-  }});
-  wrapped.clearReadCache = clear;
-  return wrapped;
-}
 class FirebaseBackend {
   constructor(){
     this.mode = "firebase";
@@ -3250,10 +3209,14 @@ async function estToJob(e){
   const rows = (e.rows || []).filter(rowForPortal);
   const items = rows.map(rowToItem);
   const trades = tradesFromItems(rows);
+  // 駐車場代：新しい案件と同じく業者（工種）ごとに1,500円。工事メモで「敷地内駐車：有」のときは入れない
+  const pkFee = e.checks?.park?.v === "有" ? 0 : PARKING_FEE, lots = items.length ? lotsFromItems(itemsWithId(items), [], pkFee).map(({names, ...l}) => l) : [];
+  items.forEach((i, k) => { i.iid ||= itemsWithId(items)[k].iid; });
+  lots.filter(l => l.parking).forEach(l => items.push({...parkingItem(l.parking), name:lots.length > 1 ? `駐車場代（${l.key}）` : "駐車場代", lot:l.key}));
   const {pref, city} = splitAddress(e.address || "");
   const site = {address:e.address || "", building:e.building || "", room:e.room || "", autolock:e.autolock || "", elevator:e.elevator || ""};
   const data = {title:estTitle(e) || "見積からの案件", trades, pref:pref || "", city:city || "", startDate:e.periodStart || "", endDate:e.periodEnd || e.periodStart || "",
-    price:itemsTotal(items), taxMode:"税別", items, site, staff:e.staff || null, jobNo:e.no || "", description:"", priceNote:"", photos:[], status:"draft", audience:"all"};
+    price:itemsTotal(items), parking:items.filter(isParking).reduce((a, i) => a + itemAmount(i), 0), ...(lots.length ? {lots} : {}), taxMode:"税別", items, site, staff:e.staff || null, jobNo:e.no || "", description:"", priceNote:"", photos:[], status:"draft", audience:"all"};
   const jid = await api().saveJob(null, data);
   await api().setJobPrivate(jid, {...site, keyInfo:e.keyInfo || "", manager:e.company || "", contact:e.contact || "", masterId:e.masterId || "", photoUrls:e.photoUrls || [], items, selfItems:(e.rows || []).filter(rowSelf).map(rowToItem), ...(e.moveIn ? {moveIn:e.moveIn} : {})});
   const old = e.ledgerId ? (await api().listLedger()).find(x => x.id === e.ledgerId) : null;
@@ -3780,6 +3743,22 @@ function craftJobBlock(j, site, {full = false, showPrice = true, itemsHtml = "",
     ${itemsHtml ? `<details class="wdetail"${itemsOpen ? " open" : ""}><summary>工事の内訳を見る<span class="small">${itemsLabel}</span></summary>${itemsHtml}</details>` : ""}
   </article>`;
 }
+// 職人さんの画面の一番上に出す現場の情報（住所・鍵・入り方・駐車場・担当）。聞かなくてもわかるように
+function siteCard(j, p, id){
+  const addr = p.address || `${j.pref || ""}${j.city || ""}`, room = [p.building, p.room].filter(Boolean).join(" ");
+  const pk = (p.contact || "").split("\n").find(l => /駐車/.test(l)) || "", other = (p.contact || "").split("\n").filter(l => l && l !== pk).join("\n");
+  const r = (k, v, warn) => `<div class="sc-r"><span class="sc-k">${k}</span><span class="sc-v${warn ? " warn" : ""}">${v}</span></div>`;
+  const ask = `<button type="button" class="textlink" data-act="chat-open" data-job="${esc(id)}">チャットで聞く</button>`;
+  return `<section class="panel site-card"><h2>現場</h2>
+    ${r("住所", `<b>${esc(addr) || "未登録"}</b>${p.address ? `<a class="btn sub sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}">地図</a>` : ""}`)}
+    ${room ? r("物件・部屋", `<b>${esc(room)}</b>`) : ""}
+    ${r("鍵・入室", p.keyInfo ? `<b class="pre">${esc(p.keyInfo)}</b>` : `未登録　${ask}`, !p.keyInfo)}
+    ${p.autolock ? r("オートロック", esc(p.autolock)) : ""}${p.elevator ? r("エレベーター", esc(p.elevator)) : ""}
+    ${pk ? r("駐車", esc(pk.replace(/^[^：]*：/, ""))) : ""}
+    ${other ? r("連絡事項", `<span class="pre">${esc(other)}</span>`) : ""}
+    ${j.staff?.name ? r("担当", `${esc(j.staff.name)}${j.staff.phone ? `　<a href="tel:${esc(j.staff.phone)}">${esc(j.staff.phone)}</a>` : ""}`) : ""}
+    ${p.photoUrls?.length ? `<div class="photo-links">${p.photoUrls.map((u, i) => `<a class="btn sub sm" href="${esc(u)}" target="_blank" rel="noopener noreferrer">現場の写真${p.photoUrls.length > 1 ? `（${i + 1}）` : ""}</a>`).join("")}</div>` : ""}</section>`;
+}
 function privateBlock(p, title = "現場情報"){
   const map = p.address ? `<p style="margin:12px 0 0"><a class="btn sub" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}">地図アプリで開く</a></p>` : "";
   return `<section class="panel"><h2>${title}</h2><dl class="kv">
@@ -4208,8 +4187,9 @@ async function viewWorkDetail(id){
   const contact = `<section class="panel"><h2>${esc(coNameOf(job))}とのチャット</h2>
     ${t?.lastAt ? `<p class="small" style="margin:0 0 10px">${isUnread(t) ? `<span class="badge">新着</span> ` : ""}${fmtTime(t.lastAt)}　${esc(t.lastText)}</p>` : `<p class="small" style="margin:0 0 10px">現場のことで確認したいことは、ここから${esc(coNameOf(job))}にチャットを送れます。</p>`}
     <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${t?.lastAt ? "やりとりを開く" : `${esc(coNameOf(job))}とチャットする`}</button></section>`;
+  const showSite = job.acceptedAt && !job.declinedAt && !["completed", "paid"].includes(job.status);
   return `${back("#/work", "受注した案件")}${coJobBanner(job)}<div class="cols">
-    <div class="stack">${lateTop}${orderChangeHtml(order)}${step}${dates}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
+    <div class="stack">${lateTop}${orderChangeHtml(order)}${showSite ? siteCard(job, priv, id) : ""}${step}${dates}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${craftJobBlock(job, priv, {full:true, showPrice:!(job.status === "assigned" && !job.acceptedAt && !job.declinedAt), itemsHtml:order?.manual && order.job?.items?.length ? itemsTable({items:order.job.items, taxMode:job.taxMode}) : itemsPanelBody(job, priv), itemsLabel:order?.manual && order.job?.items?.length ? `${order.job.items.length}件・発注書のとおり` : priv.items?.length ? `${itemsWithId(priv.items).length}件` : "", itemsOpen:true})}</div></div>`;
 }
 /* ---------- メール通知：自動メールはやめた（2026-10-14）。呼び出しは残して何もしない ---------- */
@@ -4520,7 +4500,7 @@ async function viewAdminJob(id){
           <span>入る日：${job.craftStart ? `<b>${fmtRange(job.craftStart, job.craftEnd)}</b>` : `<span class="warn">未設定</span>`}</span></div>
         ${job.declinedAt ? `<p class="danger-text" style="margin:0 0 6px"><b>辞退されました</b> <span class="small">${fmtFull(job.declinedAt)}</span>${job.declineReason ? `<br><span class="small">理由：${esc(job.declineReason)}</span>` : ""}</p>` : ""}
         ${!(Number(job.price) > 0) ? `<p class="small warn" style="margin:0 0 6px">支払金額が未設定です。<a href="#/admin/job/${esc(id)}/edit">設定する</a>${["finished","completed"].includes(job.status) ? "（未設定のままだと業者さまは請求できません）" : ""}</p>` : ""}
-        <p class="row between" style="margin:0 0 10px">${job.status === "assigned" ? `<button class="btn danger" data-act="unassign" data-job="${esc(id)}">発注を取り消して募集に戻す</button>` : "<span></span>"}${order ? `<button class="textlink" data-act="order-regen" data-job="${esc(id)}">今の内容で発注書を作り直す</button>` : ""}</p>` : ""}
+        <p class="row between" style="margin:0 0 10px">${job.status === "assigned" ? `<span class="row" style="gap:6px"><button class="btn sub" data-act="job-move" data-job="${esc(id)}">工事の一部をほかに回す</button><button class="btn danger" data-act="unassign" data-job="${esc(id)}">発注を取り消して募集に戻す</button></span>` : ["working", "finished"].includes(job.status) && !job.declinedAt ? `<button class="btn sub" data-act="job-move" data-job="${esc(id)}">工事の一部をほかに回す</button>` : "<span></span>"}${order ? `<button class="textlink" data-act="order-regen" data-job="${esc(id)}">今の内容で発注書を作り直す</button>` : ""}</p>` : ""}
     ${kids.map((k, n) => line(who(k.assignedTo), `分離発注：${esc(k.title.replace(job.title, "").replace(/^（|）$/g, "") || k.title)}　${yenFull(k.price)}（税抜）　<span class="pill ${pillClass(k)}">${esc(statusLabel(k))}</span>`,
       kidOrders[n] ? `data-act="pv-order" data-id="${esc(kidOrders[n].id)}"` : "", `${kidOrders[n] ? dl(kidOrders[n].id) + `<a class="btn sub" href="#/admin/job/${esc(k.id)}/doc/${esc(kidOrders[n].id)}">手で直す</a>` : ""}<a class="btn sub" href="#/admin/job/${esc(k.id)}">開く</a>`)).join("")}
     ${matOrders.map(o => { const t = moTotals(o); return line(o.supplierName, `${o.kind === "work" ? "工事の発注書" : "材料発注書"}　${(o.items || []).length}件　${t.base ? `${yenFull(t.total)}（税込）` : "見積依頼"}　${o.status === "sent" ? `送信済み ${fmtTime(o.sentAt)}` : "未送信"}`,
@@ -5059,6 +5039,22 @@ document.addEventListener("change", e => {
   });
   const h = $("#ph-sell"); if(h) h.innerHTML = `見積単価${co ? `<br><b>${esc(co)}</b>` : ""}`;
 });
+// 物件マスタ：同じ会社の書き方ゆれ（FLEX TOKYO／FLEXTOKYO、Nワークス／nworks）を1つの名前にまとめる。同じ物件名は1つにし、空の項目はもう一方で埋める
+function propCoMerge(list){
+  const cos = [...new Set(list.map(p => p.company).filter(Boolean))], to = new Map();
+  cos.forEach(c => { if(to.has(c)) return; const g = cos.filter(x => coLoose(x) === coLoose(c)); if(g.length < 2) return;
+    const cnt = x => list.filter(p => p.company === x).length, main = g.find(x => MANAGERS.includes(x)) || [...g].sort((a, b) => cnt(b) - cnt(a))[0];
+    g.forEach(x => to.set(x, main)); });
+  if(![...to].some(([a, b]) => a !== b)) return null;
+  const out = [], byName = new Map();
+  for(const p0 of list){
+    const main = to.get(p0.company); if(!main){ out.push(p0); continue; }
+    const p = {...p0, company:main}, k = main + "|" + normKey(p.name), hit = byName.get(k);
+    if(hit){ Object.keys(p).forEach(x => { if(!hit[x] && p[x]) hit[x] = p[x]; }); continue; }
+    byName.set(k, p); out.push(p);
+  }
+  return out;
+}
 // --- 設定：物件マスタ画面 ---
 async function viewSettings(tab){
   if(!["props","prices","suppliers","docs","people","data"].includes(tab)) tab = "props";
@@ -5073,6 +5069,7 @@ async function viewSettings(tab){
   S.billingCfg = await api().getBilling().catch(() => ({}));
   [S.suppliers, S.materials, S.seal] = await Promise.all([api().getSuppliers().catch(() => clone(DEFAULT_SUPPLIERS)), api().getMaterials().catch(() => clone(DEFAULT_MATERIALS)), api().getSeal().catch(() => "")]);
   [S.props, S.delJobs, S.prices, S.staff] = await Promise.all([api().getProperties(), api().listJobs({}), api().getPrices().catch(() => clone(DEFAULT_PRICES)), api().getStaff().catch(() => [])]);
+  const pm = propCoMerge(S.props); if(pm){ await api().saveProperties(pm); S.props = pm; if(S.propFilter?.company && !pm.some(p => p.company === S.propFilter.company)) S.propFilter.company = ""; }
   S.delSel = new Set([...(S.delSel || [])].filter(id => S.delJobs.some(j => j.id === id)));
   S.delFilter ||= {status:"", q:""};
   const companies = [...new Set(S.props.map(p => p.company).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
@@ -5176,6 +5173,11 @@ function renderPropList(){
         <td class="nowrap"><button class="textlink" data-act="prop-edit" data-id="${esc(p.id)}">編集</button>　<button class="textlink" data-act="prop-del" data-id="${esc(p.id)}">削除</button></td></tr>`).join("")}
     </tbody></table></div>${all.length > list.length ? `<p class="small" style="margin:8px 0 0">${all.length.toLocaleString()}件中 100件を表示しています。検索で絞り込んでください。</p>` : ""}`
     : `<div class="empty">${S.props.length ? "条件に合う物件はありません。" : "物件マスタはまだ空です。下の「CSVから取り込む」で一括登録できます。"}</div>`;
+  // 同じ会社なのに書き方が違う（FLEX TOKYO／FLEXTOKYO など）ものは、まとめるボタンを出す
+  const cos = [...new Set(S.props.map(p => p.company).filter(Boolean))], seen = new Set(), dups = [];
+  cos.forEach(c => { if(seen.has(c)) return; const g = cos.filter(x => x === c || coLoose(x) === coLoose(c)); g.forEach(x => seen.add(x)); if(g.length > 1) dups.push(g); });
+  if(false && dups.length) box.insertAdjacentHTML("afterbegin", dups.map(g => { const cnt = c => S.props.filter(p => p.company === c).length, main = [...g].sort((a, b) => cnt(b) - cnt(a))[0];
+    return `<div class="note row between" style="margin:0 0 10px;gap:8px">同じ会社の書き方が${g.length}つあります：${g.map(c => `「${esc(c)}」${cnt(c)}件`).join("・")}<button class="btn sm" data-act="prop-merge-co" data-to="${esc(main)}" data-from="${esc(JSON.stringify(g))}">「${esc(main)}」にまとめる</button></div>`; }).join(""));
   if(f.company){
     const n = S.props.filter(p => p.company === f.company).length;
     box.insertAdjacentHTML("beforeend", `<p style="margin:12px 0 0;text-align:right"><button class="btn danger" data-act="prop-del-co">「${esc(f.company)}」の物件をすべて削除（${n.toLocaleString()}件）</button></p>`);
@@ -5760,9 +5762,14 @@ async function caseSync(e){
   const its = j => itemsWithId(privs[j.id].items?.length ? privs[j.id].items : j.items || []);
   if(!jobs.some(j => its(j).some(i => i.rid))){ warn.push("この案件は前の仕組みで作ったので、業者の案件には自動で反映しません。案件の画面で直してください"); return warn; }
   const used = new Set(jobs.flatMap(j => its(j).map(i => i.rid).filter(Boolean)));
+  // 工事メモで「業者の発注先」をほかの協力業者に変えた工事は、その業者に移す（募集し直さない）
+  const live = j => !j.declinedAt && !["completed", "paid"].includes(j.status), moves = new Map();
+  const wantOf = r => (r?.sup?.work || "").startsWith("c:") ? r.sup.work.slice(2) : "";
   for(const j of jobs){
     const cur = its(j); let next = [];
-    cur.forEach(i => { if(isParking(i) || !i.rid){ next.push(i); return; } const r = byRid.get(i.rid); if(!r) return; next.push({...i, ...rowToItem(r), iid:i.iid}); });
+    cur.forEach(i => { if(isParking(i) || !i.rid){ next.push(i); return; } const r = byRid.get(i.rid); if(!r) return;
+      const w = wantOf(r); if(w && w !== j.assignedTo && live(j)){ if(!moves.has(w)) moves.set(w, []); moves.get(w).push({...i, ...rowToItem(r), iid:i.iid}); return; }
+      next.push({...i, ...rowToItem(r), iid:i.iid}); });
     if(j.id === root.id) rows.filter(r => !used.has(r.id)).forEach(r => next.push(rowToItem(r)));   // 新しく足した工事は元の案件へ
     const same = next.length === cur.length && next.every((i, k) => itemKey(i) === itemKey(cur[k]));
     if(same) continue;
@@ -5778,6 +5785,27 @@ async function caseSync(e){
       await api().saveDocument({...d, origItems, origBase, changes:orderChanges(origItems, d.job.items), changedAt:Date.now(), changed:true});
     }
   }
+  // 移す工事：その業者の案件（同じ現場で発注中）があれば足す。なければ新しく分けてその業者に直接発注
+  for(const [uid, add] of moves){
+    const c = S.crafts?.get(uid) || await api().getProfile(uid).catch(() => null); if(!c){ warn.push("発注先の業者が見つかりませんでした"); continue; }
+    const fam = (await api().listJobs({})).filter(j => (j.id === root.id || j.parentId === root.id) && j.assignedTo === uid && live(j))[0];
+    if(fam){
+      const pv = await api().getJobPrivate(fam.id).catch(() => ({})), next = [...itemsWithId(pv.items?.length ? pv.items : fam.items), ...add], price = itemsTotal(next);
+      await api().saveJob(fam.id, {items:next, price, trades:tradesFromItems(next.filter(i => !isParking(i)))}); await api().setJobPrivate(fam.id, {...pv, items:next});
+      const old = await api().getDocument(`${fam.id}_order`).catch(() => null), d = buildOrderDoc({...fam, items:next, price}, {...pv, items:next}, c, await orderExtra(fam.id));
+      const origItems = old?.origItems || old?.job?.items || [], origBase = old?.origBase ?? old?.amount?.base ?? 0; if(old?.number) d.number = old.number;
+      await api().saveDocument({...d, origItems, origBase, changes:orderChanges(origItems, d.job.items), changedAt:Date.now(), changed:true});
+    } else {
+      const rp = await api().getJobPrivate(root.id).catch(() => ({})), items = [...add, ...(e.checks?.park?.v === "有" ? [] : [parkingItem(PARKING_FEE)])];
+      const cats = [...new Set(add.map(i => i.cat).filter(x => x && x !== "その他"))], label = cats.length ? cats.join("・") : add[0].name + (add.length > 1 ? " ほか" : "");
+      const child = {title:`${root.title}（${label}）`, trades:tradesFromItems(add), pref:root.pref || "", city:root.city || "", startDate:root.startDate || "", endDate:root.endDate || "", price:itemsTotal(items),
+        parking:items.filter(isParking).reduce((a, i) => a + itemAmount(i), 0), taxMode:root.taxMode || "税別", items, audience:root.audience || "all", site:root.site || null, staff:root.staff || null, jobNo:root.jobNo || "",
+        description:"", priceNote:"", photos:[], parentId:root.id, status:"closed", publishedAt:root.publishedAt || Date.now()};
+      const cid = await api().saveJob(null, child); await api().setJobPrivate(cid, {...rp, items, selfItems:[]});
+      await assignOrPrepay(cid, uid, buildOrderDoc(await api().getJob(cid), {...rp, items}, c, await orderExtra(cid)));
+    }
+    warn.push(`${add.map(i => i.name).join("・")}を ${c.tradeName || c.name} さんに移しました`);
+  }
   // 自社でやる工事
   await api().setJobPrivate(root.id, {...(await api().getJobPrivate(root.id).catch(() => ({}))), selfItems:(e.rows || []).filter(rowSelf).map(rowToItem)});
   // 材料・外部の発注書：工事メモから作った下書きは作り直す（もう出した発注書はそのまま）
@@ -5789,6 +5817,15 @@ async function caseSync(e){
 // 受注 → 発注：決めた業者に直接発注（募集しない）、未定の工事は募集、外部の業者・材料屋さんは発注書の下書き、自社でやる工事は自社に
 const lotSpan = (lots, ids) => { const ls = (lots || []).filter(l => l.start && (l.iids || []).some(x => ids.includes(x))); if(!ls.length) return {};
   return {craftStart:ls.reduce((a, l) => l.start < a ? l.start : a, ls[0].start), craftEnd:ls.reduce((a, l) => (l.end || l.start) > a ? (l.end || l.start) : a, ls[0].end || ls[0].start)}; };
+// 発注する前の確認：発注先ごとに、どの工事が行くか・駐車場代
+function startPreview(e){
+  const g = new Map(), add = (k, r) => { if(!g.has(k)) g.set(k, []); g.get(k).push(`${r.loc ? r.loc + " " : ""}${r.name}`); };
+  (e.rows || []).filter(r => !r.noteRow && r.name).forEach(r => { const w = r.sup?.work || "";
+    if(rowForPortal(r)) add(w.startsWith("c:") ? `${supNameOf(w) || "協力業者"}さんに直接発注` : "募集に出す（業者未定）", r);
+    else if(w === "self") add("自社でやる", r); else if(/^s:/.test(w)) add(`${supNameOf(w) || "外部の業者"}（発注書の下書き）`, r); });
+  const pk = e.checks?.park?.v === "有" ? "駐車場代：なし（敷地内駐車 有）" : `駐車場代：業者ごとに ${yenFull(PARKING_FEE)}（税抜）を発注書に入れます`;
+  return [...g].map(([k, l]) => `■ ${k}\n${l.map(x => "・" + x).join("\n")}`).join("\n\n") + "\n\n" + pk;
+}
 async function caseStart(e){
   const r = await estToJob(e), jid = r.jid, out = [];
   await saveEst({...e, status:"won", jobId:jid, wonAt:Date.now()}, true);
@@ -5911,7 +5948,7 @@ async function caseStep(el){
   else if(step === "tachiai") return ACTIONS["est-tachiai"]();
   else if(step === "self") return ACTIONS["est-self"]();
   else if(step === "start"){
-    if(!await ask({title:"発注しますか？", body:"工事ごとに決めた発注先に出します。\n・協力業者を選んだ工事：その業者に直接発注（募集しません。日程が合わないときは「募集に出す」で募集に回せます）\n・未定の工事：既存業者に募集\n・外部の業者（キツタカなど）と材料屋さん：発注書の下書き\n・ネットで買う物：買う物リスト", ok:"発注する"})) return;
+    if(!await ask({title:"この内容で発注しますか？", body:startPreview(e) + "\n\n違っていたら「やめる」を押して、工事メモの各工事の「業者の発注先」を直してください。", ok:"発注する"})) return;
     const r = await caseStart(e); toast(`発注しました（${[...r.out, r.mo ? `発注書の下書き${r.mo}件` : ""].filter(Boolean).join("・") || "業者に出す工事なし"}）`);
   }
   S.ldCache = null; route();
@@ -5957,7 +5994,8 @@ async function memoCollect(form){
     // 物件マスタに覚えるのは、管理会社・物件名・住所・オートロック・エレベーター・専用駐車場・備考だけ（号室・担当・鍵・工事は覚えない）
     const props0 = await api().getProperties().catch(() => S.props || []);
     const found = prop.id ? props0.find(p => p.id === prop.id) : props0.find(p => coKey(p.company) === coKey(company) && normKey(p.name) === normKey(bName));
-    const base0 = found || {id:"p_" + newId(), company, name:bName, address:"", al:"", ev:"", pk:"", note:""};
+    const coName = props0.find(p => p.company && coLoose(p.company) === coLoose(company))?.company || company;
+    const base0 = found || {id:"p_" + newId(), company:coName, name:bName, address:"", al:"", ev:"", pk:"", note:""};
     const master = {...base0, address:g("address") || base0.address || "", al:alSave(form), ev:f.mEv.value, pk:facilityVal(base0.pk, f.mPk.checked), note:g("mNote")};
     if(!found || ["address", "al", "ev", "pk", "note"].some(k => (master[k] || "") !== (found[k] || ""))){
       const list = found ? props0.map(p => p.id === found.id ? master : p) : [...props0, master];
@@ -6637,6 +6675,21 @@ function toast(msg){
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3400);
 }
 // どれかを選んでもらう（キャンセルは null）
+// 工事を選んで、行き先（募集／協力業者）を選ぶ画面
+function pickMove(items, crafts, except){
+  return new Promise(res => {
+    const bg = document.createElement("div"); bg.className = "modal-bg";
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title"><h2 id="m-title">工事の一部をほかに回す</h2>
+      <p class="small" style="margin:0 0 8px">回す工事にチェックしてください。今の業者さんの発注書からは外れ、「変わりました」と表示されます。</p>
+      <div class="stack" style="gap:4px;max-height:40vh;overflow:auto;margin-bottom:10px">${items.map(i => `<label class="toggle" style="margin:0"><input type="checkbox" value="${esc(i.iid)}">${esc(`${i.loc ? i.loc + " " : ""}${i.name}　${fmtQty(i.qty)}${i.unit || ""}`)}</label>`).join("")}</div>
+      <label class="field"><span>回す先</span><select class="m-to"><option value="">募集に出す（この工事だけ）</option>${crafts.filter(c => c.uid !== except).map(c => `<option value="${esc(c.uid)}">${esc(c.tradeName || c.name)}に直接発注</option>`).join("")}</select></label>
+      <div class="row end"><button type="button" class="btn sub m-no">キャンセル</button><button type="button" class="btn m-ok">回す</button></div></div>`;
+    const close = v => { bg.remove(); res(v); };
+    bg.querySelector(".m-no").onclick = () => close(null);
+    bg.querySelector(".m-ok").onclick = () => { const ids = [...bg.querySelectorAll("input:checked")].map(x => x.value); if(!ids.length){ toast("回す工事を選んでください"); return; } close({ids, to:bg.querySelector(".m-to").value}); };
+    document.body.appendChild(bg);
+  });
+}
 function choose({title, body = "", options = []}){
   return new Promise(res => {
     const bg = document.createElement("div"); bg.className = "modal-bg";
@@ -7159,6 +7212,29 @@ const ACTIONS = {
     toast(el.dataset.mat ? "是正の案件を作りました。材料・外部発注を入れてください" : "是正の案件を作りました。工事の内容と日程を入れて、業者に公開・発注してください");
     location.hash = el.dataset.mat ? `#/admin/job/${jid}/mat/new` : `#/admin/job/${jid}/edit`;
   },
+  // 発注済みの案件から一部の工事を外して、ほかの業者に直接発注するか、その工事だけ募集に出す（全部を募集し直さない）
+  async "job-move"(el){
+    const jid = el.dataset.job, [j, pv] = await Promise.all([api().getJob(jid), api().getJobPrivate(jid).catch(() => ({}))]);
+    const all = itemsWithId(pv.items?.length ? pv.items : j.items), work = all.filter(i => !isParking(i));
+    if(work.length < 2) throw new Error("工事が1つだけなので、回せません。発注を取り消してください");
+    const crafts = [...(S.crafts?.values() || [])].filter(c => c.uid && (c.status || "approved") === "approved");
+    const pick = await pickMove(work, crafts, j.assignedTo); if(!pick) return;
+    if(pick.ids.length === work.length) throw new Error("全部の工事を回すときは、発注を取り消して別の業者を選んでください");
+    const take = all.filter(i => pick.ids.includes(i.iid)), keep = all.filter(i => !pick.ids.includes(i.iid)), price = itemsTotal(keep);
+    await api().saveJob(jid, {items:keep, price, trades:tradesFromItems(keep.filter(i => !isParking(i)))}); await api().setJobPrivate(jid, {...pv, items:keep});
+    if(j.assignedTo){ const c0 = S.crafts?.get(j.assignedTo) || await api().getProfile(j.assignedTo), old = await api().getDocument(`${jid}_order`).catch(() => null);
+      const d = buildOrderDoc({...j, items:keep, price}, {...pv, items:keep}, c0, await orderExtra(jid)), origItems = old?.origItems || old?.job?.items || [], origBase = old?.origBase ?? old?.amount?.base ?? 0; if(old?.number) d.number = old.number;
+      await api().saveDocument({...d, origItems, origBase, changes:orderChanges(origItems, d.job.items), changedAt:Date.now(), changed:true}); }
+    const pk = all.find(isParking), items = [...take, ...(pk ? [parkingItem(pk.unitPrice)] : [])], root = j.parentId || jid;
+    const cats = [...new Set(take.map(i => i.cat).filter(x => x && x !== "その他"))], label = cats.length ? cats.join("・") : take[0].name + (take.length > 1 ? " ほか" : "");
+    const child = {title:`${j.title.replace(/（[^）]*）$/, "")}（${label}）`, trades:tradesFromItems(take), pref:j.pref || "", city:j.city || "", startDate:j.startDate || "", endDate:j.endDate || "", price:itemsTotal(items),
+      parking:items.filter(isParking).reduce((a, i) => a + itemAmount(i), 0), taxMode:j.taxMode || "税別", items, audience:"priority", site:j.site || null, staff:j.staff || null, jobNo:j.jobNo || "",
+      description:j.description || "", priceNote:"", photos:j.photos || [], parentId:root, status:"closed", publishedAt:Date.now(), ...(j.fixOf ? {fixOf:j.fixOf} : {})};
+    const cid = await api().saveJob(null, child); await api().setJobPrivate(cid, {...pv, items, selfItems:[]});
+    if(pick.to){ const c = S.crafts?.get(pick.to) || await api().getProfile(pick.to); await assignOrPrepay(cid, pick.to, buildOrderDoc(await api().getJob(cid), {...pv, items}, c, await orderExtra(cid))); toast(`${label}を${c.tradeName || c.name}さんに発注しました`); }
+    else { await api().setJobStatus(cid, "open"); toast(`${label}だけを募集に出しました`); }
+    S.ldCache = null; route();
+  },
   async "est-self"(){
     const e = await saveEst(estNow(), true);
     if(!(e.rows || []).some(r => !r.noteRow && r.name)) throw new Error("工事の内容を入れてください");
@@ -7380,6 +7456,20 @@ const ACTIONS = {
     const p = S.props.find(x => x.id === el.dataset.id); if(!p) return;
     if(!await ask({title:`「${p.name}」を削除しますか？`, body:"物件マスタから削除します。作成済みの案件には影響しません。", ok:"削除する", danger:true})) return;
     S.props = S.props.filter(x => x.id !== p.id); await api().saveProperties(S.props); toast("削除しました"); route();
+  },
+  // 同じ会社の書き方ゆれをまとめる。同じ物件名が両方にあれば1つにして、空の項目はもう一方で埋める
+  async "prop-merge-co"(el){
+    const to = el.dataset.to, from = JSON.parse(el.dataset.from || "[]");
+    if(!await ask({title:`「${to}」にまとめますか？`, body:`${from.filter(c => c !== to).map(c => `「${c}」`).join("・")}の物件を「${to}」にします。同じ物件名が両方にあるときは1つにまとめます。`, ok:"まとめる"})) return;
+    const list = await api().getProperties(), out = [], byName = new Map(); let merged = 0;
+    for(const p0 of list){
+      if(!from.includes(p0.company)){ out.push(p0); continue; }
+      const p = {...p0, company:to}, k = normKey(p.name), hit = byName.get(k);
+      if(hit){ Object.keys(p).forEach(x => { if(!hit[x] && p[x]) hit[x] = p[x]; }); merged++; continue; }
+      byName.set(k, p); out.push(p);
+    }
+    await api().saveProperties(out); S.props = out; if(from.includes(S.propFilter?.company)) S.propFilter.company = to;
+    toast(`「${to}」にまとめました${merged ? `（同じ物件 ${merged}件を1つに）` : ""}`); route();
   },
   async "prop-del-co"(){
     const co = S.propFilter?.company; if(!co) return;
@@ -9037,7 +9127,7 @@ async function boot(){
     if(FIREBASE_CONFIG.apiKey && !FORCE_DEMO){
       const fb = m => loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-${m}-compat.js`);
       await fb("app"); await Promise.all([fb("auth"), fb("firestore")]);   // app のあとは並べて読む
-      S.api = withReadCache(new FirebaseBackend());
+      S.api = new FirebaseBackend();
     } else {
       S.api = new DemoBackend();
     }
