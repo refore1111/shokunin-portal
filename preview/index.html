@@ -2308,7 +2308,7 @@ const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedger
   "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders", "listCoBills"]);
 const READ_CACHE_OK = new Set([...READ_KEEP_UNTIL_CHANGE, "listCraftsmen", "getNotifySettings", "listAdmins", "getAdminInfo", "listRatings",
   "listThreads", "listInvoices", "listApplications", "listReports", "getCompany", "listCompanies", "listMembers", "listCrew", "listInvites", "listPayments",
-  "getOpSettings", "getOpConnect", "opListInvoices", "opListUsers", "listMemos", "getMemoDrafts"]);
+  "getOpSettings", "opListInvoices", "opListUsers", "listMemos", "getMemoDrafts"]);
 // 受信しているコレクションが変わったら、読み直す一覧
 const READ_WATCH_DROP = {jobs:["listJobs", "opListJobs", "getAdminInfo"], applications:["listApplications"], reports:["listReports"], invoices:["listInvoices"], threads:["listThreads"]};
 // 書き込みでも、覚えた一覧に関係ないもの
@@ -8668,6 +8668,7 @@ async function assignOrPrepay(jobId, uid, order, extra = {}){
 }
 async function prepayPanel(job){
   const p = job.payId ? await api().getPayment(job.payId) : null;
+  if(p && p.status === "waiting" && stripeAuto() && api().mode !== "demo"){ const cn = await api().getOpConnect().catch(() => null); if(cn) S.opCfg = {...(S.opCfg || {}), connect:cn}; }
   if(!p) return `<section class="panel"><h2>先払い待ち</h2><p class="small">支払いの情報が見つかりません。発注先を選び直してください。</p><button class="btn sub" data-act="pp-cancel" data-id="${esc(job.id)}">発注先を選び直す</button></section>`;
   const c = S.crafts.get(p.craftsmanId), bank = opCfg().bank, who = esc(c?.tradeName || c?.name || p.craftsmanName);
   return `<section class="panel prepay"><h2>先払いをお願いします</h2>
@@ -8677,6 +8678,7 @@ async function prepayPanel(job){
     ${["waiting", "reported"].includes(p.status) && p.stripeSession && p.method === "stripe" && stripeAuto() ? `<div class="note" style="margin-top:10px"><b>お支払いを確認しています</b><br><span class="small">Stripe でお支払いが済むと、数秒〜1分ほどで自動で発注が確定します。画面が変わらないときは、もう一度開いてください。</span><div class="row" style="margin-top:8px"><button class="btn sub" data-act="reload">もう一度読み込む</button><button class="btn sub" data-act="pp-auto" data-id="${esc(p.id)}">支払い画面をもう一度開く</button></div></div>`
     : p.status === "waiting" && stripeAuto() && connectOf(p.craftsmanId) ? `<div class="note" style="margin-top:10px"><b>カードで払えます（Stripe）</b><br><span class="small">お支払いと同時に、工事代金 ${yenFull(p.amount)} は${who}さんへ、運営手数料 ${yenFull(p.fee)} はReforeへ自動で分けられ、そのまま発注が確定します。</span>
       <div class="row" style="margin-top:8px"><button class="btn" data-act="pp-auto" data-id="${esc(p.id)}">カードで払う（${yenFull(p.total)}）</button></div></div>`
+    : p.status === "waiting" && stripeAuto() ? `<div class="note" style="margin-top:10px"><b>まだカードでは払えません</b><br><span class="small">${who}さんが Stripe の受け取り登録をまだ終えていないため、カード払いはできません。登録が終わると、ここに「カードで払う」が出ます（工事代金は${who}さんへ、手数料はReforeへ自動で分かれます）。お急ぎの場合は、下の振込先にお振り込みください。</span><div class="row" style="margin-top:8px"><button class="btn sub" data-act="reload">登録が済んだか確かめる</button></div></div>`
     : p.status === "waiting" && SUBSCRIPTION_ON && p.payLink ? `<div class="note" style="margin-top:10px"><b>カードで払えます（Stripe）</b><br><span class="small">お支払いと同時に、工事代金 ${yenFull(p.amount)} は${who}さんへ、運営手数料 ${yenFull(p.fee)} はReforeへ自動で分けられます。金額は入力済みです。</span>
       <div class="row" style="margin-top:8px"><button class="btn" data-act="pp-split" data-id="${esc(p.id)}">カードで払う（${yenFull(p.total)}）</button></div></div>`
     : p.status === "waiting" && SUBSCRIPTION_ON && connectOf(p.craftsmanId) ? `<div class="note" style="margin-top:10px"><b>カード払いの準備中です</b><br><span class="small">運営がカードの支払い画面を用意すると、ここに「カードで払う」が出ます（工事代金は職人さんへ、手数料はReforeへ自動で分かれます）。振込でもお支払いいただけます。</span></div>`
