@@ -1,4 +1,10 @@
 <!doctype html>
+<!--
+  【このファイルを変更する人・AIへ】
+  ・必ず GitHub（refore1111/shokunin-portal の main）にある最新の index.html を元に変更してください。古いファイルから作り直すと、ほかの変更が消えます。
+  ・Firebase の読み取りを節約する仕組み（READ_KEEP_UNTIL_CHANGE・LOCAL_DB・_pget・_bump・listLedger の差分読み）を消さないでください。
+  ・変更は、まとめ役のチャット（GENPUKU PRO協力業者ポータルの作業チャット）を通して本番に入れます。
+-->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -2200,6 +2206,18 @@ function authError(e){
 //  ・ほかの人の変更は、新着バッジ用にもともと動いている受信で気づいたら、関係する一覧だけ読み直す
 //  ・そのほかは1分で読み直す。ブラウザを読み込み直したときは全部読み直す
 const READ_TTL = 60000;
+// 端末に覚える（ブラウザを閉じても残る）：マスタ（単価表・発注先・材料・スタッフ・物件・社印・請求設定・収支の設定）と収支の行
+//  ・マスタ：master/_ver の「更新番号」を1回だけ読み、変わったものだけ読み直す（変更・保存したときに番号を上げる）
+//  ・収支：前回から変わった行（updatedAt が新しい行）だけ読む。消した行は master/_ver.ledgerDel に記録する
+//  ・念のため、マスタは3日、収支は7日たったら全部読み直す。ログアウトしたら端末の記憶は消す
+const PCACHE_MAX = 3 * 86400000, LEDGER_FULL_MAX = 7 * 86400000;
+const LOCAL_DB = (() => {
+  let op = null;
+  const open = () => op ||= new Promise((res, rej) => { const r = indexedDB.open("genpuku-cache", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const run = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("kv", mode), q = fn(t.objectStore("kv")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); };
+  return {get:k => run("readonly", st => st.get(k)).catch(() => null), set:(k, v) => run("readwrite", st => st.put(v, k)).catch(() => null),
+    del:k => run("readwrite", st => st.delete(k)).catch(() => null), clear:() => run("readwrite", st => st.clear()).catch(() => null)};
+})();
 const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedgerCfg", "listJobs", "listEstimates", "getEstimate", "listBills", "getBilling",
   "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders"]);
 // 受信しているコレクションが変わったら、読み直すもの
@@ -2234,6 +2252,21 @@ class FirebaseBackend {
   // 工務店のときは companies/{cid}/… の中（見積・請求・収支・評価・設定など）
   scol(n){ return tenant() ? this.db.collection("companies").doc(S.cid).collection(n) : this.db.collection(n); }
   smaster(id){ return this.scol("master").doc(id); }
+  _pkey(name){ return `${tenant() ? S.cid : "refore"}|${name}`; }
+  _ver(){ const cid = tenant() ? S.cid : "refore"; if(!this._vp || this._vp.cid !== cid) this._vp = {cid, p:this.smaster("_ver").get().then(s => s.exists ? s.data() : {}).catch(() => null)}; return this._vp.p; }
+  // マスタ：更新番号が同じなら端末の記憶を使う（読み取り0）
+  async _pget(name, loader){
+    const ver = await this._ver(), v = ver ? (ver[name] || 0) : null, key = this._pkey(name);
+    if(v !== null){ const c = await LOCAL_DB.get(key); if(c && c.v === v && Date.now() - c.at < PCACHE_MAX) return clone(c.d); }
+    const d = await loader(); if(v !== null) LOCAL_DB.set(key, {v, at:Date.now(), d:clone(d)}); return d;
+  }
+  // 保存したら更新番号を上げる（ほかの端末も次に開いたときに読み直す）
+  async _bump(name, extra = {}){
+    const t = Date.now(), cid = tenant() ? S.cid : "refore";
+    await this.smaster("_ver").set({[name]:t, ...extra}, {merge:true}).catch(e => console.warn("更新番号を保存できません", e));
+    if(this._vp && this._vp.cid === cid) this._vp.p = this._vp.p.then(v => v ? {...v, [name]:t, ...(extra.ledgerDel ? {ledgerDel:{...(v.ledgerDel || {}), ...extra.ledgerDel}} : {})} : v);
+    LOCAL_DB.del(this._pkey(name));
+  }
   // 案件・応募・チャット・完了報告・請求書は、工務店なら自社の分だけを読む（ルールもそうなっている）
   scoped(q, name){ return tenant() && SCOPED_COLS.includes(name) ? q.where("companyId", "==", S.cid) : q; }
   onAuth(cb){ this.auth.onAuthStateChanged(u => cb(u ? {uid:u.uid, email:u.email} : null)); }
@@ -2245,7 +2278,7 @@ class FirebaseBackend {
       await this.auth.signInWithEmailAndPassword(email.trim(), pw);
     } catch(e) { throw authError(e); }
   }
-  async signOut(){ await this.auth.signOut(); }
+  async signOut(){ await LOCAL_DB.clear(); this._vp = null; await this.auth.signOut(); }
   async resetPassword(email){ try { await this.auth.sendPasswordResetEmail(email.trim()); } catch(e) { throw authError(e); } }
   async getIdToken(){ return this.auth.currentUser.getIdToken(); }
   // 写真は Firebase ではなく、Apps Script 経由で Reforeの Googleドライブに保存する
@@ -2374,7 +2407,8 @@ class FirebaseBackend {
     return {jobs:ids.length, total};
   }
   // 物件マスタ：master/props_000… に700件ずつまとめて保存（読み込み回数を抑えるため）
-  async getProperties(){
+  async getProperties(){ return this._pget("props", () => this._getProperties()); }
+  async _getProperties(){
     const s = await this.scol("master").get();
     return s.docs.filter(d => d.id.startsWith("props_")).sort((a, b) => a.id.localeCompare(b.id)).flatMap(d => d.data().items || []);
   }
@@ -2383,18 +2417,18 @@ class FirebaseBackend {
     const n = Math.ceil(items.length / size), old = await this.scol("master").get(), b = this.db.batch();
     for(let i = 0; i < n; i++) b.set(this.smaster(`props_${String(i).padStart(3, "0")}`), {items:items.slice(i * size, (i + 1) * size), updatedAt:Date.now()});
     old.docs.forEach(d => { if(d.id.startsWith("props_") && Number(d.id.slice(6)) >= n) b.delete(d.ref); });
-    await b.commit();
+    await b.commit(); await this._bump("props");
   }
   // 材料・外部の発注先、材料マスタ、社印（master/…）と、案件ごとの材料・外部発注（jobs/{id}/admin/matorders）
-  async getSuppliers(){ const s = await this.smaster("suppliers").get(); return s.exists ? (s.data().items || []) : defSups(); }
+  async getSuppliers(){ return this._pget("suppliers", async () => { const s = await this.smaster("suppliers").get(); return s.exists ? (s.data().items || []) : defSups(); }); }
   // 工事メモの下書き（入れかけの画面をそのまま覚える。会社のみんなで見られる）
   async getMemoDrafts(){ const s = await this.smaster("memodrafts").get(); return s.exists ? (s.data().items || []) : []; }
   async saveMemoDrafts(list){ await this.smaster("memodrafts").set({items:list, updatedAt:Date.now()}); }
-  async saveSuppliers(list){ await this.smaster("suppliers").set({items:list, updatedAt:Date.now()}); }
-  async getMaterials(){ const s = await this.smaster("materials").get(); return s.exists ? (s.data().items || []) : defMats(); }
-  async saveMaterials(list){ await this.smaster("materials").set({items:list, updatedAt:Date.now()}); }
-  async getSeal(){ const s = await this.smaster("seal").get(); return s.exists ? (s.data().data || "") : ""; }
-  async saveSeal(data){ await this.smaster("seal").set({data:data || "", updatedAt:Date.now()}); }
+  async saveSuppliers(list){ await this.smaster("suppliers").set({items:list, updatedAt:Date.now()}); await this._bump("suppliers"); }
+  async getMaterials(){ return this._pget("materials", async () => { const s = await this.smaster("materials").get(); return s.exists ? (s.data().items || []) : defMats(); }); }
+  async saveMaterials(list){ await this.smaster("materials").set({items:list, updatedAt:Date.now()}); await this._bump("materials"); }
+  async getSeal(){ return this._pget("seal", async () => { const s = await this.smaster("seal").get(); return s.exists ? (s.data().data || "") : ""; }); }
+  async saveSeal(data){ await this.smaster("seal").set({data:data || "", updatedAt:Date.now()}); await this._bump("seal"); }
   async getMatOrders(jobId, old){ const s = await this._get(this.col("jobs").doc(jobId).collection("admin").doc("matorders"), old); return s.exists ? (s.data().orders || []) : []; }
   async saveMatOrders(jobId, orders){ S.ldCache = null; JOB_ADMIN_CACHE.delete(jobId); await this.col("jobs").doc(jobId).collection("admin").doc("matorders").set({orders, updatedAt:Date.now()}); }
   // Reforeの担当者：master/staff にまとめて保存
@@ -2405,42 +2439,50 @@ class FirebaseBackend {
   async getEstimate(id){ const s = await this.scol("estimates").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
   async saveEstimate(e){ S.ldCache = null; await this.scol("estimates").doc(e.id).set(e); return e.id; }
   async deleteEstimate(id){ S.ldCache = null; await this.scol("estimates").doc(id).delete(); }
-  async getBilling(){ const s = await this.smaster("billing").get(); return s.exists ? s.data() : {}; }
+  async getBilling(){ return this._pget("billing", async () => { const s = await this.smaster("billing").get(); return s.exists ? s.data() : {}; }); }
   // 管理会社への請求書（bills/{管理会社_締め月}。管理者だけ）
   async listBills(){ return this.docs(await this.scol("bills").get()); }
   async saveBill(b){ S.ldCache = null; await this.scol("bills").doc(b.id).set(b); }
   async deleteBill(id){ S.ldCache = null; await this.scol("bills").doc(id).delete(); }
-  async saveBilling(d){ await this.smaster("billing").set(d); }
+  async saveBilling(d){ await this.smaster("billing").set(d); await this._bump("billing"); }
   // 収支（ledger/{案件ID か l_…}。管理者だけ）と、その設定（master/ledger）
-  async listLedger(){ return this.docs(await this.scol("ledger").get()); }
+  async listLedger(){
+    const key = this._pkey("ledgerRows"), ver = await this._ver(), c = ver ? await LOCAL_DB.get(key) : null;
+    const delOk = (r, del) => !(del[r.id] && !((r.updatedAt || 0) > del[r.id]));
+    if(c && Array.isArray(c.rows) && Date.now() - c.full < LEDGER_FULL_MAX){
+      // 前回から変わった行だけ（時計のずれに備えて10分さかのぼる）
+      const q = await this.scol("ledger").where("updatedAt", ">", c.max - 600000).get();
+      const m = new Map(c.rows.map(r => [r.id, r])); q.docs.forEach(d => m.set(d.id, {id:d.id, ...d.data()}));
+      const del = ver.ledgerDel || {}, rows = [...m.values()].filter(r => delOk(r, del));
+      const max = Math.max(c.max, ...q.docs.map(d => Number(d.data().updatedAt) || 0));
+      LOCAL_DB.set(key, {full:c.full, max, rows}); return clone(rows);
+    }
+    const t0 = Date.now(), rows = this.docs(await this.scol("ledger").get());
+    if(ver) LOCAL_DB.set(key, {full:t0, max:Math.max(t0, ...rows.map(r => Number(r.updatedAt) || 0)), rows:clone(rows)});
+    return rows;
+  }
   async getLedgerRow(id){ const s = await this.scol("ledger").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
-  async saveLedger(r){ S.ldCache = null; await this.scol("ledger").doc(r.id).set(r); }
-  async saveLedgerMany(rs){ S.ldCache = null; for(let i = 0; i < rs.length; i += 400){ const b = this.db.batch(); rs.slice(i, i + 400).forEach(r => b.set(this.scol("ledger").doc(r.id), r)); await b.commit(); } }
-  async deleteLedger(id){ S.ldCache = null; await this.scol("ledger").doc(id).delete(); }
-  async getLedgerCfg(){ const s = await this.smaster("ledger").get(); return s.exists ? s.data() : {staffRate:0.5}; }
-  async saveLedgerCfg(d){ S.ldCache = null; await this.smaster("ledger").set(d); }
+  async saveLedger(r){ S.ldCache = null; await this.scol("ledger").doc(r.id).set({...r, updatedAt:Date.now()}); }
+  async saveLedgerMany(rs){ S.ldCache = null; for(let i = 0; i < rs.length; i += 400){ const b = this.db.batch(); rs.slice(i, i + 400).forEach(r => b.set(this.scol("ledger").doc(r.id), {...r, updatedAt:Date.now()})); await b.commit(); } }
+  async deleteLedger(id){ S.ldCache = null; await this.scol("ledger").doc(id).delete(); await this._bump("ledgerDelAt", {ledgerDel:{[id]:Date.now()}}); }
+  async getLedgerCfg(){ return this._pget("ledgerCfg", async () => { const s = await this.smaster("ledger").get(); return s.exists ? s.data() : {staffRate:0.5}; }); }
+  async saveLedgerCfg(d){ S.ldCache = null; await this.smaster("ledger").set(d); await this._bump("ledgerCfg"); }
   async getAdminInfo(id, old){ const s = await this._get(this.col("jobs").doc(id).collection("admin").doc("info"), old); return s.exists ? s.data() : {}; }
   // 評価（ratings/{案件ID}。管理者だけが読み書きできる）
   async listRatings(){ return this.docs(await this.scol("ratings").get()); }
   async saveRating(r){ await this.scol("ratings").doc(r.id).set(r); }
-  async getStaff(){
-    const s = await this.smaster("staff").get();
-    return s.exists ? (s.data().items || []) : [];
-  }
+  async getStaff(){ return this._pget("staff", async () => { const s = await this.smaster("staff").get(); return s.exists ? (s.data().items || []) : []; }); }
   async saveStaff(list){
-    await this.smaster("staff").set({items:list.map(p => ({id:p.id, name:p.name || "", phone:p.phone || ""})), updatedAt:Date.now()});
+    await this.smaster("staff").set({items:list.map(p => ({id:p.id, name:p.name || "", phone:p.phone || ""})), updatedAt:Date.now()}); await this._bump("staff");
   }
   // 単価表：master/prices にまとめて保存（未登録なら初期値）
-  async getPrices(){
-    const s = await this.smaster("prices").get();
-    return s.exists ? (s.data().items || []) : defPrices();
-  }
+  async getPrices(){ return this._pget("prices", async () => { const s = await this.smaster("prices").get(); return s.exists ? (s.data().items || []) : defPrices(); }); }
   async savePrices(list){
     // 見積単価（標準・管理会社ごと）・手間請け・見積だけの項目の印も消さずに保存する
     const items = list.map(p => ({id:p.id, cat:p.cat || "", name:p.name || "", unit:p.unit || "", unitPrice:Number(p.unitPrice) || 0, note:p.note || "",
       ...(p.sellPrice != null && p.sellPrice !== "" ? {sellPrice:Number(p.sellPrice) || 0} : {}), ...(Number(p.temaPrice) > 0 ? {temaPrice:Number(p.temaPrice)} : {}),
       ...(p.sellBy && Object.keys(p.sellBy).length ? {sellBy:p.sellBy} : {}), ...(p.estOnly ? {estOnly:true} : {}), ...(p.onlyCo ? {onlyCo:p.onlyCo} : {}), ...(p.off ? {off:true} : {})}));
-    await this.smaster("prices").set({items, updatedAt:Date.now()});
+    await this.smaster("prices").set({items, updatedAt:Date.now()}); await this._bump("prices");
   }
   // --- 連絡（チャット）: threads/{案件ID_業者UID} と その下の messages ---
   async listThreads(f = {}){
