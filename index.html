@@ -2195,7 +2195,15 @@ function authError(e){
   };
   return new Error(m[e.code] || e.message);
 }
+// 読み取りの節約：
+//  ・収支・案件一覧・見積・請求・単価表などは「変更・保存したときだけ」読み直す（時間では読み直さない）
+//  ・ほかの人の変更は、新着バッジ用にもともと動いている受信で気づいたら、関係する一覧だけ読み直す
+//  ・そのほかは1分で読み直す。ブラウザを読み込み直したときは全部読み直す
 const READ_TTL = 60000;
+const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedgerCfg", "listJobs", "listEstimates", "getEstimate", "listBills", "getBilling",
+  "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders"]);
+// 受信しているコレクションが変わったら、読み直すもの
+const READ_WATCH_DROP = {jobs:["listJobs", "getJob", "getJobPrivate", "getDocument", "getAdminInfo"], applications:["listApplications", "getJob"], reports:["listReports", "getJob"], invoices:[], threads:[]};
 class FirebaseBackend {
   constructor(){
     this.mode = "firebase";
@@ -2210,11 +2218,12 @@ class FirebaseBackend {
       .forEach(k => { const f = proto[k]; this[k] = (...a) => { const drop = () => { this._jl = null; this._rc.clear(); }; drop(); const r = f.apply(this, a); Promise.resolve(r).then(drop, drop); return r; }; });
     // 読み取りの節約：同じ読み取りは1分間覚えておき、画面を行き来しても読み直さない（自分が書き込んだら全部捨てる）
     this._rc = new Map();
+    this._drop = name => { const ms = READ_WATCH_DROP[name]; if(!ms) return this._rc.clear(); for(const key of [...this._rc.keys()]) if(ms.some(m => key.includes(`|${m}|`))) this._rc.delete(key); };
     ["listJobs", "getJob", "getJobPrivate", "getDocument", "getAdminInfo", "getMatOrders", "listLedger", "getLedgerRow", "listEstimates", "getEstimate", "listBills", "getProperties", "getPrices",
       "getSuppliers", "getMaterials", "getStaff", "getLedgerCfg", "getBilling", "getSeal", "listCraftsmen", "listRatings", "listApplications", "listReports", "getMemoDrafts", "getProfile", "listAdmins", "listCrew"]
       .filter(k => typeof proto[k] === "function").forEach(k => { const f = proto[k]; this[k] = (...a) => {
         const key = `${S.cid || ""}|${S.user?.uid || ""}|${k}|${JSON.stringify(a)}`, c = this._rc.get(key);
-        if(c && Date.now() - c.at < READ_TTL) return c.p.then(clone);
+        if(c && (READ_KEEP_UNTIL_CHANGE.has(k) || Date.now() - c.at < READ_TTL)) return c.p.then(clone);
         const p = f.apply(this, a); this._rc.set(key, {at:Date.now(), p}); p.catch(() => this._rc.delete(key));
         return p.then(clone); }; });
   }
@@ -2467,20 +2476,20 @@ class FirebaseBackend {
     // 職人の「募集中」：工務店が既存業者のみに出した案件も合わせる
     const isOpen = !admin && name === "jobs" && where.some(([f, op, v]) => f === "status" && v === "open");
     // ほかの人が変えたとき（2回目からの受信）は、覚えている読み取りを捨てて、次の画面で読み直す
-    let first = true; const fresh = () => { if(!first){ this._rc.clear(); this._jl = null; } first = false; };
+    let first = true; const fresh = () => { if(!first){ this._drop(name); if(name === "jobs") this._jl = null; } first = false; };
     if(!isOpen) return q.onSnapshot(s => { fresh(); cb(fix(this.docs(s))); }, e => console.error("更新の受信に失敗：" + name, e));
     const me = S.user?.uid, got = [[], [], []];
     const out = () => { const m = new Map(); got.flat().filter(j => isRefJob(j) || j.audience !== "priority" || (j.priCrafts || []).includes(me)).forEach(j => m.set(j.id, j)); cb([...m.values()]); };
     const qs = [q, this.col("jobs").where("status", "==", "open").where("priCrafts", "array-contains", me)];
     if(!where.some(([f]) => f === "audience")) qs.push(this.col("jobs").where("status", "==", "open").where("audience", "==", "all"));
-    const us = qs.map((x, i) => x.onSnapshot(s => { if(s.docChanges().length && !s.metadata.fromCache && got[i].length) this._rc.clear(); got[i] = this.docs(s); out(); }, e => console.warn("案件の受信に失敗：" + name, e)));
+    const us = qs.map((x, i) => x.onSnapshot(s => { if(s.docChanges().length && !s.metadata.fromCache && got[i].length){ this._drop("jobs"); this._jl = null; } got[i] = this.docs(s); out(); }, e => console.warn("案件の受信に失敗：" + name, e)));
     return () => us.forEach(u => u());
   }
   watchThreads(f, cb){
     let q = myRole() === "admin" ? this.scoped(this.col("threads"), "threads") : this.col("threads");
     if(f.craftsmanId) q = q.where("craftsmanId", "==", f.craftsmanId);
     let first = true;
-    return q.onSnapshot(s => { if(!first) this._rc.clear(); first = false; cb(myRole() === "admin" ? scopeList(this.docs(s)) : this.docs(s)); }, e => console.error("連絡の受信に失敗", e));
+    return q.onSnapshot(s => { if(!first) this._drop("threads"); first = false; cb(myRole() === "admin" ? scopeList(this.docs(s)) : this.docs(s)); }, e => console.error("連絡の受信に失敗", e));
   }
   // スタンプ：messages/{id}.reactions.{admin|craftsman}
   async reactMessage(tid, mid, role, e){ await this.col("threads").doc(tid).collection("messages").doc(mid).update({[`reactions.${role}`]:e || firebase.firestore.FieldValue.delete()}); }
