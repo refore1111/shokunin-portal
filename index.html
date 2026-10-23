@@ -3428,13 +3428,17 @@ function coFee(company, cfg = {}){
 // 前に自動で入れていた備考（工事メモから・見積から・見積 番号・自社施工・立会のみ）は、意味がなく工程と重なるので出さない
 const AUTO_NOTE = /^(工事メモから|見積から|自社施工|立会のみ|見積(\s*[A-Za-z]+-\d{4}-\d+)?)$/;
 const cleanNote = n => String(n || "").split("\n").map(l => l.trim()).filter(l => l && !AUTO_NOTE.test(l)).join("\n");
+// 前の収支（Numbers の表の CSV）から取り込んだ行：取り込みのときだけ billedOutside が入る。ポータルの案件につないだ行は除く
+const isImported = r => r.billedOutside !== undefined && !r.jobId;
 function calcLedger(r, cfg){
   const fee = coFee(r.company, cfg), staffRate = cfg.staffRate ?? 0.5;
   // 取り込んだ表の「-8%」「作業金額」は、表の値をそのまま使う（手で直した行があるため）
   const lost = r.stage === "lost";
   // 収支は税込で出す：請負金額は請書の税込（税抜＋消費税）。保存している請負金額（contract）は税抜のまま（管理会社への請求で使う）
+  // 前の収支（Numbers）から取り込んだ行は、表の金額のまま出す（消費税を足さない）。ポータルで請負金額を入れ直した行は、入れた税込のまま
+  const imp = isImported(r);
   const contract = lost ? 0 : Number(r.contract) || 0, netEx = lost ? 0 : (r.netOv ?? Math.round(contract * (1 - fee / 100)));
-  const contractIn = r.contractTaxIn != null && exTax(r.contractTaxIn) === contract ? Number(r.contractTaxIn) : inTax(contract), net = lost ? 0 : r.netOv != null ? inTax(Number(r.netOv) || 0) : Math.round(contractIn * (1 - fee / 100));
+  const contractIn = r.contractTaxIn != null && exTax(r.contractTaxIn) === contract ? Number(r.contractTaxIn) : imp ? contract : inTax(contract), net = lost ? 0 : r.netOv != null ? (imp ? Number(r.netOv) || 0 : inTax(Number(r.netOv) || 0)) : Math.round(contractIn * (1 - fee / 100));
   const cost = (r.vendors || []).reduce((a, v) => a + (Number(v.amount) || 0), 0);
   // 作業金額は、手数料を引いた請負金額（税抜）の0.5%（Numbersと同じ）
   const staffFee = lost ? 0 : r.staffFeeOv ?? (r.staff && contract ? Math.round(netEx * staffRate / 100) : 0), staff2Fee = lost ? 0 : r.staff2FeeOv ?? (r.staff2 && contract ? Math.round(netEx * staffRate / 100) : 0);
@@ -3665,7 +3669,7 @@ async function viewMoney(kiArg, sheetArg, subArg){
   if(sheet === "全体"){
     const stOf2 = r => r.billedOutside && !r.stage ? "old" : r.done && r.stage !== "tachiai" ? (r.billId ? "billed" : "done") : dispStage(r);
     const flow = [["", "見積前"], ["est", "見積中"], ["wait", "受注待ち"], ["won", "受注（手配前）"], ["arr", "完了待ち"], ["done", "完了・請求待ち"]];
-    body = `<section class="panel"><h2>工程（${ki}期）</h2><div class="flowbar">${flow.map(([k2, l]) => { const rs = cur.filter(r => stOf2(r) === k2); return `<div class="fb"><b>${rs.length}</b><span>${l}</span><small>${yenFull(rs.reduce((a, r) => a + inTax(Number(r.contract) || Number(r.estAmount) || 0), 0))}</small></div>`; }).join('<i aria-hidden="true">›</i>')}</div>
+    body = `<section class="panel"><h2>工程（${ki}期）</h2><div class="flowbar">${flow.map(([k2, l]) => { const rs = cur.filter(r => stOf2(r) === k2); return `<div class="fb"><b>${rs.length}</b><span>${l}</span><small>${yenFull(rs.reduce((a, r) => a + (Number(r.contract) ? Number(r.contractIn) || 0 : inTax(Number(r.estAmount) || 0)), 0))}</small></div>`; }).join('<i aria-hidden="true">›</i>')}</div>
         <p class="small" style="margin:8px 0 0">管理会社の名前（上のタブ）を押すと、工事一覧から次にやることへ進めます。完了・請求待ちは「請求書 → 管理会社への請求」で請求します。</p></section>
       <section class="panel"><h2>月次（全社）</h2>${monthlyTable(cur, prev, ki, 0)}</section>
       <section class="panel"><h2>管理会社ごと</h2><div class="tbl-wrap"><table class="mtbl nb"><thead><tr><th>管理会社</th><th class="r">件数</th><th class="r">売上</th><th class="r">利益</th><th class="r">利益(Refore)</th><th class="r">利益率</th></tr></thead><tbody>
