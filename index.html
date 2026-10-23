@@ -678,7 +678,8 @@ body{font-size:17px}
 .sheets a{padding:8px 14px;font-size:14px;color:var(--sub);text-decoration:none;border:1px solid transparent;border-bottom:0;border-radius:4px 4px 0 0;margin-bottom:-2px}
 .sheets a[aria-current]{background:var(--surface);color:var(--ink);font-weight:700;border-color:var(--line);border-bottom:2px solid var(--surface)}
 .mtbl a{font-weight:700}
-.vend-row{display:grid;grid-template-columns:1fr 140px 34px;gap:6px;margin-bottom:6px}
+.vend-row{display:grid;grid-template-columns:1fr 160px 140px 34px;gap:6px;margin-bottom:6px}
+@media (max-width:620px){ .vend-row{grid-template-columns:1fr 1fr 34px} .vend-row [name=v_name]{grid-column:1/-1} }
 .stg{display:inline-block;font-size:11.5px;font-weight:700;border-radius:3px;padding:0 6px;margin-right:6px;white-space:nowrap;border:1px solid #c3c8d0;color:#5a6270}
 .stg-est{border-color:#1F78C1;color:#1F78C1}.stg-wait{background:#FFF4D6;border-color:#C99A1C;color:#8A5F00}.stg-won{background:#E6F4EC;border-color:#2C7A4B;color:#2C7A4B}
 .stg-tachiai{background:#EEF0F4;color:#3a4252}.stg-self{background:#EAF2FB;border-color:#2F6DB5;color:#2F6DB5}.stg-lost{color:#999;border-color:#ddd}
@@ -3429,14 +3430,18 @@ function vendorCol(items, trades){
   const top = Object.entries(w).sort((a, b) => b[1] - a[1])[0]?.[0] || [...tradeGroups(trades)].find(g => VCOL.includes(g)) || "";
   const k = VCOL.indexOf(top); return k > 0 ? k : -1;
 }
-// 同じ列に2社以上あれば、名前を「・」でつないで金額を足す。その他（-1）とポータル以外で払った分は7列目から1社ずつ
+// 同じ列に2社以上あれば、名前を「・」でつないで金額を足す。その他（-1）とポータル以外で払った分は7列目から1社ずつ（工種を選んだ分はその列に入る）
+const hasVCol = v => v && v.col !== "" && v.col != null && Number(v.col) >= 0;
 function vendorCols(list, extra = []){
   const cols = VCOL.map(() => ({name:"", amount:0, empty:true})), rest = [];
+  list = [...list, ...extra.filter(hasVCol).map(v => ({...v, col:Number(v.col)}))]; extra = extra.filter(v => !hasVCol(v));
   list.forEach(v => { if(v.col >= 0){ const c = cols[v.col]; c.name = c.empty ? v.name : `${c.name}・${v.name}`; c.amount += Number(v.amount) || 0; c.empty = false; } else rest.push(v); });
   return [...cols, ...rest, ...extra];
 }
-// 手入力・取り込みの行は、入れた順（発注業者1〜）のまま
-const vcolsOf = r => r.vcols || r.vendors || [];
+// 収支の発注業者の工種（どの列に入れるか）を選ぶ
+const vcolSelect = cur => `<select name="v_col" aria-label="工種"><option value="">その他</option>${VCOL.map((n, k) => `<option value="${k}" ${cur !== "" && cur != null && Number(cur) === k ? "selected" : ""}>${k + 1} ${esc(n)}</option>`).join("")}</select>`;
+// 手入力・取り込みの行は、入れた順（発注業者1〜）のまま（工種を選んだ業者がいれば、その列に入れる）
+const vcolsOf = r => r.vcols || ((r.vendors || []).some(hasVCol) ? vendorCols([], r.vendors) : r.vendors || []);
 const vendorAmount = (x, d) => d?.amount && d.amount.total != null ? Number(d.amount.total) || 0 : calcAmount(x.price, taxModeOf(x)).total;
 // 収支の手入力の行（link）を、案件（jid）の収支にまとめる。請負金額・完了月・担当などは残し、発注業者は「ポータル以外で払った分」に入れる
 async function mergeLedgerLink(link, ex, jid){
@@ -3698,7 +3703,7 @@ async function viewMoneyEdit(id){
   const companies = ledgerCos(["その他"]);
   const auto = !!r.jobId, extra = auto ? (r.extraVendors || []) : (r.vendors || []);
   const staffOpts = cur => `<option value="">なし</option>${[...new Set([...(S.staff || []).map(p => p.name), cur].filter(Boolean))].map(n => `<option ${n === cur ? "selected" : ""}>${esc(n)}</option>`).join("")}`;
-  const vrow = (v = {}) => `<div class="vend-row"><input type="text" name="v_name" value="${esc(v.name)}" placeholder="発注業者" aria-label="発注業者"><input type="number" name="v_amount" value="${esc(v.amount ?? "")}" placeholder="発注金額" aria-label="発注金額"><button type="button" class="i-x" data-act="rm-vend" aria-label="この行を削除">×</button></div>`;
+  const vrow = (v = {}, k) => `<div class="vend-row"><input type="text" name="v_name" value="${esc(v.name)}" placeholder="発注業者" aria-label="発注業者">${vcolSelect(v.col ?? (!auto && !extra.some(hasVCol) && k < VCOL.length ? k : ""))}<input type="number" name="v_amount" value="${esc(v.amount ?? "")}" placeholder="発注金額" aria-label="発注金額"><button type="button" class="i-x" data-act="rm-vend" aria-label="この行を削除">×</button></div>`;
   const backTo = `#/admin/money/${r.month ? kiOfMonth(r.month) : (r.ki || kiNow())}/${encodeURIComponent(r.coName || r.company || "全体")}`;
   return `${back(backTo, "収支")}<h1>${auto ? "収支の入力" : id === "new" ? "案件を追加" : "案件を編集"}</h1>
     ${id === "new" ? `<p class="lead">工事番号・物件名・管理会社を入れて保存すると、この案件の見積を作れます。</p>` : ""}
@@ -3719,7 +3724,7 @@ async function viewMoneyEdit(id){
 </section>
       <section class="panel"><h2>発注業者・発注金額</h2>
         ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<p style="margin:0 0 6px">${esc(v.name)}　<b>${yenFull(v.amount)}</b> <span class="small">税込・ポータルから自動</span></p>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
-        <div id="vend-ed">${extra.map(vrow).join("")}</div><button type="button" class="btn sub" data-act="add-vend">＋ 発注業者を追加</button></section>
+        <div id="vend-ed">${extra.map(vrow).join("")}</div><p class="small" style="margin:0 0 8px">工種を選ぶと、収支のその列（1 材料屋 2 表装 3 クリーニング 4 リペア 5 設備 6 電気）に入ります。「その他」は7列目から。</p><button type="button" class="btn sub" data-act="add-vend">＋ 発注業者を追加</button></section>
       <label class="field"><span>備考</span><textarea name="note" rows="2">${esc(r.note)}</textarea></label>
       <div class="row between"><button class="btn">保存する</button>${!auto && r.id ? `<button type="button" class="btn sub danger-text" data-act="money-del" data-id="${esc(r.id)}">この行を削除</button>` : ""}</div>
     </form>`;
@@ -7192,7 +7197,7 @@ const ACTIONS = {
     if(!await ask({title:"この行を削除しますか？", body:"元に戻せません。", ok:"削除する", danger:true})) return;
     await api().deleteLedger(el.dataset.id); toast("削除しました"); go("#/admin/money");
   },
-  async "add-vend"(){ const ed = $("#vend-ed"); ed.insertAdjacentHTML("beforeend", `<div class="vend-row"><input type="text" name="v_name" placeholder="発注業者" aria-label="発注業者"><input type="number" name="v_amount" placeholder="発注金額" aria-label="発注金額"><button type="button" class="i-x" data-act="rm-vend" aria-label="この行を削除">×</button></div>`); ed.lastElementChild.querySelector("input").focus(); },
+  async "add-vend"(){ const ed = $("#vend-ed"); ed.insertAdjacentHTML("beforeend", `<div class="vend-row"><input type="text" name="v_name" placeholder="発注業者" aria-label="発注業者">${vcolSelect("")}<input type="number" name="v_amount" placeholder="発注金額" aria-label="発注金額"><button type="button" class="i-x" data-act="rm-vend" aria-label="この行を削除">×</button></div>`); ed.lastElementChild.querySelector("input").focus(); },
   async "rm-vend"(el){ el.closest(".vend-row").remove(); },
   // --- 見積 ---
   async "er-add"(){ $("#er-list").insertAdjacentHTML("beforeend", estRowHtml({})); $("#er-list").lastElementChild.querySelector("input").focus(); },
@@ -7862,7 +7867,7 @@ const FORMS = {
   },
   async money(form){
     const f = form.elements, id = form.dataset.id, jobId = form.dataset.job;
-    const vend = [...form.querySelectorAll(".vend-row")].map(r => ({name:r.querySelector("[name=v_name]").value.trim(), amount:Number(r.querySelector("[name=v_amount]").value) || 0})).filter(v => v.name || v.amount);
+    const vend = [...form.querySelectorAll(".vend-row")].map(r => { const c = r.querySelector("[name=v_col]")?.value ?? ""; return {name:r.querySelector("[name=v_name]").value.trim(), amount:Number(r.querySelector("[name=v_amount]").value) || 0, ...(c !== "" ? {col:Number(c)} : {})}; }).filter(v => v.name || v.amount);
     const base = {...(f.doneCheck ? {doneCheck:f.doneCheck.value} : {}), company:f.company.value.trim(), contract:exTax(f.contract.value), contractTaxIn:Number(f.contract.value) || 0, month:f.month.value || "", kind:f.kind.value.trim(), staff:f.staff.value, staff2:f.staff2.value, note:f.note.value.trim(), updatedAt:Date.now()};
     let row;
     const prevRow = (await api().listLedger()).find(x => x.id === (jobId || id)) || {};
