@@ -688,6 +688,9 @@ body{font-size:17px}
 .sflow.sf1 i.on{background:#9AA3B0}.sflow.sf2 i.on{background:#1F78C1}.sflow.sf3 i.on{background:#C99A1C}.sflow.sf4 i.on{background:#5BA374}.sflow.sf5 i.on{background:#2A8C7A}.sflow.sf6 i.on{background:#2C7A4B}
 .lots-sec{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.lots-sec h3{font-size:15px;margin:0 0 8px}.lots-sec h3 small{font-weight:400;color:var(--sub);font-size:12px;margin-left:6px}
 .lot-row{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--surface)}.lot-h{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:6px}
+.est-lots{margin:0 0 14px}.est-lots .el-it{display:grid;grid-template-columns:1fr auto 120px 96px;gap:4px 10px;align-items:center;padding:4px 0;border-top:1px dashed var(--line);font-size:13px}
+.est-lots .el-it input{margin:0;padding:4px 6px;width:100%}.est-lots .el-amt{text-align:right}.est-lots .el-it.zero .el-n{color:var(--sub);text-decoration:line-through}
+@media (max-width:620px){ .est-lots .el-it{grid-template-columns:1fr 96px 80px} .est-lots .el-it .el-q{display:none} }
 .lot-f{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.lot-f label{display:flex;align-items:center;gap:6px;white-space:nowrap}.lot-f input[type=date]{max-width:160px}
 .gantt{border-collapse:collapse;font-size:12px;min-width:100%}.gantt th,.gantt td{border:1px solid var(--line);padding:0;text-align:center}.gantt thead th{padding:3px 2px;min-width:26px;font-weight:600}.gantt thead th small{display:block;color:var(--sub);font-weight:400}
 .gantt tbody th{text-align:left;padding:5px 8px;white-space:nowrap;font-weight:700;width:1%}.gantt tbody th small{display:block;color:var(--sub);font-weight:400}.gantt td{height:30px}.gantt td.on{background:#2F6DB5}.gantt .we{background:#F6F2EC}.gantt td.on.we{background:#2F6DB5}
@@ -3043,13 +3046,17 @@ const estNow = () => $("#est-form") ? readEst($("#est-form")) : clone(S.hubEst |
 function readEst(form){
   const f = form.elements, g = k => (f[k]?.value || "").trim();
   const staffName = g("staff"), sp = (S.staff || []).find(p => p.name === staffName);
+  const lp = form.querySelector("#est-lots");
   const rows = [...form.querySelectorAll(".er")].map(el => {
     const v = n => el.querySelector(`[name=${n}]`)?.value.trim() ?? "";
+    const lc = lp?.querySelector(`[name=el_cost][data-rid="${CSS.escape(el.dataset.id)}"]`); if(lc) el.dataset.cost = lc.value;   // 業者ごとの欄で直した単価
     if(el.classList.contains("note")) return {id:el.dataset.id, noteRow:true, name:v("e_name")};
     return {id:el.dataset.id, loc:v("e_loc"), name:v("e_name"), spec:v("e_spec"), qty:v("e_qty") === "" ? "" : Number(v("e_qty")), unit:v("e_unit"),
       price:v("e_price") === "" ? "" : Number(v("e_price")), cost:Number(el.dataset.cost) || 0, cat:el.dataset.cat || "", priceId:el.dataset.pid || "", ...dimsOfEl(el)};
   }).filter(r => r.name || r.loc || r.qty !== "" || r.price !== "");
-  return {...(S.est || {}), no:normJobNo(g("no")), company:g("company"), toName:isOtherCo(g("company")) ? g("toName") : "", honor:g("honor") || "御中", person:g("person"), building:g("building"), room:g("room"), kind:g("kind"),
+  const lots = lp ? [...lp.querySelectorAll(".est-lot")].map(b => { const q = n => b.querySelector(`[name=${n}]`), st = q("el_start").value, en = q("el_end").value, amt = Math.max(0, Math.round(Number(q("el_pka").value) || 0));
+    return {key:b.dataset.key, start:st, end:en && en >= st ? en : st, parking:q("el_pk").checked ? amt : 0, pkAmt:amt}; }) : null;
+  return {...(S.est || {}), ...(lots ? {lots} : {}), no:normJobNo(g("no")), company:g("company"), toName:isOtherCo(g("company")) ? g("toName") : "", honor:g("honor") || "御中", person:g("person"), building:g("building"), room:g("room"), kind:g("kind"),
     address:g("address"), autolock:g("autolock"), elevator:g("elevator"), masterId:g("masterId"), issuedAt:g("issuedAt"), validity:g("validity"), terms:g("terms"),
     toEmail:g("toEmail"), showDiff:f.showDiff ? f.showDiff.checked : S.est?.showDiff !== false,
     staff:staffName ? {name:staffName, phone:sp?.phone || S.est?.staff?.phone || ""} : null, periodStart:g("periodStart"), periodEnd:g("periodEnd"), status:g("status") || "draft", note:g("note"), rows};
@@ -3124,11 +3131,36 @@ async function viewEstEdit(id){
     </form>
     <aside class="est-pv" aria-label="書類のプレビュー"><div class="est-pv-bar"><b>プレビュー</b><span class="small">${docLabel}　このまま印刷・PDFになります</span></div><div class="est-pv-page"><style>${PDF_CSS}</style><div class="pv-zoom" id="est-pv">${estDocHtml(e, docType, seal, billing)}</div></div></aside></div>`;
 }
+// 受注したあと、業者に公開する前に：工種（業者）ごとの工期・駐車場代と、業者に出す単価（実行単価・税抜）を決める。0円の工事は業者に出さない
+const estLotRow = r => !r.noteRow && r.name && !["和室工事", "諸経費"].includes(r.cat) && !/^s:/.test(r.sup?.work || "") && r.sup?.work !== "self";
+const estLotSig = e => (e.rows || []).filter(estLotRow).map(r => `${r.id}:${lotKeyOf(r)}`).join("|");
+function estLotsInner(e){
+  const rows = (e.rows || []).filter(estLotRow); if(!rows.length) return `<p class="small" style="margin:0">業者に出す工事がまだありません。</p>`;
+  const defPk = e.checks?.park?.v === "有" ? 0 : PARKING_FEE, by = new Map();
+  rows.forEach(r => { const k = lotKeyOf(r); if(!by.has(k)) by.set(k, []); by.get(k).push(r); });
+  return [...by].map(([key, list]) => { const o = (e.lots || []).find(l => l.key === key) || {}, pk = o.parking ?? defPk, pka = o.pkAmt || o.parking || defPk || PARKING_FEE;
+    return `<div class="lot-row est-lot" data-key="${esc(key)}"><div class="lot-h"><b>${esc(key)}</b><span class="small">業者の金額 <b class="el-sum"></b>（税抜・駐車場代込み）</span></div>
+      <div class="lot-f"><label>工期 <input type="date" name="el_start" value="${esc(o.start || "")}" aria-label="${esc(key)}の開始日"></label><span>〜</span><input type="date" name="el_end" value="${esc(o.end && o.end !== o.start ? o.end : "")}" aria-label="${esc(key)}の終了日（1日なら空欄）">
+        <label class="toggle" style="margin:0"><input type="checkbox" name="el_pk" ${pk ? "checked" : ""}>駐車場代</label><input type="number" name="el_pka" min="0" step="1" inputmode="numeric" value="${esc(pka)}" style="width:96px" aria-label="${esc(key)}の駐車場代（税抜）"><span class="small">円</span></div>
+      ${list.map(r => `<div class="el-it" data-rid="${esc(r.id)}"><span class="el-n">${esc([r.loc, r.name].filter(Boolean).join("　"))}</span><span class="small el-q">${fmtQty(r.qty)} ${esc(r.unit || "")}</span>
+        <input type="number" name="el_cost" data-rid="${esc(r.id)}" min="0" step="1" inputmode="numeric" value="${esc(Number(r.cost) || "")}" placeholder="単価" aria-label="${esc(r.name)}の業者単価"><span class="el-amt"></span></div>`).join("")}</div>`; }).join("");
+}
+const estLotsHtml = e => `<div class="est-lots" id="est-lots" data-sig="${esc(estLotSig(e))}"><h3 style="margin:0 0 4px;font-size:15px">業者ごとの工期・金額</h3>
+  <p class="small" style="margin:0 0 8px">工種ごとに1つの業者に出します。ここで決めた工期・単価（実行単価・税抜）で業者に公開します。単価が空（0円）の工事は業者に出しません。</p><div class="el-body">${estLotsInner(e)}</div></div>`;
+// 業者ごとの欄の金額を、入れた単価から出し直す
+function estLotsSync(lp, e){
+  if(lp.dataset.sig !== estLotSig(e)){ lp.dataset.sig = estLotSig(e); lp.querySelector(".el-body").innerHTML = estLotsInner(e); }
+  lp.querySelectorAll(".est-lot").forEach(box => { let sum = 0;
+    box.querySelectorAll(".el-it").forEach(it => { const r = e.rows.find(x => x.id === it.dataset.rid) || {}, a = Math.round((Number(r.qty) || 0) * (Number(r.cost) || 0)); sum += a; it.querySelector(".el-amt").textContent = yenFull(a); it.classList.toggle("zero", !Number(r.cost)); });
+    if(box.querySelector("[name=el_pk]").checked) sum += Math.max(0, Math.round(Number(box.querySelector("[name=el_pka]").value) || 0));
+    box.querySelector(".el-sum").textContent = yenFull(sum); });
+}
 // 返事に合わせて：そのまま業者に公開／直してから公開／訂正見積／立会費のみ／失注
 function estResultHtml(e){
   if(e.status === "revised") return `<p style="margin:0">この見積は前の仕組みで訂正しました。${e.nextId ? `<a href="#/admin/est/edit/${esc(e.nextId)}">新しい見積（訂正${(e.rev || 0) + 1}）を開く</a>` : ""}</p>`;
   if(e.jobId) return `<p style="margin:0 0 10px">${stageTag("won")} 工事請書の内容で、業者に発注する案件を作りました。</p><a class="btn sub" href="#/admin/job/${esc(e.jobId)}">案件を開く</a>`;
   if(e.status === "ordered") return `<p style="margin:0 0 12px">${stageTag("won")} 受注しました。上の工事の内容が<b>最終の工事請書</b>です。直したら保存してください。請書の金額 <b>${yenFull(estTotals(e).sub)}</b>（税抜）が収支の請負金額になります${e.estRows?.length ? `（見積は ${yenFull(estTotals({rows:e.estRows}).sub)}）` : ""}。</p>
+    ${estLotsHtml(e)}
     <div class="est-btns"><button type="button" class="btn sub" data-act="est-pdf" data-type="ukesho">工事請書PDF</button><button type="button" class="btn" data-act="est-publish">この請書で業者に公開</button><button type="button" class="btn sub" data-act="est-job">直してから公開</button><button type="button" class="btn sub" data-act="est-self">自社施工で完了</button><button type="button" class="textlink" data-act="est-unorder">受注待ちに戻す</button></div>
     <ul class="small est-btn-help"><li><b>この請書で業者に公開</b>：請書の工事を実行単価で案件にして、既存業者に先に公開します（24時間応募がなければ全体に公開）。</li><li><b>直してから公開</b>：案件を下書きで作り、編集画面を開きます。</li><li><b>自社施工で完了</b>：業者には公開せず、自分たちで施工して完了にします（修繕など）。請書の金額が売上になり、管理会社への請求に入ります。材料費などは収支の✎で入れられます。</li></ul>`;
   if(e.status === "self") return `<p style="margin:0">${stageTag("done")} 自社施工で完了しました（完了日 ${fmtDate(e.selfDoneAt ? isoOf(e.selfDoneAt) : "")}）。請書の金額 <b>${yenFull(estTotals(e).sub)}</b>（税抜）で、管理会社への請求に入ります。</p>
@@ -3156,6 +3188,8 @@ function estSync(form){
   try { estMarkDiff(form); } catch(err) { console.warn(err); }
   form.querySelectorAll(".er:not(.note)").forEach(el => { const r = e.rows.find(x => x.id === el.dataset.id); const a = el.querySelector(".e-amt"); if(a) a.textContent = yenFull(r ? estAmt(r) : 0); });
   $("#est-tot").innerHTML = estTotHtml(estTotals(e));
+  const lp = form.querySelector("#est-lots");
+  if(lp){ estLotsSync(lp, e); form.querySelectorAll(".er:not(.note)").forEach(el => { const c = el.querySelector(".e-cost"), r = e.rows.find(x => x.id === el.dataset.id); if(c && r) c.textContent = Number(r.cost) ? `原価 ${yenFull(r.cost)}／${r.unit || ""}` : ""; }); }
   clearTimeout(S.estPvT); S.estPvT = setTimeout(() => { const pv = $("#est-pv"); if(pv) pv.innerHTML = estDocHtml(S.est, S.estDoc || (["ordered", "won"].includes(S.est.status) ? "ukesho" : "est"), S.estSeal, {...BILLING_DEFAULT, ...S.billing}); estZoom(); }, 250);
   const hint = $("#estno-hint"), head = `${jobNoPrefix(e.company)}-${jobNoPeriod()}-`;
   if(hint){ const used = (S.jobNos || []).filter(n => n.startsWith(head)).sort((a, b) => Number(a.split("-")[2]) - Number(b.split("-")[2])); hint.textContent = used.length ? `最後に使った番号：${used[used.length - 1]}` : ""; }
@@ -3286,12 +3320,14 @@ async function estToJob(e){
   const items = rows.map(rowToItem);
   const trades = tradesFromItems(rows);
   // 駐車場代：新しい案件と同じく業者（工種）ごとに1,500円。工事メモで「敷地内駐車：有」のときは入れない
-  const pkFee = e.checks?.park?.v === "有" ? 0 : PARKING_FEE, lots = items.length ? lotsFromItems(itemsWithId(items), [], pkFee).map(({names, ...l}) => l) : [];
+  const pkFee = e.checks?.park?.v === "有" ? 0 : PARKING_FEE, lots = items.length ? lotsFromItems(itemsWithId(items), e.lots || [], pkFee).map(({names, ...l}) => l) : [];
   items.forEach((i, k) => { i.iid ||= itemsWithId(items)[k].iid; });
   lots.filter(l => l.parking).forEach(l => items.push({...parkingItem(l.parking), name:lots.length > 1 ? `駐車場代（${l.key}）` : "駐車場代", lot:l.key}));
   const {pref, city} = splitAddress(e.address || "");
   const site = {address:e.address || "", building:e.building || "", room:e.room || "", autolock:e.autolock || "", elevator:e.elevator || ""};
-  const data = {title:estTitle(e) || "見積からの案件", trades, pref:pref || "", city:city || "", startDate:e.periodStart || "", endDate:e.periodEnd || e.periodStart || "",
+  // 業者ごとの工期があれば、案件の工期はその最初〜最後まで広げる
+  const ls = lots.filter(l => l.start), sD = ls.reduce((a, l) => !a || l.start < a ? l.start : a, e.periodStart || ""), eD = ls.reduce((a, l) => !a || (l.end || l.start) > a ? (l.end || l.start) : a, e.periodEnd || e.periodStart || "");
+  const data = {title:estTitle(e) || "見積からの案件", trades, pref:pref || "", city:city || "", startDate:sD, endDate:eD,
     price:itemsTotal(items), parking:items.filter(isParking).reduce((a, i) => a + itemAmount(i), 0), ...(lots.length ? {lots} : {}), taxMode:"税別", items, site, staff:e.staff || null, jobNo:e.no || "", description:"", priceNote:"", photos:[], status:"draft", audience:"all"};
   const jid = await api().saveJob(null, data);
   await api().setJobPrivate(jid, {...site, keyInfo:e.keyInfo || "", manager:e.company || "", contact:e.contact || "", masterId:e.masterId || "", photoUrls:e.photoUrls || [], items, selfItems:(e.rows || []).filter(rowSelf).map(rowToItem), ...(e.moveIn ? {moveIn:e.moveIn} : {})});
