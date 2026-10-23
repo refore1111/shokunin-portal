@@ -1028,7 +1028,14 @@ form.memo .memo-row{margin-bottom:4px}form.memo .memo-price{margin:-2px 0 2px}
 
 .send-other{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin:10px 0 0;padding:10px 12px;border:1px dashed #C99A1C;background:#FFFAEC;border-radius:8px}
 .send-other div{display:flex;flex-direction:column;gap:2px}
-.so-modal{max-width:460px}
+.so-modal{max-width:760px;max-height:92vh;overflow:auto}
+.so-items{display:flex;flex-direction:column;gap:6px;margin:0 0 8px}
+.so-row{display:grid;grid-template-columns:1fr 1.8fr 1.2fr 64px 52px 90px 28px;gap:4px;align-items:center}
+.so-row input{margin:0;padding:6px;font-size:13px;min-width:0}
+.so-row.head{font-size:11px;color:var(--sub)}
+.so-row .so-x{border:0;background:none;font-size:18px;color:var(--sub);cursor:pointer;padding:0}
+.so-sum{text-align:right;font-size:13px;margin:0 0 12px}
+@media (max-width:620px){ .so-row{grid-template-columns:1fr 1fr 1fr 28px} .so-row.head{display:none} .so-row [name=i_name]{grid-column:span 2} }
 .home-scope{margin:-4px 0 10px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
 .price-row.only-co [name=p_note]{color:#2F6DB5;font-weight:600}
 .lsearch{display:flex;gap:8px;align-items:center;margin:0 0 12px}
@@ -6615,22 +6622,45 @@ async function pdfBlob(html){
     }).from(holder.querySelector(".pdfwrap") || holder.querySelector(".pdfdoc")).outputPdf("blob");
   } finally { holder.remove(); }
 }
-// 宛名を入れる画面
-function sendOtherForm(recent){
+// 宛名を入れる画面（物件・鍵・作業内訳・金額もこの画面で直せる。直した内容はこのPDFだけで、案件は変わらない）
+function sendOtherForm(recent, init = {}){
   return new Promise(res => {
     const bg = document.createElement("div"); bg.className = "modal-bg";
+    const rowHtml = (i = {}, k = "") => `<div class="so-row" data-k="${k}"><input name="i_loc" value="${esc(i.loc || "")}" placeholder="箇所"><input name="i_name" value="${esc(i.name || "")}" placeholder="内容">
+      <input name="i_note" value="${esc(i.note || "")}" placeholder="仕様"><input name="i_qty" inputmode="decimal" value="${esc(i.qty ?? "")}" placeholder="数量"><input name="i_unit" value="${esc(i.unit || "")}" placeholder="単位">
+      <input name="i_price" inputmode="numeric" value="${esc(i.unitPrice ?? "")}" placeholder="単価"><button type="button" class="so-x" aria-label="この行を消す">×</button></div>`;
     bg.innerHTML = `<div class="modal so-modal" role="dialog" aria-modal="true" aria-labelledby="so-title"><h2 id="so-title">宛名を変えて発注書PDF</h2>
-      <p class="small" style="margin:0 0 10px">案件の内容（工事・金額・物件）はそのままで、宛名だけ変えたPDFを作ります。ポータルの募集・案件は変わりません。</p>
+      <p class="small" style="margin:0 0 10px">宛名・物件・作業内訳・金額をここで直せます。直した内容はこのPDFだけに入り、ポータルの募集・案件は変わりません。</p>
       <label class="field"><span>屋号・会社名</span><input type="text" name="soTrade" list="so-recent" placeholder="例：山田内装" autocomplete="off"></label>
       <datalist id="so-recent">${recent.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
       <div class="two"><label class="field"><span>氏名 <small>任意</small></span><input type="text" name="soName" placeholder="例：山田 太郎"></label>
         <label class="field"><span>敬称</span><select name="soHonor"><option>御中</option><option>様</option></select></label></div>
       <label class="field"><span>作業予定日 <small>任意</small></span><input type="text" name="soDate" placeholder="例：10月20日〜21日"></label>
-      <label class="toggle" style="margin:4px 0 12px"><input type="checkbox" name="soKey" checked> 鍵・入室方法も載せる</label>
+      <div class="two"><label class="field"><span>物件名</span><input type="text" name="soBuilding" value="${esc(init.building || "")}"></label>
+        <label class="field"><span>号室</span><input type="text" name="soRoom" value="${esc(init.room || "")}" placeholder="例：402号室"></label></div>
+      <div class="two"><label class="field"><span>オートロック</span><input type="text" name="soAl" value="${esc(init.autolock || "")}" placeholder="例：有／無／呼出1131"></label>
+        <label class="field"><span>部屋鍵 <small>空にするとPDFに載りません</small></span><input type="text" name="soKey" value="${esc(init.keyInfo || "")}" placeholder="例：玄関アンロック4409"></label></div>
+      <div class="field"><span>作業内訳 <small>金額は 数量×単価（税抜）</small></span></div>
+      <div class="so-items"><div class="so-row head"><span>箇所</span><span>内容</span><span>仕様</span><span>数量</span><span>単位</span><span>単価</span><span></span></div>
+        ${(init.items || []).map((i, k) => rowHtml(i, k)).join("")}</div>
+      <button type="button" class="btn sub so-add" style="margin:0 0 6px">＋ 行を足す</button>
+      <div class="so-sum"></div>
+      <label class="field"><span>連絡事項 <small>任意・PDFの内訳の下に大きく入ります</small></span><textarea name="soMemo" rows="3">${esc(init.contact || "")}</textarea></label>
       <div class="row end" style="flex-wrap:wrap"><button type="button" class="btn sub m-no">キャンセル</button><button type="button" class="btn sub so-save">PDFを保存</button><button type="button" class="btn so-share">LINEなどで送る</button></div></div>`;
-    const q = n => bg.querySelector(`[name=${n}]`);
+    const q = n => bg.querySelector(`[name=${n}]`), box = bg.querySelector(".so-items");
+    const readRows = () => [...box.querySelectorAll(".so-row[data-k]")].map(r => {
+      const g = n => r.querySelector(`[name=${n}]`).value.trim(), num = v => Number(String(v).replace(/[,，¥円\s]/g, "")) || 0;
+      const base = r.dataset.k !== "" ? init.items[Number(r.dataset.k)] || {} : {};
+      return {...base, loc:g("i_loc"), name:g("i_name"), note:g("i_note"), qty:num(g("i_qty")), unit:g("i_unit"), unitPrice:num(g("i_price"))};
+    }).filter(i => i.name || i.loc || i.unitPrice);
+    const sum = () => { const t = calcAmount(itemsTotal(readRows()), "税別"); bg.querySelector(".so-sum").innerHTML = `小計 ${yenFull(t.base)}　税 ${yenFull(t.tax)}　<b>合計 ${yenFull(t.total)}</b>`; };
+    box.addEventListener("input", sum);
+    box.addEventListener("click", e => { if(e.target.closest(".so-x")){ e.target.closest(".so-row").remove(); sum(); } });
+    bg.querySelector(".so-add").onclick = () => { box.insertAdjacentHTML("beforeend", rowHtml()); box.lastElementChild.querySelector("input").focus(); };
     const val = how => { const t = q("soTrade").value.trim(), n = q("soName").value.trim(); if(!t && !n){ q("soTrade").focus(); toast("宛名を入れてください"); return; }
-      close({how, tradeName:t, name:n, honor:q("soHonor").value, workDate:q("soDate").value.trim(), key:q("soKey").checked}); };
+      const items = readRows(); if(!items.length){ toast("作業内訳を1行以上入れてください"); return; }
+      close({how, tradeName:t, name:n, honor:q("soHonor").value, workDate:q("soDate").value.trim(), items,
+        site:{building:q("soBuilding").value.trim(), room:q("soRoom").value.trim(), autolock:q("soAl").value.trim(), keyInfo:q("soKey").value.trim(), contact:q("soMemo").value.trim()}}); };
     const close = v => { bg.remove(); document.removeEventListener("keydown", key); res(v); };
     const key = e => { if(e.key === "Escape") close(null); };
     q("soTrade").addEventListener("input", () => { q("soHonor").value = q("soTrade").value.trim() ? "御中" : "様"; });
@@ -6639,8 +6669,19 @@ function sendOtherForm(recent){
     bg.querySelector(".so-save").onclick = () => val("save");
     bg.querySelector(".so-share").onclick = () => val("share");
     bg.addEventListener("click", e => { if(e.target === bg) close(null); });
-    document.addEventListener("keydown", key); document.body.appendChild(bg); q("soTrade").focus();
+    document.addEventListener("keydown", key); document.body.appendChild(bg); sum(); q("soTrade").focus();
   });
+}
+// 案件の現場情報に号室・鍵などが入っていないときは、工事メモ（見積）の内容で埋める
+async function siteWithMemo(job, priv){
+  if(priv.room && priv.keyInfo) return priv;
+  const ids = [job.fixOf, job.parentId, job.id].filter(Boolean);
+  let e = null;
+  for(const rid of ids){ const r = await api().getLedgerRow(rid).catch(() => null); if(r?.estimateId){ e = await api().getEstimate(r.estimateId).catch(() => null); if(e) break; } }
+  if(!e) e = (await api().listEstimates().catch(() => [])).find(x => x.jobId && ids.includes(x.jobId)) || null;
+  if(!e) return priv;
+  const pick = k => priv[k] || e[k] || "";
+  return {...priv, building:pick("building"), room:pick("room"), address:pick("address"), autolock:pick("autolock"), elevator:pick("elevator"), keyInfo:pick("keyInfo"), contact:pick("contact")};
 }
 async function downloadPdf(html, filename){
   if(!window.html2pdf) await loadScript(HTML2PDF_URL);
@@ -7631,9 +7672,11 @@ const ACTIONS = {
     const id = el.dataset.job, job = await api().getJob(id), priv = await api().getJobPrivate(id).catch(() => ({})) || {};
     if(!job) throw new Error("案件が見つかりません");
     let recent = []; try { recent = JSON.parse(localStorage.getItem("refore_sendother") || "[]"); } catch(e) {}
-    const v = await sendOtherForm(recent); if(!v) return;
-    const d = buildOrderDoc(job, v.key ? priv : {...priv, keyInfo:"", autolock:/\d/.test(priv.autolock || "") ? "有（番号は発注後にお知らせします）" : priv.autolock || ""}, {uid:"", name:v.name, tradeName:v.tradeName}, await orderExtra(id));
+    const site = await siteWithMemo(job, priv);
+    const v = await sendOtherForm(recent, {...site, items:clone(priv.items?.length ? priv.items : job.items || [])}); if(!v) return;
+    const d = buildOrderDoc(job, {...site, ...v.site, items:v.items}, {uid:"", name:v.name, tradeName:v.tradeName}, await orderExtra(id));
     d.honor = v.honor; if(v.workDate) d.job.workDate = v.workDate;
+    d.amount = calcAmount(itemsTotal(v.items), "税別"); d.taxMode = "税別";
     const who = v.tradeName || v.name;
     try { localStorage.setItem("refore_sendother", JSON.stringify([who, ...recent.filter(n => n !== who)].slice(0, 15))); } catch(e) {}
     toast("PDFを作成しています…");
