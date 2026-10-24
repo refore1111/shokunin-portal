@@ -2885,7 +2885,7 @@ function estDocHtml(e, type, seal, billing = {}){
 }
 function estDocHtml0(e, type, seal, billing = {}){
   if(type === "invoice" && !e.noFee){
-    const fee = e.feePct ?? coFee(e.company || "", S.ledgerCfg || S.bills?.cfg || {});
+    const fee = e.feePct ?? kindFee(e.company || "", e.kind, S.ledgerCfg || S.bills?.cfg || {});
     if(fee){ const base = (type === "invoice" && e.status === "tachiai" && e.billRows?.length) ? e.billRows : e.rows || [], sub = estTotals({rows:base}).sub, fa = Math.round(sub * fee / 100);
       if(fa) e = {...e, ...(e.status === "tachiai" && e.billRows?.length ? {billRows:[...base, {id:"r_fee", name:`元請手数料（${fee}%）`, qty:1, unit:"式", price:-fa}]} : {rows:[...base, {id:"r_fee", name:`元請手数料（${fee}%）`, qty:1, unit:"式", price:-fa}]})}; }
   }
@@ -3178,7 +3178,7 @@ function estResultHtml(e){
       <li><b>訂正見積</b>：同じ見積のまま直します（見積は増えません）。直したところは、プレビューと見積書に取消線（見え消し）で出ます。</li>
       <li><b>立会費のみ</b>：工事はなし。収支は立会費だけ、御請求書も立会費だけになります。</li></ul>`;
 }
-const estFeeOf = () => coFee(S.estCo || S.est?.company || "", S.ledgerCfg || {});
+const estFeeOf = () => kindFee(S.estCo || S.est?.company || "", S.est?.kind, S.ledgerCfg || {});
 const estTotHtml = t => { const fee = estFeeOf(); if(fee){ const fa = Math.round(t.sub * fee / 100); t = {...t, feeAmt:fa, fee, profit:t.sub - fa - t.cost, rate:t.sub - fa ? (t.sub - fa - t.cost) / (t.sub - fa) : 0}; } return estTotHtml0(t); };
 const estTotHtml0 = t => `<div class="est-tot-main"><span>小計</span><b>${yenFull(t.sub)}</b><span>消費税（10%）</span><b>${yenFull(t.tax)}</b><span>お見積金額（税込）</span><b class="big">${yenFull(t.total)}</b></div>
   <div class="est-tot-cost">${t.fee ? `<span>元請手数料 ${esc(t.fee)}% ▲${yenFull(t.feeAmt)}</span>` : ""}<span>原価（実行単価）${yenFull(t.cost)}</span><span>粗利 <b class="${t.profit < 0 ? "neg" : ""}">${yenFull(t.profit)}</b>（${pct(t.rate)}）</span><span class="small">Reforeだけに表示</span></div>`;
@@ -3425,13 +3425,20 @@ function coFee(company, cfg = {}){
   const d = tenant() ? null : Object.entries(DEFAULT_CO_FEE).find(([k]) => coSame(k, company));
   return d ? d[1] : 0;
 }
+// 工事の種類によって手数料を取られない会社：フレックス（FLEXTOKYO）は修繕だけ元請手数料なし
+const FEE_FREE_KIND = {"FLEXTOKYO": /修繕/};
+function kindFee(company, kind, cfg = {}){
+  const fee = coFee(company, cfg); if(!fee || tenant()) return fee;
+  const x = Object.entries(FEE_FREE_KIND).find(([c]) => coSame(c, company || ""));
+  return x && x[1].test(kind || "") ? 0 : fee;
+}
 // 前に自動で入れていた備考（工事メモから・見積から・見積 番号・自社施工・立会のみ）は、意味がなく工程と重なるので出さない
 const AUTO_NOTE = /^(工事メモから|見積から|自社施工|立会のみ|見積(\s*[A-Za-z]+-\d{4}-\d+)?)$/;
 const cleanNote = n => String(n || "").split("\n").map(l => l.trim()).filter(l => l && !AUTO_NOTE.test(l)).join("\n");
 // 前の収支（Numbers の表の CSV）から取り込んだ行：取り込みのときだけ billedOutside が入る。ポータルの案件につないだ行は除く
 const isImported = r => r.billedOutside !== undefined && !r.jobId;
 function calcLedger(r, cfg){
-  const fee = coFee(r.company, cfg), staffRate = cfg.staffRate ?? 0.5;
+  const fee = kindFee(r.company, r.kind, cfg), staffRate = cfg.staffRate ?? 0.5;
   // 取り込んだ表の「-8%」「作業金額」は、表の値をそのまま使う（手で直した行があるため）
   const lost = r.stage === "lost";
   // 収支は税込で出す：請負金額は請書の税込（税抜＋消費税）。保存している請負金額（contract）は税抜のまま（管理会社への請求で使う）
@@ -5703,7 +5710,7 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("[name=d_acc],[name=d_long]")){ memoDimCalc(t.closest(".memo-row")); memoCalc(); } });
 function memoCalc(){
   const f = document.querySelector("form[data-form=memo]"); if(!f) return;
-  let sell = 0, cost = 0, mat = 0; const fee = coFee(S.estCo, S.ledgerCfg || {});
+  let sell = 0, cost = 0, mat = 0; const fee = kindFee(S.estCo, f.elements.kind?.value, S.ledgerCfg || {});
   f.querySelectorAll(".memo-row").forEach(r => {
     const v = n => Number(r.querySelector(`[name=${n}]`)?.value) || 0, name = r.querySelector("[name=m_name]").value.trim();
     const acc = isCloth(name) ? up1(memoDims(r).filter(d => d.acc).reduce((a, d) => a + d.a, 0)) : 0, q = v("m_qty") + acc;
