@@ -267,7 +267,10 @@ textarea{min-height:110px;resize:vertical}
 .price-row input{min-width:0}
 .staff-row{grid-template-columns:1fr 1fr 34px}
 .sup-row{grid-template-columns:1.3fr 80px 1.2fr 1fr 1.6fr 1.4fr 34px}
-.mat-row{grid-template-columns:120px 1fr 1fr 1fr 60px 90px 1fr 34px}
+.mat-row,.mat-head{grid-template-columns:1.2fr 1fr 1fr 60px 96px 1fr 34px}
+.mat-head{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--sub);padding:0 0 4px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.sup-card{border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin:0 0 12px;background:var(--surface)}.sup-top{display:flex;gap:10px;align-items:flex-end;justify-content:space-between}.sup-top .field{flex:1;margin:0}
+.sup-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px 12px;margin-top:8px}.sup-grid .field{margin:0}
 .mo-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .mo-row > select{flex:1 1 200px;min-width:0}
 .mo-row > input{flex:1 1 90px;min-width:0;padding:8px 10px;font-size:15px}
@@ -302,7 +305,7 @@ textarea{min-height:110px;resize:vertical}
 .mo-form.k-material .k-work,.mo-form.k-work .k-mat{display:none !important}
 .doc-edit [name=mo_pick]{display:none}
 .mo-form:not(.is-manual) .manual-only{display:none}
-@media (max-width:680px){.sup-row,.mat-row{grid-template-columns:1fr 1fr 34px}.sup-row [name=sp_name],.sup-row [name=sp_terms],.sup-row [name=sp_url],.mat-row [name=mm_name]{grid-column:1/-1}}
+@media (max-width:680px){.mat-row{grid-template-columns:1fr 1fr 34px}.mat-row [name=mm_name]{grid-column:1/-1}.mat-head{display:none}}
 .price-row input{padding:8px 10px;font-size:15px}
 .item-row .i-amt{text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
 .i-x{width:34px;height:34px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--sub);cursor:pointer;font-size:16px;padding:0}
@@ -4921,20 +4924,21 @@ function csvCell(v){ v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.repl
 // 設定：発注先の行
 const MOZU_URL = "https://order.pcs.mozu-inc.jp/";   // MOZUの注文サイト
 function supRowHtml(p = {kind:"material"}){
-  return `<div class="price-row sup-row" data-id="${esc(p.id || "")}">
-    <input type="text" name="sp_name" value="${esc(p.name)}" placeholder="会社名（例：株式会社タキザワ）" aria-label="会社名">
-    <select name="sp_kind" aria-label="書式"><option value="material" ${p.kind !== "work" ? "selected" : ""}>材料</option><option value="work" ${p.kind === "work" ? "selected" : ""}>工事</option></select>
-    <input type="email" name="sp_email" value="${esc(p.email)}" placeholder="メール" aria-label="メール">
-    <input type="tel" name="sp_fax" value="${esc(p.fax)}" placeholder="FAX" aria-label="FAX">
-    <input type="text" name="sp_terms" value="${esc(p.terms)}" placeholder="支払条件（例：工事完了月末締め、翌月末支払い）" aria-label="支払条件">
-    <input type="url" name="sp_url" value="${esc(p.url || "")}" placeholder="注文サイト（ネットで頼むとき・任意）" aria-label="注文サイトのURL">
-    <button type="button" class="i-x" data-act="rm-sup" aria-label="この発注先を削除">×</button></div>`;
+  return `<div class="sup-card sup-row" data-id="${esc(p.id || "")}">
+    <div class="sup-top"><label class="field"><span>会社名</span><input type="text" name="sp_name" value="${esc(p.name)}" placeholder="例：株式会社タキザワ"></label>
+      <button type="button" class="btn sub sm danger-text" data-act="rm-sup">この材料屋を消す</button></div>
+    <div class="sup-grid">
+      <label class="field"><span>メール <small>材料発注書のメールの宛先</small></span><input type="email" name="sp_email" value="${esc(p.email)}" placeholder="例：order@example.com"></label>
+      <label class="field"><span>FAX</span><input type="tel" name="sp_fax" value="${esc(p.fax)}" placeholder="例：03-1234-5678"></label>
+      <label class="field"><span>支払条件</span><input type="text" name="sp_terms" value="${esc(p.terms)}" placeholder="例：工事完了月末締め、翌月末支払い"></label>
+      <label class="field"><span>注文サイト <small>ネットで頼むときだけ</small></span><input type="url" name="sp_url" value="${esc(p.url || "")}" placeholder="https://..."></label>
+      <label class="field"><span>発注書の形</span><select name="sp_kind"><option value="material" ${p.kind !== "work" ? "selected" : ""}>材料の発注書（品名・メーカー・品番・納品日）</option><option value="work" ${p.kind === "work" ? "selected" : ""}>工事の発注書（箇所・内容・仕様）</option></select></label>
+    </div></div>`;
 }
 // 設定：材料マスタの行
 function matRowHtml(m = {}){
-  const sups = S.suppliers || defSups();
   return `<div class="price-row mat-row" data-id="${esc(m.id || "")}">
-    <select name="mm_sup" aria-label="発注先">${sups.map(x => `<option value="${esc(x.id)}" ${x.id === m.sup ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>
+    <input type="hidden" name="mm_sup" value="${esc(m.sup || "")}">
     <input type="text" name="mm_name" value="${esc(m.name)}" placeholder="品名（例：クロス）" aria-label="品名">
     <input type="text" name="mm_maker" value="${esc(m.maker)}" placeholder="メーカー" aria-label="メーカー">
     <input type="text" name="mm_code" value="${esc(m.code)}" placeholder="品番" aria-label="品番">
@@ -5230,7 +5234,7 @@ function propCoMerge(list){
 }
 // --- 設定：物件マスタ画面 ---
 async function viewSettings(tab){
-  if(!["props","prices","suppliers","docs","people","data"].includes(tab)) tab = "props";
+  if(!["props","prices","suppliers","materials","docs","people","data"].includes(tab)) tab = "props";
   if(tab === "prices"){
     const {rows: lr, cfg: lc, names: ln} = await ledgerData().catch(() => ({rows:[], cfg:{}, names:new Map()}));
     const used = [...ln.entries()].filter(([k]) => lr.some(r => r.coKey === k) || Object.keys(lc.fees || {}).some(c => coKey(c) === k)).map(([, v]) => v);
@@ -5248,8 +5252,8 @@ async function viewSettings(tab){
   const companies = [...new Set(S.props.map(p => p.company).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
   S.propFilter ||= {q:"", company:""};
   return `<h1>設定</h1>
-    <nav class="sheets" aria-label="設定の分類">${[["props","物件マスタ"],["prices","単価表"],["suppliers","発注先・材料"],["docs","会社・書類"],["people","従業員・通知"],["data","データの削除"]].map(([k, l]) => `<a href="#/admin/settings/${k}" ${k === tab ? 'aria-current="true"' : ""}>${l}${k === "people" && S.empPending?.length ? `<span class="badge">${S.empPending.length}</span>` : ""}</a>`).join("")}</nav>
-    <p class="lead">${esc({"props": "案件・見積を作るとき、物件名から住所・管理会社・オートロック・エレベーターを自動で入れるための一覧です。管理者だけが見られます。", "prices": "作業ごとの見積単価（管理会社への見積）と実行単価（業者への発注）です。案件と見積の工事の候補になります。", "suppliers": "材料屋さんや、ポータルに登録しない工事会社と、その材料・品番の一覧です。", "docs": "書類に入る社印・担当者・インボイス登録番号・振込先などです。", "people": "プッシュ通知と、管理画面を使う従業員（担当の案件だけ通知）の設定です。", "data": "使わなくなった案件をまとめて削除します。"}[tab] || "")}</p>
+    <nav class="sheets" aria-label="設定の分類">${[["props","物件マスタ"],["prices","単価表"],["suppliers","材料屋"],["materials","材料の単価表"],["docs","会社・書類"],["people","従業員・通知"],["data","データの削除"]].map(([k, l]) => `<a href="#/admin/settings/${k}" ${k === tab ? 'aria-current="true"' : ""}>${l}${k === "people" && S.empPending?.length ? `<span class="badge">${S.empPending.length}</span>` : ""}</a>`).join("")}</nav>
+    <p class="lead">${esc({"props": "案件・見積を作るとき、物件名から住所・管理会社・オートロック・エレベーターを自動で入れるための一覧です。管理者だけが見られます。", "prices": "作業ごとの見積単価（管理会社への見積）と実行単価（業者への発注）です。案件と見積の工事の候補になります。", "suppliers": "材料を頼む材料屋さん（と、ポータルに登録しない工事会社）の登録です。材料発注書の宛先・支払条件になります。", "materials": "材料屋さんごとの、材料・品番・単価の一覧です。材料発注書を作るときに選ぶと、メーカー・品番・単価が入ります。", "docs": "書類に入る社印・担当者・インボイス登録番号・振込先などです。", "people": "プッシュ通知と、管理画面を使う従業員（担当の案件だけ通知）の設定です。", "data": "使わなくなった案件をまとめて削除します。"}[tab] || "")}</p>
     ${tab === "props" ? `    <section class="panel"><div class="row between"><h2 style="margin:0">物件マスタ <small>${S.props.length.toLocaleString()}件</small></h2>
         <div class="row"><button class="btn" data-act="prop-add">物件を追加</button><button class="btn sub" data-act="prop-export" ${S.props.length ? "" : "disabled"}>CSVで書き出す</button></div></div>
       <div class="filters" style="margin:14px 0 10px">
@@ -5275,20 +5279,21 @@ async function viewSettings(tab){
       <datalist id="cat-list-p">${[...new Set([...PRICE_CATS, ...S.prices.map(p => p.cat)].filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
       <datalist id="unit-list-p">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist></section>
 ` : ""}
-    ${tab === "suppliers" ? `    <section class="panel"><h2>材料・外部の発注先 <small>材料屋さんや、ポータルに登録しない工事会社（キツタカなど）</small></h2>
-      <p class="small" style="margin:0 0 10px">「書式」で、発注書の形を選びます。材料＝品名・メーカー・品番・納品日の材料発注書、工事＝箇所・内容・仕様の工事の発注書です。メールアドレスは「メールを作る」の宛先に使います。</p>
+    ${tab === "suppliers" ? `    <section class="panel"><h2>材料屋の登録 <small>${S.suppliers.length}社</small></h2>
       <form data-form="suppliers" class="stack">
-        <div class="items-ed" id="sup-ed">${S.suppliers.map(supRowHtml).join("")}</div>
-        <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-sup">＋ 発注先を追加</button><button class="btn">発注先を保存</button></div>
+        <div id="sup-ed">${S.suppliers.map(supRowHtml).join("") || `<p class="small" style="margin:0">まだ登録がありません。「＋ 材料屋を追加」から入れてください。</p>`}</div>
+        <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-sup">＋ 材料屋を追加</button><button class="btn">保存する</button></div>
       </form></section>
-
-    <section class="panel"><h2>材料マスタ <small>${S.materials.length}件。材料・外部発注で選ぶと、メーカー・品番・単価が入ります</small></h2>
-      <details><summary class="textlink" style="margin-bottom:10px">材料マスタを開いて編集する</summary>
-      <form data-form="materials" class="stack" style="margin-top:10px">
-        <div class="items-ed" id="mat-ed">${S.materials.map(matRowHtml).join("")}</div>
-        <div class="row between" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-mat">＋ 材料を追加</button><button class="btn">材料マスタを保存</button></div>
-      </form></details></section>
+    <p class="small">材料ごとの単価は、上の「材料の単価表」で入れます。</p>
 ` : ""}
+    ${tab === "materials" ? (S.suppliers.length ? `<form data-form="materials" class="stack">
+      ${[...S.suppliers, ...(S.materials.some(m => !S.suppliers.some(x => x.id === m.sup)) ? [{id:"", name:"材料屋が決まっていない材料"}] : [])].map(sp => { const ms = S.materials.filter(m => sp.id ? m.sup === sp.id : !S.suppliers.some(x => x.id === m.sup));
+        return `<section class="panel mat-grp" data-sup="${esc(sp.id)}"><h2>${esc(sp.name)} <small>${ms.length}件</small></h2>
+        <div class="mat-head" aria-hidden="true"><span>品名</span><span>メーカー</span><span>品番</span><span>単位</span><span>単価（円）</span><span>備考</span><span></span></div>
+        <div class="items-ed mat-list">${ms.map(matRowHtml).join("")}</div>
+        ${sp.id ? `<button type="button" class="btn sub sm" data-act="add-mat" style="margin-top:8px">＋ ${esc(sp.name)}の材料を追加</button>` : ""}</section>`; }).join("")}
+      <div class="row end"><button class="btn">単価表を保存する</button></div></form>`
+      : `<section class="panel"><p style="margin:0">先に<a href="#/admin/settings/suppliers">「材料屋」</a>で、材料屋さんを登録してください。</p></section>`) : ""}
     ${tab === "docs" ? `${tenant() ? coInfoPanel() : ""}    <section class="panel"><h2>見積・請求書 <small>見積書・御請求書に入る内容（${esc(meName())}だけが見られる場所に保存）</small></h2>
       <form data-form="billing" class="stack">
         <div class="two"><label class="field"><span>インボイス登録番号</span><input type="text" name="invoiceNumber" value="${esc(S.billingCfg?.invoiceNumber || "")}" placeholder="例：T1234567890123"></label>
@@ -7031,7 +7036,7 @@ const ACTIONS = {
   },
   async "add-sup"(el){ el.closest("form").querySelector("#sup-ed").insertAdjacentHTML("beforeend", supRowHtml()); },
   async "rm-sup"(el){ el.closest(".sup-row").remove(); },
-  async "add-mat"(el){ const ed = el.closest("form").querySelector("#mat-ed"); ed.insertAdjacentHTML("beforeend", matRowHtml()); ed.lastElementChild.querySelector("[name=mm_name]").focus(); },
+  async "add-mat"(el){ const g = el.closest(".mat-grp"), ed = g.querySelector(".mat-list"); ed.insertAdjacentHTML("beforeend", matRowHtml({sup:g.dataset.sup})); ed.lastElementChild.querySelector("[name=mm_name]").focus(); },
   async "rm-mat"(el){ el.closest(".mat-row").remove(); },
   async "seal-del"(){ if(!await ask({title:"社印を外しますか？", body:"材料・外部の発注書に社印が押されなくなります。", ok:"外す", danger:true})) return; await api().saveSeal(""); toast("社印を外しました"); route(); },
   // 寸法から出したクロスの行を入れる（同じ品名・品番の行があれば数量を置き換える。空の行は使う）
