@@ -864,6 +864,7 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .site-card .sc-r{display:grid;grid-template-columns:84px 1fr;gap:8px;padding:7px 0;border-top:1px solid var(--line,#e5e5e5);align-items:baseline}.site-card .sc-r:first-of-type{border-top:0}
 .site-card .sc-k{font-size:13px;color:var(--sub)}.site-card .sc-v{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;word-break:break-all}.site-card .sc-v.warn{color:#9A6A12}.site-card h2{margin-bottom:4px}
 .hub-fix{display:flex;flex-wrap:wrap;gap:8px;align-items:center;width:100%;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line,#ddd)}.hub-fix>span{flex-basis:100%}
+.hub-next .hub-photo{flex:1 1 100%;margin:0}.hub-next .hub-photo input{width:100%}
 .hub-back{margin-top:6px}.hub-back .btn{border:0;background:none;color:var(--sub);padding:0;min-height:0;font-weight:400;text-decoration:underline}
 .hub-money{margin:10px 0 0}.hub-docs{margin-top:12px}.hub-docs h3{font-size:15px;margin:0 0 6px}
 .hub-v{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--surface)}.hub-links{margin:10px 0 0}
@@ -6048,7 +6049,7 @@ async function caseHubHtml(E, lrows){
   if(E.status === "lost") next = `<b>失注</b>${b("reopen", "受注待ちに戻す")}`;
   else if(k === 0){ next = `<b>次にやること：見積を出す</b>${b("pdf", "見積書PDF", false, ' data-type="est"')}${xl}${b("sent", "提出済みにする", true)}`; }
   else if(k === 1){ next = `<b>次にやること：管理会社の返事</b>${b("order", "受注", true)}${b("lost", "失注")}${b("tachiai", "立会費のみで完了")}${b("pdf", "見積書PDF", false, ' data-type="est"')}${xl}`; backTo = b("unsent", "‹ 見積中に戻す"); }
-  else if(k === 2 && !jobs.length){ next = `<b>次にやること：業者・材料屋さんに発注</b>${b("start", "発注する（決めた業者・材料屋さんへ）", true)}${b("self", "自社施工で完了")}${b("pdf", "請書PDF", false, ' data-type="ukesho"')}<p class="small" style="margin:6px 0 0">工事ごとに「業者の発注先」「材料の発注先」を決めておくと、そのとおりに発注します。未定の工事は募集に出します。</p>`; backTo = b("unorder", "‹ 受注待ちに戻す"); }
+  else if(k === 2 && !jobs.length){ next = `<b>次にやること：業者・材料屋さんに発注</b><label class="field hub-photo"><span>現場写真のリンク <small>任意・Dropboxの退去写真フォルダの共有リンクなど。業者さんが応募する前から見られます</small></span><input type="url" name="hubPhoto" inputmode="url" placeholder="https://www.dropbox.com/..." value="${esc((E.photoUrls || [])[0] || "")}"></label>${b("start", "発注する（決めた業者・材料屋さんへ）", true)}${b("self", "自社施工で完了")}${b("pdf", "請書PDF", false, ' data-type="ukesho"')}<p class="small" style="margin:6px 0 0">工事ごとに「業者の発注先」「材料の発注先」を決めておくと、そのとおりに発注します。未定の工事は募集に出します。</p>`; backTo = b("unorder", "‹ 受注待ちに戻す"); }
   else if(k === 6) next = `<b>完了しました</b>${lrow?.billId ? `<span class="small">管理会社への請求書を作りました</span>` : `<span class="small">締め日に管理会社への請求書に入ります</span>`}${E.status === "tachiai" ? "" : b("pdf", "請書PDF", false, ' data-type="ukesho"')}${b("pdf", "請求書PDF", false, ' data-type="invoice"')}${E.status === "tachiai" || (!E.jobId && !E.ledgerId) ? "" : `<div class="hub-fix"><span class="small"><b>是正・追加の発注</b>（発注した分は収支に入ります）</span><button type="button" class="btn sub" data-act="fix-new" ${E.jobId ? `data-job="${esc(E.jobId)}"` : `data-est="${esc(E.id)}"`}>業者に発注</button><button type="button" class="btn sub" data-act="fix-new" data-mat="1" ${E.jobId ? `data-job="${esc(E.jobId)}"` : `data-est="${esc(E.id)}"`}>材料・外部発注</button></div>`}`;
   else if(k === 5) next = `<b>次にやること：管理会社に完了報告</b>${lrow ? `<button type="button" class="btn" data-act="stage-next" data-id="${esc(lrow.id)}" data-step="done">完了報告済み</button>` : ""}`;
   else next = `<b>次にやること：${k === 3 ? "業者の承諾・入る日を待つ" : "作業が終わったら完了を確認"}</b><span class="small">業者ごとの状態は下の「業者と書類」で見られます。</span>`;
@@ -6112,8 +6113,12 @@ async function caseStep(el){
   else if(step === "tachiai") return ACTIONS["est-tachiai"]();
   else if(step === "self") return ACTIONS["est-self"]();
   else if(step === "start"){
-    if(!await ask({title:"この内容で発注しますか？", body:startPreview(e) + "\n\n違っていたら「やめる」を押して、工事メモの各工事の「業者の発注先」を直してください。", ok:"発注する"})) return;
-    const r = await caseStart(e); toast(`発注しました（${[...r.out, r.mo ? `発注書の下書き${r.mo}件` : ""].filter(Boolean).join("・") || "業者に出す工事なし"}）`);
+    // 発注のときに入れた現場写真のリンクは、案件（分離発注の分も）に入り、業者が応募前から見られる
+    const pu = (document.querySelector("[name=hubPhoto]")?.value || "").trim();
+    if(pu && !/^https?:\/\/\S+$/i.test(pu)) throw new Error("現場写真のリンクは https:// から始まるURLを入れてください");
+    const e2 = pu ? {...e, photoUrls:[pu, ...(e.photoUrls || []).filter(u => u !== pu)]} : e;
+    if(!await ask({title:"この内容で発注しますか？", body:startPreview(e2) + (pu ? "\n\n現場写真のリンク：あり（業者さんが応募前から見られます）" : "") + "\n\n違っていたら「やめる」を押して、工事メモの各工事の「業者の発注先」を直してください。", ok:"発注する"})) return;
+    const r = await caseStart(e2); toast(`発注しました（${[...r.out, r.mo ? `発注書の下書き${r.mo}件` : ""].filter(Boolean).join("・") || "業者に出す工事なし"}）`);
   }
   S.ldCache = null; route();
 }
