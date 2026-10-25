@@ -867,6 +867,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .hub-back{margin-top:6px}.hub-back .btn{border:0;background:none;color:var(--sub);padding:0;min-height:0;font-weight:400;text-decoration:underline}
 .hub-money{margin:10px 0 0}.hub-docs{margin-top:12px}.hub-docs h3{font-size:15px;margin:0 0 6px}
 .hub-v{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--surface)}.hub-links{margin:10px 0 0}
+.row-group{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:12px 14px 2px;box-shadow:0 1px 2px rgba(13,29,68,.05)}.row-group .rg-t{display:block;margin-bottom:4px}
+.row-group .row-item.rg-i{border:0;border-top:1px dashed var(--line);border-radius:0;box-shadow:none;background:none;padding:10px 0;transform:none}.row-group .row-item.rg-i:hover{transform:none;box-shadow:none}.row-group .row-item.rg-i .row-main b{font-size:13.5px}
 .home-st{flex:none;margin-left:auto;display:inline-flex;align-items:center}.home-st+.home-who{margin-left:10px!important}.home-st .pill{margin:0}
 .home-who{flex:none;font-size:12.5px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:2px 10px;margin:0 12px 0 auto;white-space:nowrap}.home-who.none{color:var(--sub);background:#F4F5F7;border-color:var(--line);font-weight:400}
 .price-sup{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:12px;color:var(--sub);margin:-2px 0 8px;padding:0 0 8px;border-bottom:1px dashed var(--line)}
@@ -2103,7 +2105,7 @@ class DemoBackend {
   async saveInvoice(d){ (this.data.invoices ||= {})[d.id] = d; this.save(); }
   async updateInvoice(id, d){ Object.assign(this.data.invoices[id], d); this.save(); }
   async listInvoices(f = {}){ let a = Object.values(this.data.invoices || {}); if(f.month) a = a.filter(x => x.month === f.month); if(f.craftsmanId) a = a.filter(x => x.craftsmanId === f.craftsmanId); if(f.type) a = a.filter(x => x.type === f.type); if(myRole() === "admin") a = scopeList(a); return a.map(clone); }
-  async setJobPrivate(id, d){ S.ldCache = null; JOB_ADMIN_CACHE.delete(id); this.data.jobPrivate[id] = {...d}; this.save(); }
+  async setJobPrivate(id, d){ S.ldCache = null; JOB_ADMIN_CACHE.delete(id); this.data.jobPrivate[id] = {...d}; if("photoUrls" in d && this.data.jobs[id]) this.data.jobs[id].photoLinks = d.photoUrls || []; this.save(); }
 
   async listApplications(f = {}){
     let a = Object.values(this.data.applications);
@@ -2561,6 +2563,8 @@ class FirebaseBackend {
   async setJobPrivate(id, d){ S.ldCache = null; JOB_ADMIN_CACHE.delete(id);
     const {manager, ...rest} = d, j = this.col("jobs").doc(id);
     await j.collection("private").doc("detail").set(rest);
+    // 現場写真のリンクだけは、発注前の業者も見られるように案件にも入れる（住所・鍵は detail のまま）
+    if("photoUrls" in rest) await j.update({photoLinks:rest.photoUrls || []}).catch(e => console.warn(e));
     if(manager !== undefined) await j.collection("admin").doc("info").set({manager}, {merge:true});
   }
 
@@ -3874,7 +3878,8 @@ function craftJobBlock(j, site, {full = false, showPrice = true, itemsHtml = "",
       ${row("日程", j.craftStart ? `${fmtRange(j.craftStart, j.craftEnd)}（入る日）` : esc(fmtRange(w.start, w.end)))}
       ${j.staff?.name ? row("Refore担当", `${esc(j.staff.name)}${j.staff.phone ? `（<a href="tel:${esc(j.staff.phone)}">${esc(j.staff.phone)}</a>）` : ""}`) : ""}
     </dl>
-    ${full && site.photoUrls?.length ? `<div class="photo-links"><b>施工箇所の写真</b>${site.photoUrls.map((u, i) => `<a class="btn sub" href="${esc(u)}" target="_blank" rel="noopener noreferrer">写真を確認する${site.photoUrls.length > 1 ? `（${i + 1}）` : ""}</a>`).join("")}</div>` : ""}
+    ${(() => { const urls = full && site.photoUrls?.length ? site.photoUrls : j.photoLinks || [];   // 発注前も、現場写真のリンクは見られる
+      return urls.length ? `<div class="photo-links"><b>施工箇所の写真</b>${urls.map((u, i) => `<a class="btn sub" href="${esc(u)}" target="_blank" rel="noopener noreferrer">写真を確認する${urls.length > 1 ? `（${i + 1}）` : ""}</a>`).join("")}</div>` : ""; })()}
     ${j.description ? `<h2>作業内容</h2><p class="pre">${esc(j.description)}</p>` : ""}
     ${j.photos?.length ? `<h2>写真</h2>${photosGrid(j.photos)}` : ""}
     ${itemsHtml ? `<details class="wdetail"${itemsOpen ? " open" : ""}><summary>工事の内訳を見る<span class="small">${itemsLabel}</span></summary>${itemsHtml}</details>` : ""}
@@ -5576,29 +5581,43 @@ function chatPanel(threads, jobId, assignedTo){
 
 
 /* ---------- 管理：ホーム（やること） ---------- */
+// やることの1行。まとめた枠の中（head あり）では、物件名を省いて「（クリーニング・雑工事）」のような分だけ出す
+function homeRow(x, head){
+  const sub = head && x.t !== head && x.t.startsWith(head) ? x.t.slice(head.length).trim() : head && x.t !== head ? x.t : "";
+  return `<a class="row-item${head ? " rg-i" : ""}" href="${x.href}"><span class="row-main">${head ? (sub ? `<b>${esc(sub)}</b>` : "") : `<b>${esc(x.t)}</b>`}<span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span>${x.st ? `<span class="home-st">${x.st}</span>` : ""}${x.who === undefined ? "" : `<span class="home-who${x.who ? "" : " none"}">${x.who ? `担当：${esc(x.who)}` : "担当なし"}</span>`}<span class="small">開く ›</span></a>`;
+}
+// 同じ案件（分離発注・是正はもとの案件）のやることを、最初に出てきた場所に1つの枠でまとめる。見出しはもとの案件の名前
+function homeGroups(todo, jobs){
+  const out = [], at = new Map();
+  todo.forEach(x => { if(!x.g){ out.push([x.t, [x]]); return; }
+    if(!at.has(x.g)){ at.set(x.g, out.length); out.push([jobs.find(j => j.id === x.g)?.title || x.t, []]); }
+    out[at.get(x.g)][1].push(x); });
+  return out;
+}
 async function viewHome(){
   const [jobs, apps, ests, reps] = await Promise.all([api().listJobs({}), api().listApplications({}), api().listEstimates().catch(() => []), api().listReports({}).catch(() => [])]);
   const todo = [];
   const me = S.profile?.employee ? S.profile.staffName || "" : "", mineOnly = !!me && !S.homeAll;
   const isMine = n => !!n && (staffKey(n) === staffKey(me) || staffCanon(n) === staffCanon(me));
   const jobMine = j => !mineOnly || isMine(j?.staff?.name), estMine = e => !mineOnly || isMine(e?.staff?.name);
-  const add = (t, what, href, cls = "", who, st = "") => todo.push({t, what, href, cls, who, st});   // st：状態の札
+  const add = (t, what, href, cls = "", who, st = "", g = "") => todo.push({t, what, href, cls, who, st, g});   // st：状態の札、g：まとめる案件（分離発注・是正はもとの案件）
+  const rootOf = id => { const j = id && jobs.find(x => x.id === id); return j ? j.parentId || j.fixOf || j.id : id || ""; };
   const jst = j => j ? `<span class="pill ${pillClass(j)}">${esc(statusLabel(j))}</span>` : "", est = e => stageCell(EST_TO_STAGE[e.status] || "est");   // who：Reforeの担当（undefined＝担当のない項目）
   if(mineOnly && !S.staff?.length) S.staff = await api().getStaff().catch(() => []);
   (await api().getMemoDrafts().catch(() => [])).filter(d => !mineOnly || isMine(d.staff)).forEach(d => add(d.title, "工事メモの下書き。続きを入れる", `#/admin/memo/${d.id}`, "", d.staff || "", `<span class="stg stg-none">工事メモ</span>`));
-  ests.filter(e => estMine(e) && e.status === "draft" && e.fromMemo).forEach(e => add(estTitle(e) || "工事メモ", "見積を仕上げて出す", `#/admin/memo/${e.id}`, "", e.staff?.name || "", est(e)));
-  ests.filter(e => estMine(e) && e.status === "ordered").forEach(e => add(estTitle(e), "受注しました。発注する", `#/admin/memo/${e.id}`, "warn", e.staff?.name || "", est(e)));
+  ests.filter(e => estMine(e) && e.status === "draft" && e.fromMemo).forEach(e => add(estTitle(e) || "工事メモ", "見積を仕上げて出す", `#/admin/memo/${e.id}`, "", e.staff?.name || "", est(e), rootOf(e.jobId)));
+  ests.filter(e => estMine(e) && e.status === "ordered").forEach(e => add(estTitle(e), "受注しました。発注する", `#/admin/memo/${e.id}`, "warn", e.staff?.name || "", est(e), rootOf(e.jobId)));
   const cnt = {}; apps.forEach(a => { if(a.status === "applied") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
-  jobs.filter(j => jobMine(j) && ["open", "closed"].includes(j.status) && cnt[j.id]).forEach(j => add(j.title, `応募が${cnt[j.id]}件。業者を選んで発注する`, `#/admin/job/${j.id}`, "warn", j.staff?.name || "", jst(j)));
-  jobs.filter(j => jobMine(j) && j.status === "assigned" && !j.acceptedAt && !j.declinedAt).forEach(j => add(j.title, `${S.crafts.get(j.assignedTo)?.name || "業者"}の承諾待ち`, `#/admin/job/${j.id}`, "", j.staff?.name || "", jst(j)));
-  jobs.filter(j => jobMine(j) && j.declinedAt && j.status === "assigned").forEach(j => add(j.title, "発注が断られました。対応してください", `#/admin/job/${j.id}`, "danger", j.staff?.name || "", jst(j)));
-  reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j) && !["completed", "paid"].includes(j.status)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn", j.staff?.name || "", jst(j)); });
-  [...(S.threads?.values() || [])].filter(isUnread).filter(t => !mineOnly || !t.jobId || jobMine(jobs.find(j => j.id === t.jobId))).forEach(t => add(t.jobTitle || "チャット", `${peerName(t)}から新しいチャット`, chatHref(t), "", t.jobId ? jobs.find(j => j.id === t.jobId)?.staff?.name || "" : undefined, jst(t.jobId && jobs.find(j => j.id === t.jobId))));
+  jobs.filter(j => jobMine(j) && ["open", "closed"].includes(j.status) && cnt[j.id]).forEach(j => add(j.title, `応募が${cnt[j.id]}件。業者を選んで発注する`, `#/admin/job/${j.id}`, "warn", j.staff?.name || "", jst(j), rootOf(j.id)));
+  jobs.filter(j => jobMine(j) && j.status === "assigned" && !j.acceptedAt && !j.declinedAt).forEach(j => add(j.title, `${S.crafts.get(j.assignedTo)?.name || "業者"}の承諾待ち`, `#/admin/job/${j.id}`, "", j.staff?.name || "", jst(j), rootOf(j.id)));
+  jobs.filter(j => jobMine(j) && j.declinedAt && j.status === "assigned").forEach(j => add(j.title, "発注が断られました。対応してください", `#/admin/job/${j.id}`, "danger", j.staff?.name || "", jst(j), rootOf(j.id)));
+  reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j) && !["completed", "paid"].includes(j.status)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn", j.staff?.name || "", jst(j), rootOf(j.id)); });
+  [...(S.threads?.values() || [])].filter(isUnread).filter(t => !mineOnly || !t.jobId || jobMine(jobs.find(j => j.id === t.jobId))).forEach(t => add(t.jobTitle || "チャット", `${peerName(t)}から新しいチャット`, chatHref(t), "", t.jobId ? jobs.find(j => j.id === t.jobId)?.staff?.name || "" : undefined, jst(t.jobId && jobs.find(j => j.id === t.jobId)), rootOf(t.jobId)));
   if(S.pending && !mineOnly) add("協力業者の登録", `審査待ちが${S.pending}件あります`, "#/admin/craftsmen");
   return `<div class="page-head"><div><h1>ホーム</h1><p class="lead">今やることです。押すとその画面に移ります。</p></div><a class="btn" href="#/admin/memo">＋ 工事メモ・見積を作る</a></div>
     <div><section class="panel"><h2>やること <small>${todo.length}件</small></h2>
       ${me ? `<p class="small home-scope">${mineOnly ? `担当が<b>${esc(staffCanon(me) || me)}</b>の案件だけ出しています。` : "全員の案件を出しています。"}<button type="button" class="textlink" data-act="home-scope">${mineOnly ? "全部を見る" : "自分の担当だけにする"}</button></p>` : ""}
-      ${todo.length ? `<div class="list">${todo.map(x => `<a class="row-item" href="${x.href}"><span class="row-main"><b>${esc(x.t)}</b><span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span>${x.st ? `<span class="home-st">${x.st}</span>` : ""}${x.who === undefined ? "" : `<span class="home-who${x.who ? "" : " none"}">${x.who ? `担当：${esc(x.who)}` : "担当なし"}</span>`}<span class="small">開く ›</span></a>`).join("")}</div>` : `<p class="small" style="margin:0">今やることはありません。</p>`}</section>
+      ${todo.length ? `<div class="list">${homeGroups(todo, jobs).map(([head, xs]) => xs.length < 2 ? homeRow(xs[0]) : `<div class="row-group"><b class="rg-t">${esc(head)}</b>${xs.map(x => homeRow(x, head)).join("")}</div>`).join("")}</div>` : `<p class="small" style="margin:0">今やることはありません。</p>`}</section>
     </div>`;
 }
 
