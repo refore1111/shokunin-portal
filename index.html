@@ -872,6 +872,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .row-group .row-item.rg-i{border:0;border-top:1px dashed var(--line);border-radius:0;box-shadow:none;background:none;padding:10px 0;transform:none}.row-group .row-item.rg-i:hover{transform:none;box-shadow:none}.row-group .row-item.rg-i .row-main b{font-size:13.5px}
 .lot-days{list-style:none;margin:4px 0 0;padding:0;font-size:13px;line-height:1.6}.lot-days b{display:inline-block;min-width:5.5em;margin-right:6px;font-weight:700;color:var(--kon-text,#1B2A55)}
 .pick-head .pick-day{margin-left:auto;font-size:13px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:1px 10px;white-space:nowrap}
+.op-cos{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}.op-co{display:inline-flex;align-items:center;gap:2px;font-size:12.5px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:1px 4px 1px 10px}
+.op-co.blk{color:#B0285A;background:#FBEFF3;border-color:#F0C6D4}.op-co button{border:0;background:none;cursor:pointer;color:inherit;font-size:13px;padding:0 4px;line-height:1}.op-add{display:inline-flex;gap:6px;align-items:center}.op-add select{font-size:13px;padding:2px 6px}
 .home-st{flex:none;margin-left:auto;display:inline-flex;align-items:center}.home-st+.home-who{margin-left:10px!important}.home-st .pill{margin:0}
 .home-who{flex:none;font-size:12.5px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:2px 10px;margin:0 12px 0 auto;white-space:nowrap}.home-who.none{color:var(--sub);background:#F4F5F7;border-color:var(--line);font-weight:400}
 .price-sup{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:12px;color:var(--sub);margin:-2px 0 8px;padding:0 0 8px;border-bottom:1px dashed var(--line)}
@@ -2315,13 +2317,17 @@ class FirebaseBackend {
   async updateProfile(uid, d){ await this.col("users").doc(uid).update(d);
     if(uid === S.user?.uid && S.profile?.role === "craftsman" && !S.profile?.employee) this.upsertPubCraft(uid, {...S.profile, ...d}).catch(e => console.warn(e)); }
   async listCraftsmen(){
-    // 工務店：自社が招待メールで呼んで登録された業者（Reforeの審査済み）だけを見る。その人たちが自社の既存業者になる
+    // 工務店：最初は0人。自社が招待メールで呼んで登録された業者（Reforeの審査済み）と、自社の工事を発注した業者だけを見る。
+    // その人たちが自社の既存業者になる。ブロックした業者は出さない（S.blockedCrafts に分けて持つ）
     if(tenant()){
-      const [s, iv] = await Promise.all([this.col("pubcrafts").where("status", "==", "approved").get(), this.col("invites").where("companyId", "==", S.cid).get()]);
-      const mine = new Set(iv.docs.map(d => d.data()).filter(x => x.kind === "craft" && x.usedBy).map(x => x.usedBy));
-      const list = s.docs.filter(d => mine.has(d.id)).map(d => ({uid:d.id, ...d.data()}));
+      const [s, iv, js] = await Promise.all([this.col("pubcrafts").where("status", "==", "approved").get(), this.col("invites").where("companyId", "==", S.cid).get(), this.listJobs({}).catch(() => [])]);
+      const mine = new Set([...iv.docs.map(d => d.data()).filter(x => x.kind === "craft" && x.usedBy).map(x => x.usedBy), ...js.map(j => j.assignedTo).filter(Boolean)]);
+      const blocked = new Set(S.company?.blocked || []), all = s.docs.map(d => ({uid:d.id, ...d.data()}));
+      S.blockedCrafts = all.filter(c => blocked.has(c.uid)).map(c => pubCraftOf(c, S.company));
+      (S.company?.priority || []).forEach(u => mine.add(u));
+      const list = all.filter(c => mine.has(c.uid) && !blocked.has(c.uid));
       const want = list.map(c => c.uid).sort();
-      if(S.company && JSON.stringify([...(S.company.priority || [])].sort()) !== JSON.stringify(want)){
+      if(S.company && want.some(u => !(S.company.priority || []).includes(u))){
         try { await this.updateCompany(S.cid, {priority:want}); S.company.priority = want; } catch(e) { console.warn("既存業者を更新できません", e); }
       }
       return list.map(c => pubCraftOf(c, S.company));
@@ -2345,15 +2351,21 @@ class FirebaseBackend {
     if(all) this._jl = {at:Date.now(), cid:S.cid, p:pr.catch(e => { this._jl = null; throw e; })};
     let list = await pr;
     if(myRole() === "admin") return scopeList(list);
-    // 職人：工務店が「既存業者のみ」に出した案件は、その工務店の既存業者だけに見える
+    // 職人：工務店が「既存業者のみ」に出した案件は、その工務店の既存業者だけに見える。自分をブロックしている工務店の案件は出さない
     if(f.status === "open"){
-      const me = S.user?.uid;
+      const me = S.user?.uid, bk = await this.blockedCos();
       const qs = [this.col("jobs").where("status", "==", "open").where("priCrafts", "array-contains", me)];
       if(!f.audience) qs.push(this.col("jobs").where("status", "==", "open").where("audience", "==", "all"));
       for(const r of await Promise.all(qs.map(x => x.get().catch(() => ({docs:[]}))))) this.docs(r).forEach(j => { if(!list.some(x => x.id === j.id)) list.push(j); });
-      list = list.filter(j => isRefJob(j) || j.audience !== "priority" || (j.priCrafts || []).includes(me));
+      list = list.filter(j => (isRefJob(j) || j.audience !== "priority" || (j.priCrafts || []).includes(me)) && (j.assignedTo === me || (isRefJob(j) ? !S.profile?.refBlocked : !bk.has(j.companyId))));
     }
     return list;
+  }
+  // 自分（職人）をブロックしている工務店（companies/{cid}.blocked）。しばらく覚えておく
+  async blockedCos(){
+    const me = S.user?.uid; if(!me || myRole() !== "craftsman") return new Set();
+    if(!this._bk || this._bk.uid !== me || Date.now() - this._bk.at > 300000) this._bk = {uid:me, at:Date.now(), p:this.col("companies").where("blocked", "array-contains", me).get().then(s => new Set(s.docs.map(d => d.id))).catch(() => new Set())};
+    return this._bk.p;
   }
   async getJob(id){
     try { const s = await this.col("jobs").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
@@ -2548,8 +2560,8 @@ class FirebaseBackend {
     // ほかの人が変えたとき（2回目からの受信）は、覚えている読み取りを捨てて、次の画面で読み直す
     let first = true; const fresh = () => { if(!first){ this._drop(name); if(name === "jobs") this._jl = null; } first = false; };
     if(!isOpen) return q.onSnapshot(s => { fresh(); cb(fix(this.docs(s))); }, e => console.error("更新の受信に失敗：" + name, e));
-    const me = S.user?.uid, got = [[], [], []];
-    const out = () => { const m = new Map(); got.flat().filter(j => isRefJob(j) || j.audience !== "priority" || (j.priCrafts || []).includes(me)).forEach(j => m.set(j.id, j)); cb([...m.values()]); };
+    const me = S.user?.uid, got = [[], [], []]; let bk = new Set(); this.blockedCos().then(b => { bk = b; out(); });
+    const out = () => { const m = new Map(); got.flat().filter(j => (isRefJob(j) || j.audience !== "priority" || (j.priCrafts || []).includes(me)) && (j.assignedTo === me || (isRefJob(j) ? !S.profile?.refBlocked : !bk.has(j.companyId)))).forEach(j => m.set(j.id, j)); cb([...m.values()]); };
     const qs = [q, this.col("jobs").where("status", "==", "open").where("priCrafts", "array-contains", me)];
     if(!where.some(([f]) => f === "audience")) qs.push(this.col("jobs").where("status", "==", "open").where("audience", "==", "all"));
     const us = qs.map((x, i) => x.onSnapshot(s => { if(s.docChanges().length && !s.metadata.fromCache && got[i].length){ this._drop("jobs"); this._jl = null; } got[i] = this.docs(s); out(); }, e => console.warn("案件の受信に失敗：" + name, e)));
@@ -2633,7 +2645,7 @@ class FirebaseBackend {
   async removeMember(uid){ await this.col("users").doc(uid).update({status:"suspended", removedAt:Date.now()}); }
   async createInvite(d){ const ref = this.col("invites").doc(); await ref.set({...d, createdAt:Date.now(), expiresAt:Date.now() + 7 * 86400000}); return ref.id; }
   async getInvite(id){ try { const s = await this.col("invites").doc(id).get(); return s.exists ? {id:s.id, ...s.data()} : null; } catch(e) { if(e.code === "permission-denied") return null; throw e; } }
-  async listInvites(f = {}){ let q = this.col("invites"); if(f.companyId) q = q.where("companyId", "==", f.companyId); if(f.ownerUid) q = q.where("ownerUid", "==", f.ownerUid); return this.docs(await q.get()).filter(x => !x.usedAt); }
+  async listInvites(f = {}){ let q = this.col("invites"); if(f.companyId) q = q.where("companyId", "==", f.companyId); if(f.ownerUid) q = q.where("ownerUid", "==", f.ownerUid); return this.docs(await q.get()).filter(x => f.all || !x.usedAt); }
   async deleteInvite(id){ await this.col("invites").doc(id).delete(); }
   // 招待されたメールアドレスでアカウントを作ったあと、自分のプロフィールを作り、招待を「使用済み」にする
   async useInvite(id, uid){ await this.col("invites").doc(id).update({usedAt:Date.now(), usedBy:uid}); }
@@ -6407,16 +6419,25 @@ function priorityPanel(list){
 }
 async function viewCraftsmen(){
   if(!tenant()) syncPubCrafts([...S.crafts.values()]);
-  const list = [...S.crafts.values()].sort((a, b) => ((a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)) || (b.createdAt - a.createdAt));
-  const inv = tenant() ? (await api().listInvites({companyId:S.cid}).catch(() => [])).filter(x => x.kind === "craft") : [];
-  const head = `<h1>協力業者</h1><p class="lead">${tenant() ? "自社が招待メールで呼んで登録された協力業者さんです（Reforeの審査が終わった人）。この人たちが自社の既存業者になります。評価は自社の中だけのもので、ほかの会社には見えません。" : "登録の審査と、登録情報の確認を行います。審査待ちの業者が上に表示されます。"}</p>
-    ${tenant() ? `<form class="panel" data-form="craftinvite"><h2>協力業者を招待する</h2>
+  const cid = tenant() ? S.cid : COMPANY_ID, allIv = await api().listInvites({companyId:cid, all:true}).catch(() => []);
+  const inv = allIv.filter(x => x.kind === "craft" && !x.usedAt);
+  let list = [...S.crafts.values()].sort((a, b) => ((a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)) || (b.createdAt - a.createdAt));
+  if(!tenant()){
+    // Refore もほかの工務店と同じ：★の人＋招待して登録された人＋発注した人。招待・発注した人は自動で★にする。ブロック中は分けて出す
+    const js = await api().listJobs({}).catch(() => []), add = new Set([...allIv.filter(x => x.kind === "craft" && x.usedBy).map(x => x.usedBy), ...js.filter(isRefJob).map(j => j.assignedTo).filter(Boolean)]);
+    S.blockedCrafts = list.filter(c => c.refBlocked);
+    list = list.filter(c => c.status === "approved" && !c.refBlocked && (c.priority || add.has(c.uid)));
+    for(const c of list.filter(c => !c.priority)){ await api().updateProfile(c.uid, {priority:true}).catch(e => console.warn(e)); c.priority = true; }
+  }
+  const head = `<h1>協力業者</h1><p class="lead">${tenant() ? "自社が招待メールで呼んで登録された協力業者さん（Reforeの審査が終わった人）と、自社の工事を発注した協力業者さんです。この人たちが自社の既存業者になります。評価とブロックは自社の中だけのもので、ほかの会社には見えません。" : "自社で★にしている協力業者さん、招待メールで呼んで登録された協力業者さん（審査済み）、ポータルで発注したことのある協力業者さんです。この人たちが既存業者です。登録の審査は運営の画面で行います。"}</p>
+    ${true ? `<form class="panel" data-form="craftinvite"><h2>協力業者を招待する</h2>
       <p class="small" style="margin:0 0 10px">招待メールのリンクから登録して、Reforeの審査が終わると、自社の既存業者になります。すでにポータルに登録している業者さんは招待できないので、Reforeに相談してください。</p>
       <div class="two"><label class="field"><span>名前・屋号</span><input name="name" required placeholder="例：山田内装"></label>
         <label class="field"><span>メールアドレス</span><input name="email" type="email" required placeholder="例：yamada@example.com"></label></div>
       <button class="btn">招待メールを送る</button></form>
-      ${inv.length ? `<section class="panel"><h2>招待中 <small>${inv.length}人</small></h2>${inv.map(x => inviteRow(x)).join("")}</section>` : ""}` : priorityPanel(list)}`;
-  if(!list.length) return head + `<div class="empty">${tenant() ? "まだ登録された協力業者さんはいません。<br>上の「協力業者を招待する」から招待メールを送ってください。" : "まだ登録はありません。<br>登録ページのURLを協力業者さまに送ってください。"}</div>`;
+      ${inv.length ? `<section class="panel"><h2>招待中 <small>${inv.length}人</small></h2>${inv.map(x => inviteRow(x)).join("")}</section>` : ""}
+      ${(S.blockedCrafts || []).length ? `<section class="panel"><h2>ブロック中 <small>${S.blockedCrafts.length}人・自社の案件が見えず、応募もできません</small></h2>${S.blockedCrafts.map(c => `<div class="doc-row"><span class="row-main"><b>${esc(c.tradeName || c.name)}</b><span class="small">${esc(c.name)}</span></span><button class="btn sub" data-act="craft-block" data-uid="${esc(c.uid)}" data-on="0">ブロックを解除</button></div>`).join("")}</section>` : ""}` : priorityPanel(list)}`;
+  if(!list.length) return head + `<div class="empty">${true ? "まだ協力業者さんはいません。<br>上の「協力業者を招待する」から招待メールを送るか、全体公開した案件で発注すると、ここに入ります。" : "まだ登録はありません。<br>登録ページのURLを協力業者さまに送ってください。"}</div>`;
   return head + `<div class="list">${list.map(c => `<a class="row-item" href="#/admin/craftsman/${esc(c.uid)}">
     <span class="row-main"><b>${esc(c.name)} <span class="small">${esc(c.tradeName)}</span>　${ratingOf(c.uid) ? starsHtml(ratingOf(c.uid).avg, ratingOf(c.uid).n) : ""}</b>
       <span class="small">${esc(tradeLabels(c.trades).join("、"))}</span><span class="small">${esc((c.prefs || []).join("、"))}　登録 ${fmtTime(c.createdAt)}</span></span>
@@ -6427,14 +6448,14 @@ async function viewCraftsman(uid){
   if(!c || c.role !== "craftsman") return `${back("#/admin/craftsmen", "協力業者")}<div class="empty">見つかりません。</div>`;
   const apps = (await api().listApplications({craftsmanId:uid})).sort((a, b) => b.createdAt - a.createdAt);
   const btn = (s, l, cls = "") => `<button class="btn ${cls}" data-act="craft-status" data-uid="${esc(uid)}" data-status="${s}">${l}</button>`;
-  const acts = tenant() ? "" : c.status === "pending" ? btn("approved", "承認する") + btn("suspended", "登録を見送る", "danger")
-    : c.status === "approved" ? btn("suspended", "利用を停止する", "danger") : btn("approved", "利用を再開する");
+  const acts = "";   // 業者の承認・停止は運営の画面だけ（Refore・工務店は、ブロックだけできる）
   return `${back("#/admin/craftsmen", "協力業者")}
     <div class="page-head"><div><h1>${esc(c.name)}</h1><p class="lead">${esc(c.tradeName)}　<span class="pill ${c.status}">${CRAFT_STATUS[c.status]}</span>${c.priority ? `　<span class="aud-tag" style="margin:0">既存業者</span>` : ""}</p></div><div class="row">${acts}</div></div>
     <section class="panel"><h2>評価 <small>Reforeだけに表示</small></h2>${(r => r ? `<p style="margin:0 0 10px;font-size:20px">${starsHtml(r.avg, r.n)}</p>
       <div class="list">${r.list.sort((a, b) => b.at - a.at).map(x => `<a class="row-item" href="#/admin/job/${esc(x.id)}"><span class="row-main"><b>${esc(x.jobTitle || "案件")}</b>${x.note ? `<span class="small">${esc(x.note)}</span>` : ""}<span class="small">${fmtTime(x.at)}</span></span>${starsHtml(x.stars)}</a>`).join("")}</div>`
       : `<p class="small" style="margin:0">まだ評価はありません。案件の完了後に、案件の画面から星をつけられます。</p>`)(ratingOf(uid))}</section>
-    ${tenant() ? "" : `<section class="panel"><h2>既存業者（優先）</h2><p class="small" style="margin:0 0 10px">既存業者にすると、「既存業者に先に公開」した案件が、全体に公開する前から見られて応募できます。</p>
+    ${true ? `<section class="panel"><h2>ブロック</h2><p class="small" style="margin:0 0 10px">ブロックすると、自社の案件がこの業者さんに見えなくなり、応募もできなくなります。既存業者からも外れます。すでに発注した工事はそのままです。あとから解除できます。</p>
+      ${(tenant() ? (S.company?.blocked || []).includes(uid) : !!c.refBlocked) ? `<p style="margin:0 0 8px"><b>ブロック中です</b></p><button class="btn sub" data-act="craft-block" data-uid="${esc(uid)}" data-on="0">ブロックを解除</button>` : `<button class="btn sub danger-text" data-act="craft-block" data-uid="${esc(uid)}" data-on="1">この業者さんをブロックする</button>`}</section>` : `<section class="panel"><h2>既存業者（優先）</h2><p class="small" style="margin:0 0 10px">既存業者にすると、「既存業者に先に公開」した案件が、全体に公開する前から見られて応募できます。</p>
       ${c.priority ? `<p style="margin:0 0 8px"><b>既存業者です</b></p><button class="btn sub" data-act="craft-priority" data-uid="${esc(uid)}" data-on="0">既存業者から外す</button>` : `<button class="btn" data-act="craft-priority" data-uid="${esc(uid)}" data-on="1">既存業者にする</button>`}</section>`}
     <div class="cols">
       <section class="panel"><h2>登録情報</h2><dl class="kv">
@@ -7196,6 +7217,18 @@ const ACTIONS = {
   async "cf-add"(){ const box = $("#memo-cf"); box.insertAdjacentHTML("beforeend", memoCfHtml(["", true], true)); const c = box.lastElementChild;
     c.querySelector(".memo-row").dataset.cfrow = "1"; const cat = c.querySelector("[name=m_cat]"); if(cat) cat.value = CF_CAT; c.querySelector("[name=m_name]").focus(); },
   async "memo-rm"(el){ const ad = el.closest(".mcf.added"); if(ad){ ad.remove(); memoCalc(); return; } const box = $("#memo-rows"); if(box.children.length > 1) el.closest(".memo-row").remove(); memoCalc(); },
+  async "craft-block"(el){
+    const uid = el.dataset.uid, on = el.dataset.on === "1", c = S.crafts?.get(uid) || (S.blockedCrafts || []).find(x => x.uid === uid) || {};
+    if(on && !await ask({title:`${c.tradeName || c.name || "この業者"}さんをブロックしますか？`, body:"自社の案件が見えなくなり、応募もできなくなります。既存業者からも外れます。すでに発注した工事はそのままです。あとから解除できます。", ok:"ブロックする", danger:true})) return;
+    if(!tenant()){ await api().updateProfile(uid, on ? {refBlocked:true, priority:false} : {refBlocked:false}); }
+    else {
+      const b = new Set(S.company?.blocked || []); if(on) b.add(uid); else b.delete(uid);
+      const blocked = [...b], priority = (S.company?.priority || []).filter(x => !b.has(x));
+      await api().updateCompany(S.cid, {blocked, priority}); Object.assign(S.company, {blocked, priority});
+    }
+    S.craftsAt = 0;
+    toast(on ? "ブロックしました" : "ブロックを解除しました"); location.hash = "#/admin/craftsmen"; route();
+  },
   async "craft-priority"(el){
     const on = el.dataset.on === "1";
     if(tenant()){ await coSetPriority(el.dataset.uid, on); const c0 = S.crafts.get(el.dataset.uid); if(c0) c0.priority = on; toast(on ? "既存業者にしました" : "既存業者から外しました"); return route(); }
@@ -8891,10 +8924,20 @@ async function viewOpBills(ym){
       return `<div class="doc-row"><span class="row-main"><b>${esc(c.name)}</b><span class="small">${b ? `${yenFull(b.total)}（税込）　${fmtDate(b.issuedAt)} 発行` : `今の内容なら ${yenFull(mo.total)}（税別）`}</span></span>
         <span class="row">${b ? `<span class="pill ${b.status === "paid" ? "approved" : "pending"}">${b.status === "paid" ? "入金済み" : "入金待ち"}</span><button class="btn sub" data-act="cobill-pdf" data-id="${esc(b.id)}">PDF</button>${b.status === "paid" ? "" : `<button class="btn sub" data-act="op-bill-paid" data-id="${esc(b.id)}">入金済みにする</button>`}` : mo.trial ? `<span class="pill withdrawn">お試し中（請求なし）</span>` : `<button class="btn" data-act="op-bill-make" data-cid="${esc(c.id)}" data-month="${ym}">請求書を作る</button>`}</span></div>`; }).join("") : `<p class="small">工務店がまだありません。</p>`}</section>`;
 }
+// 運営：その職人が、どこの既存業者か（Refore は users.priority、工務店は companies.priority）・どこでブロックされているか
+function opCraftCos(c){
+  const cos = [...(S.opCos?.values() || [])].filter(x => x.status !== "stopped");
+  const pri = [...(c.priority ? [{id:COMPANY_ID, name:COMPANY.name || "株式会社Refore"}] : []), ...cos.filter(x => (x.priority || []).includes(c.uid))];
+  const blk = [...(c.refBlocked ? [{id:COMPANY_ID, name:COMPANY.name || "株式会社Refore"}] : []), ...cos.filter(x => (x.blocked || []).includes(c.uid))];
+  const can = [{id:COMPANY_ID, name:COMPANY.name || "株式会社Refore"}, ...cos].filter(x => !pri.some(p => p.id === x.id) && !blk.some(b => b.id === x.id));
+  return `<div class="op-cos"><span class="small">既存業者：</span>${pri.length ? pri.map(x => `<span class="op-co">${esc(x.name)}<button type="button" data-act="op-pri" data-uid="${esc(c.uid)}" data-cid="${esc(x.id)}" data-on="0" aria-label="${esc(x.name)}の既存業者から外す">×</button></span>`).join("") : `<span class="small">なし</span>`}
+    ${blk.map(x => `<span class="op-co blk">ブロック：${esc(x.name)}<button type="button" data-act="op-unblock" data-uid="${esc(c.uid)}" data-cid="${esc(x.id)}" aria-label="${esc(x.name)}のブロックを解除">×</button></span>`).join("")}
+    ${c.status === "approved" && can.length ? `<span class="op-add"><select aria-label="既存業者にする会社">${can.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select><button type="button" class="btn sub sm" data-act="op-pri" data-uid="${esc(c.uid)}" data-on="1">既存業者にする</button></span>` : ""}</div>`;
+}
 function viewOpCrafts(users){
   const list = users.filter(u => u.role === "craftsman" && !u.employee).sort((a, b) => ((a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)) || (b.createdAt || 0) - (a.createdAt || 0));
-  return `<h1>協力業者</h1><p class="lead">登録の審査を行います。承認された業者だけが、全工務店の案件に応募できます（Refore の管理画面の「協力業者」からも審査できます）。</p>
-    <div class="list">${list.map(c => `<div class="doc-row"><span class="row-main"><b>${esc(c.name)} <span class="small">${esc(c.tradeName || "")}</span></b><span class="small">${esc(tradeLabels(c.trades).join("、"))}　${esc((c.prefs || []).join("、"))}　経験${esc(c.years || "—")}年　保険：${esc(c.insurance || "不明")}　インボイス：${esc(c.invoiceNumber || "なし")}</span><span class="small">${esc(c.email || "")}　${esc(c.phone || "")}　登録 ${fmtTime(c.createdAt)}</span></span>
+  return `<h1>協力業者</h1><p class="lead">登録の審査と、どの会社の既存業者かの管理を行います。承認された業者だけが案件に応募できます。既存業者は、その会社の「既存業者のみ」の案件が見られます。ブロックされた会社の案件は見えません。</p>
+    <div class="list">${list.map(c => `<div class="doc-row"><span class="row-main"><b>${esc(c.name)} <span class="small">${esc(c.tradeName || "")}</span></b><span class="small">${esc(tradeLabels(c.trades).join("、"))}　${esc((c.prefs || []).join("、"))}　経験${esc(c.years || "—")}年　保険：${esc(c.insurance || "不明")}　インボイス：${esc(c.invoiceNumber || "なし")}</span><span class="small">${esc(c.email || "")}　${esc(c.phone || "")}　登録 ${fmtTime(c.createdAt)}</span>${opCraftCos(c)}</span>
       <span class="row"><span class="pill ${c.status}">${CRAFT_STATUS[c.status] || c.status}</span>${c.status === "pending" ? `<button class="btn" data-act="op-craft" data-uid="${esc(c.uid)}" data-st="approved">承認する</button><button class="btn sub danger-text" data-act="op-craft" data-uid="${esc(c.uid)}" data-st="suspended">見送る</button>` : c.status === "approved" ? `<button class="btn sub danger-text" data-act="op-craft" data-uid="${esc(c.uid)}" data-st="suspended">停止する</button>` : `<button class="btn sub" data-act="op-craft" data-uid="${esc(c.uid)}" data-st="approved">再開する</button>`}</span></div>`).join("") || `<div class="empty">まだいません。</div>`}</div>`;
 }
 async function viewOpJobs(){
@@ -9004,6 +9047,20 @@ Object.assign(ACTIONS, {
     if(st === "stopped" && !await ask({title:"この工務店の利用を止めますか？", body:"メンバーは管理画面を使えなくなります。公開中の案件はそのまま残ります。", ok:"止める", danger:true})) return;
     await api().updateCompany(el.dataset.id, {status:st}); toast(st === "active" ? "利用を再開しました" : "利用を止めました"); route();
   },
+  async "op-pri"(el){
+    const uid = el.dataset.uid, on = el.dataset.on === "1", cid = el.dataset.cid || el.closest(".op-add")?.querySelector("select")?.value;
+    if(!cid) return;
+    if(cid === COMPANY_ID) await api().updateProfile(uid, {priority:on});
+    else { const co = S.opCos.get(cid) || {}, set = new Set(co.priority || []); if(on) set.add(uid); else set.delete(uid); await api().updateCompany(cid, {priority:[...set]}); }
+    toast(on ? "既存業者にしました" : "既存業者から外しました"); route();
+  },
+  async "op-unblock"(el){
+    const {uid, cid} = el.dataset;
+    if(!await ask({title:"ブロックを解除しますか？", body:"その会社の案件が、また見えるようになります。", ok:"解除する"})) return;
+    if(cid === COMPANY_ID) await api().updateProfile(uid, {refBlocked:false});
+    else { const co = S.opCos.get(cid) || {}; await api().updateCompany(cid, {blocked:(co.blocked || []).filter(x => x !== uid)}); }
+    toast("ブロックを解除しました"); route();
+  },
   async "op-craft"(el){
     const {uid, st} = el.dataset;
     if(st !== "approved" && !await ask({title:"この業者を止めますか？", body:"案件の閲覧と応募ができなくなります。", ok:"止める", danger:true})) return;
@@ -9022,8 +9079,9 @@ Object.assign(FORMS, {
   },
   async craftinvite(form){
     const g = k => String(form.elements[k]?.value || "").trim(), email = g("email").toLowerCase();
-    if((await api().listInvites({companyId:S.cid}).catch(() => [])).some(x => x.kind === "craft" && (x.email || "").toLowerCase() === email)) throw new Error("このメールアドレスには、もう招待を送っています");
-    const id = await api().createInvite({kind:"craft", companyId:S.cid, companyName:S.company?.name || "", email, name:g("name"), invitedBy:S.user.uid});
+    if((await api().listInvites({companyId:tenant() ? S.cid : COMPANY_ID}).catch(() => [])).some(x => x.kind === "craft" && (x.email || "").toLowerCase() === email)) throw new Error("このメールアドレスには、もう招待を送っています");
+    const cid = tenant() ? S.cid : COMPANY_ID;
+    const id = await api().createInvite({kind:"craft", companyId:cid, companyName:tenant() ? S.company?.name || "" : COMPANY.name || "株式会社Refore", email, name:g("name"), invitedBy:S.user.uid});
     const sent = await sendInviteMail(id);
     toast(sent ? `${g("name")}さんに招待メールを送りました` : "招待を作りました。「リンクをコピー」で送ってください"); route();
   },
