@@ -1652,7 +1652,7 @@ function applyCat(row){
   row.classList.remove("manual");
   sel.focus();
 }
-// 単価表から選んだ作業は、作業名・単位・単価を単価表の値に固定する（発注単価をそろえるため）
+// 単価表から選んだ作業は、作業名・単位を単価表の値に固定する。単価は単価表の値が入り、この案件だけ直せる
 // 金額を出さない作業内訳（募集中の案件で業者さんに見せる）
 function itemsTablePublic(items){ return workListHtml(items, "税別", false); }
 function itemRowHtml(i = {qty:1, unit:"式"}){
@@ -1668,7 +1668,7 @@ function itemRowHtml(i = {qty:1, unit:"式"}){
       <input type="text" name="i_name" value="${esc(i.name)}" placeholder="作業名（例：クロス張替え 壁）" aria-label="作業名" ${pick === "" ? "" : "hidden"}></div>
     <input type="number" name="i_qty" value="${esc(i.qty ?? "")}" min="0" step="0.01" inputmode="decimal" placeholder="数量" aria-label="数量">
     <input type="text" name="i_unit" value="${esc(i.unit)}" list="unit-list" placeholder="単位" aria-label="単位" ${fixed}>
-    <input type="number" name="i_price" value="${esc(i.unitPrice ?? "")}" min="0" inputmode="numeric" placeholder="単価" aria-label="単価" ${fixed}>
+    <input type="number" name="i_price" value="${esc(i.unitPrice ?? "")}" min="0" inputmode="numeric" placeholder="単価" aria-label="単価">
     <span class="i-amt">${yenFull(itemAmount(i))}</span>
     <button type="button" class="i-x" data-act="rm-item" aria-label="この作業を削除">×</button>
     <input type="text" name="i_note" value="${esc(i.note)}" placeholder="備考・品番（例：SP-9934）" aria-label="備考・品番">${i.dims?.length || i.accent ? `<span class="i-dim">${i.accent ? `<b class="acc-tag">アクセント</b> ` : ""}${i.dims?.length ? `寸法：${esc(dimsText(i.dims))}` : ""}</span>` : ""}
@@ -1708,7 +1708,7 @@ function applyPick(row){
     row.querySelector("[name=i_tema]").value = Number(p.temaPrice) > 0 ? p.temaPrice : "";
     delete row.dataset.tema; row.querySelector(".tema-on")?.remove();
     if(p.note && !zaiNote && !note.value.trim()) note.value = p.note;
-    name.hidden = true; unit.readOnly = price.readOnly = true;
+    name.hidden = true; unit.readOnly = true; price.readOnly = false;   // 単価はこの案件だけ直せる（単価表は変わらない）
     row.classList.remove("manual"); row.querySelector("[name=i_add]").checked = false;
     row.querySelector("[name=i_qty]").focus();
   } else {
@@ -2159,6 +2159,7 @@ class DemoBackend {
   async getInvite(id){ return clone((this.data.invites || {})[id] || null); }
   async listInvites(f = {}){ let a = Object.values(this.data.invites || {}); if(f.companyId) a = a.filter(x => x.companyId === f.companyId); if(f.ownerUid) a = a.filter(x => x.ownerUid === f.ownerUid); return clone(a.filter(x => !x.usedAt)); }
   async deleteInvite(id){ delete (this.data.invites || {})[id]; this.save(); }
+  async useInvite(id, uid){ Object.assign(this.data.invites[id], {usedAt:Date.now(), usedBy:uid}); this.save(); }
   async acceptInvite(inv, uid, prof){ this.data.users[uid] = {...prof, uid}; this.data.invites[inv.id].usedAt = Date.now(); this.data.invites[inv.id].usedBy = uid; this.save(); }
   async getPayment(id){ return clone((this.data.payments || {})[id] || null); }
   async listPayments(f = {}){ let a = Object.values(this.data.payments || {}); if(f.companyId) a = a.filter(x => x.companyId === f.companyId); if(f.status) a = a.filter(x => x.status === f.status); return clone(a); }
@@ -2314,7 +2315,17 @@ class FirebaseBackend {
   async updateProfile(uid, d){ await this.col("users").doc(uid).update(d);
     if(uid === S.user?.uid && S.profile?.role === "craftsman" && !S.profile?.employee) this.upsertPubCraft(uid, {...S.profile, ...d}).catch(e => console.warn(e)); }
   async listCraftsmen(){
-    if(tenant()){ const s = await this.col("pubcrafts").where("status", "==", "approved").get(); return s.docs.map(d => pubCraftOf({uid:d.id, ...d.data()}, S.company)); }
+    // 工務店：自社が招待メールで呼んで登録された業者（Reforeの審査済み）だけを見る。その人たちが自社の既存業者になる
+    if(tenant()){
+      const [s, iv] = await Promise.all([this.col("pubcrafts").where("status", "==", "approved").get(), this.col("invites").where("companyId", "==", S.cid).get()]);
+      const mine = new Set(iv.docs.map(d => d.data()).filter(x => x.kind === "craft" && x.usedBy).map(x => x.usedBy));
+      const list = s.docs.filter(d => mine.has(d.id)).map(d => ({uid:d.id, ...d.data()}));
+      const want = list.map(c => c.uid).sort();
+      if(S.company && JSON.stringify([...(S.company.priority || [])].sort()) !== JSON.stringify(want)){
+        try { await this.updateCompany(S.cid, {priority:want}); S.company.priority = want; } catch(e) { console.warn("既存業者を更新できません", e); }
+      }
+      return list.map(c => pubCraftOf(c, S.company));
+    }
     const s = await this.col("users").where("role", "==", "craftsman").get(); return s.docs.map(d => ({uid:d.id, ...d.data()}));
   }
   async setCraftsmanStatus(uid, status){ await this.col("users").doc(uid).update({status}); this.col("pubcrafts").doc(uid).set({status, updatedAt:Date.now()}, {merge:true}).catch(e => console.warn(e)); }
@@ -2625,6 +2636,7 @@ class FirebaseBackend {
   async listInvites(f = {}){ let q = this.col("invites"); if(f.companyId) q = q.where("companyId", "==", f.companyId); if(f.ownerUid) q = q.where("ownerUid", "==", f.ownerUid); return this.docs(await q.get()).filter(x => !x.usedAt); }
   async deleteInvite(id){ await this.col("invites").doc(id).delete(); }
   // 招待されたメールアドレスでアカウントを作ったあと、自分のプロフィールを作り、招待を「使用済み」にする
+  async useInvite(id, uid){ await this.col("invites").doc(id).update({usedAt:Date.now(), usedBy:uid}); }
   async acceptInvite(inv, uid, prof){
     const b = this.db.batch();
     b.set(this.col("users").doc(uid), prof);
@@ -4509,7 +4521,7 @@ async function viewJobEdit(id){
     <p class="lead">案件名・作業内容・作業内訳（単価・金額を含む）・工種・作業日は承認済みの協力業者全員に公開されます。${tenant() ? "住所は市区町村まで、オートロック・エレベーターは公開されます（番地・物件名は発注先にだけ表示）。" : "住所・物件名・オートロック・エレベーターも公開されます。"}鍵・入室方法・連絡事項・写真URLは発注した業者にだけ表示され、管理会社は業者には表示されません。</p>
     <form data-form="job" data-id="${esc(id || "")}" class="stack">
       <section class="panel"><h2>発注内容（作業内訳）<small>単価・金額も含めて募集中の業者に表示・発注書に載ります</small></h2>
-        <p class="small" style="margin:0 0 10px">各行に「箇所」（洋室・トイレなど）と「備考・品番」も入れられます。よく使う作業はプルダウンから選ぶと、単価表の発注単価が入ります（単価は変更できません。単価表は「設定」で編集）。表にない作業は「その他（手入力）」で入力します。「単価表に追加」にチェックして保存すると、次からプルダウンで選べます（選んでいた分類に入ります）。合計が業者さまへの支払金額になり、発注書と月末の請求書はこの金額で作られます（業者さまは変更できません）。</p>
+        <p class="small" style="margin:0 0 10px">各行に「箇所」（洋室・トイレなど）と「備考・品番」も入れられます。よく使う作業はプルダウンから選ぶと、単価表の発注単価が入ります（単価はこの案件だけ直せます。単価表そのものは「設定」で編集）。表にない作業は「その他（手入力）」で入力します。「単価表に追加」にチェックして保存すると、次からプルダウンで選べます（選んでいた分類に入ります）。合計が業者さまへの支払金額になり、発注書と月末の請求書はこの金額で作られます（業者さまは変更できません）。</p>
         <div class="items-ed" id="items-ed">${editItems.map(itemRowHtml).join("")}</div>
         <datalist id="unit-list">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist>
         <datalist id="loc-list">${ITEM_LOCS.map(u => `<option value="${esc(u)}">`).join("")}</datalist>
@@ -6396,8 +6408,15 @@ function priorityPanel(list){
 async function viewCraftsmen(){
   if(!tenant()) syncPubCrafts([...S.crafts.values()]);
   const list = [...S.crafts.values()].sort((a, b) => ((a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)) || (b.createdAt - a.createdAt));
-  const head = `<h1>協力業者</h1><p class="lead">${tenant() ? "Reforeが審査して登録された協力業者さんです。既存業者と評価は自社の中だけのもので、ほかの会社には見えません。" : "登録の審査と、登録情報の確認を行います。審査待ちの業者が上に表示されます。"}</p>${priorityPanel(list)}`;
-  if(!list.length) return head + `<div class="empty">まだ登録はありません。<br>登録ページのURLを協力業者さまに送ってください。</div>`;
+  const inv = tenant() ? (await api().listInvites({companyId:S.cid}).catch(() => [])).filter(x => x.kind === "craft") : [];
+  const head = `<h1>協力業者</h1><p class="lead">${tenant() ? "自社が招待メールで呼んで登録された協力業者さんです（Reforeの審査が終わった人）。この人たちが自社の既存業者になります。評価は自社の中だけのもので、ほかの会社には見えません。" : "登録の審査と、登録情報の確認を行います。審査待ちの業者が上に表示されます。"}</p>
+    ${tenant() ? `<form class="panel" data-form="craftinvite"><h2>協力業者を招待する</h2>
+      <p class="small" style="margin:0 0 10px">招待メールのリンクから登録して、Reforeの審査が終わると、自社の既存業者になります。すでにポータルに登録している業者さんは招待できないので、Reforeに相談してください。</p>
+      <div class="two"><label class="field"><span>名前・屋号</span><input name="name" required placeholder="例：山田内装"></label>
+        <label class="field"><span>メールアドレス</span><input name="email" type="email" required placeholder="例：yamada@example.com"></label></div>
+      <button class="btn">招待メールを送る</button></form>
+      ${inv.length ? `<section class="panel"><h2>招待中 <small>${inv.length}人</small></h2>${inv.map(x => inviteRow(x)).join("")}</section>` : ""}` : priorityPanel(list)}`;
+  if(!list.length) return head + `<div class="empty">${tenant() ? "まだ登録された協力業者さんはいません。<br>上の「協力業者を招待する」から招待メールを送ってください。" : "まだ登録はありません。<br>登録ページのURLを協力業者さまに送ってください。"}</div>`;
   return head + `<div class="list">${list.map(c => `<a class="row-item" href="#/admin/craftsman/${esc(c.uid)}">
     <span class="row-main"><b>${esc(c.name)} <span class="small">${esc(c.tradeName)}</span>　${ratingOf(c.uid) ? starsHtml(ratingOf(c.uid).avg, ratingOf(c.uid).n) : ""}</b>
       <span class="small">${esc(tradeLabels(c.trades).join("、"))}</span><span class="small">${esc((c.prefs || []).join("、"))}　登録 ${fmtTime(c.createdAt)}</span></span>
@@ -6415,8 +6434,8 @@ async function viewCraftsman(uid){
     <section class="panel"><h2>評価 <small>Reforeだけに表示</small></h2>${(r => r ? `<p style="margin:0 0 10px;font-size:20px">${starsHtml(r.avg, r.n)}</p>
       <div class="list">${r.list.sort((a, b) => b.at - a.at).map(x => `<a class="row-item" href="#/admin/job/${esc(x.id)}"><span class="row-main"><b>${esc(x.jobTitle || "案件")}</b>${x.note ? `<span class="small">${esc(x.note)}</span>` : ""}<span class="small">${fmtTime(x.at)}</span></span>${starsHtml(x.stars)}</a>`).join("")}</div>`
       : `<p class="small" style="margin:0">まだ評価はありません。案件の完了後に、案件の画面から星をつけられます。</p>`)(ratingOf(uid))}</section>
-    <section class="panel"><h2>既存業者（優先）</h2><p class="small" style="margin:0 0 10px">既存業者にすると、「既存業者に先に公開」した案件が、全体に公開する前から見られて応募できます。</p>
-      ${c.priority ? `<p style="margin:0 0 8px"><b>既存業者です</b></p><button class="btn sub" data-act="craft-priority" data-uid="${esc(uid)}" data-on="0">既存業者から外す</button>` : `<button class="btn" data-act="craft-priority" data-uid="${esc(uid)}" data-on="1">既存業者にする</button>`}</section>
+    ${tenant() ? "" : `<section class="panel"><h2>既存業者（優先）</h2><p class="small" style="margin:0 0 10px">既存業者にすると、「既存業者に先に公開」した案件が、全体に公開する前から見られて応募できます。</p>
+      ${c.priority ? `<p style="margin:0 0 8px"><b>既存業者です</b></p><button class="btn sub" data-act="craft-priority" data-uid="${esc(uid)}" data-on="0">既存業者から外す</button>` : `<button class="btn" data-act="craft-priority" data-uid="${esc(uid)}" data-on="1">既存業者にする</button>`}</section>`}
     <div class="cols">
       <section class="panel"><h2>登録情報</h2><dl class="kv">
         <dt>電話番号</dt><dd><a href="tel:${esc(c.phone)}">${esc(c.phone)}</a></dd>
@@ -7896,7 +7915,12 @@ const FORMS = {
     const data = {name:g("name"), tradeName:g("tradeName"), phone:g("phone"), years:g("years"), trades, prefs, areaNote:g("areaNote"), licenses:g("licenses"), invoiceNumber:inv, insurance:g("insurance"), pr:g("pr"), address:g("address"), 
       bank:{bankName:g("bankName"), branch:g("bankBranch"), type:g("bankType"), number:g("bankNumber"), holder:g("bankHolder")}};
     if(!S.profile){
-      await api().createProfile(S.user.uid, {...data, role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now()});
+      let ci = ""; try { ci = localStorage.getItem("refore_craft_inv") || ""; } catch(e) {}
+      const inv = ci ? await api().getInvite(ci).catch(() => null) : null, okInv = inv && inv.kind === "craft" && !inv.usedAt && inv.expiresAt > Date.now() && String(inv.email || "").toLowerCase() === String(S.user.email || "").toLowerCase();
+      await api().createProfile(S.user.uid, {...data, role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now(), ...(okInv ? {invitedBy:inv.companyId} : {})});
+      if(okInv) await api().useInvite(inv.id, S.user.uid).catch(e => console.warn("招待を使用済みにできません", e));
+      try { localStorage.removeItem("refore_craft_inv"); } catch(e) {}
+      if(okInv && location.hash.startsWith("#/join/")) location.hash = "#/";
       toast("審査を申し込みました");
     } else {
       await api().updateProfile(S.user.uid, data);
@@ -8753,7 +8777,14 @@ async function viewJoin(token){
   if(!inv) return wrap(`<div class="panel"><h2>招待が見つかりません</h2><p>リンクが正しいか、招待した人に確認してください。</p><a class="btn sub" href="#/">ログイン画面へ</a></div>`);
   if(inv.usedAt) return wrap(`<div class="panel"><h2>この招待はすでに使われています</h2><p>登録したメールアドレスでログインしてください。</p><a class="btn" href="#/">ログイン画面へ</a></div>`);
   if(inv.expiresAt < Date.now()) return wrap(`<div class="panel"><h2>招待の期限が切れています</h2><p>招待した人に、もう一度招待してもらってください。</p></div>`);
-  const who = inv.kind === "crew" ? `${esc(inv.ownerName || "協力業者")}さんの従業員` : `${esc(inv.companyName || "工務店")}の${esc(inv.coRole || "担当者")}`;
+  const who = inv.kind === "crew" ? `${esc(inv.ownerName || "協力業者")}さんの従業員` : inv.kind === "craft" ? `${esc(inv.companyName || "工務店")}の協力業者` : `${esc(inv.companyName || "工務店")}の${esc(inv.coRole || "担当者")}`;
+  // 協力業者の招待：すでに登録している人はつなげない（Reforeに相談）。新しい人は、ふつうの協力業者の登録（審査の申し込み）をする
+  if(inv.kind === "craft" && S.user && S.profile) return wrap(`<div class="panel"><h2>すでに登録されています</h2><p>このアカウント（${esc(S.user.email)}）は、もうポータルに登録されています。${esc(inv.companyName || "工務店")}の協力業者にするには、株式会社Reforeに相談してください。</p><a class="btn" href="#/">ポータルを開く</a></div>`);
+  if(inv.kind === "craft" && S.user && !S.profile){
+    if(String(S.user.email || "").toLowerCase() !== String(inv.email || "").toLowerCase()) return wrap(`<div class="panel"><h2>メールアドレスが違います</h2><p>招待されたメールアドレス（${esc(inv.email)}）でアカウントを作ってください。</p><button class="btn sub" data-act="logout">ログアウト</button></div>`);
+    try { localStorage.setItem("refore_craft_inv", inv.id); } catch(e) {}
+    return `<div class="panel" style="margin-bottom:12px"><b>${who}としての登録です</b><p class="small" style="margin:6px 0 0">登録内容を入れて、審査を申し込んでください。Reforeの審査が終わると、${esc(inv.companyName || "工務店")}の案件が見られるようになります。</p></div>` + viewProfileForm(null, true);
+  }
   if(S.user && S.profile) return wrap(`<div class="panel"><h2>${who}への招待</h2><p>いま別のアカウント（${esc(S.user.email)}）でログインしています。ログアウトしてから、もう一度このリンクを開いてください。</p><button class="btn sub" data-act="logout">ログアウト</button></div>`);
   if(S.user && !S.profile){
     if(String(S.user.email || "").toLowerCase() !== String(inv.email || "").toLowerCase()) return wrap(`<div class="panel"><h2>メールアドレスが違います</h2><p>招待されたメールアドレス（${esc(inv.email)}）でアカウントを作ってください。</p><button class="btn sub" data-act="logout">ログアウト</button></div>`);
@@ -8988,6 +9019,13 @@ Object.assign(FORMS, {
     const fyEnd = Number(g("fyEnd")) || 3;
     await api().updateCompany(S.cid, {name:g("name"), info, notifyEmail:g("notifyEmail"), fyEnd});
     Object.assign(S.company, {name:g("name"), info, notifyEmail:g("notifyEmail"), fyEnd}); S.ldCache = null; toast("会社の情報を保存しました"); route();
+  },
+  async craftinvite(form){
+    const g = k => String(form.elements[k]?.value || "").trim(), email = g("email").toLowerCase();
+    if((await api().listInvites({companyId:S.cid}).catch(() => [])).some(x => x.kind === "craft" && (x.email || "").toLowerCase() === email)) throw new Error("このメールアドレスには、もう招待を送っています");
+    const id = await api().createInvite({kind:"craft", companyId:S.cid, companyName:S.company?.name || "", email, name:g("name"), invitedBy:S.user.uid});
+    const sent = await sendInviteMail(id);
+    toast(sent ? `${g("name")}さんに招待メールを送りました` : "招待を作りました。「リンクをコピー」で送ってください"); route();
   },
   async coinvite(form){
     const g = k => String(form.elements[k]?.value || "").trim(), email = g("email").toLowerCase();
