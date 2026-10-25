@@ -869,6 +869,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .hub-v{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--surface)}.hub-links{margin:10px 0 0}
 .row-group{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:12px 14px 2px;box-shadow:0 1px 2px rgba(13,29,68,.05)}.row-group .rg-t{display:block;margin-bottom:4px}
 .row-group .row-item.rg-i{border:0;border-top:1px dashed var(--line);border-radius:0;box-shadow:none;background:none;padding:10px 0;transform:none}.row-group .row-item.rg-i:hover{transform:none;box-shadow:none}.row-group .row-item.rg-i .row-main b{font-size:13.5px}
+.lot-days{list-style:none;margin:4px 0 0;padding:0;font-size:13px;line-height:1.6}.lot-days b{display:inline-block;min-width:5.5em;margin-right:6px;font-weight:700;color:var(--kon-text,#1B2A55)}
+.pick-head .pick-day{margin-left:auto;font-size:13px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:1px 10px;white-space:nowrap}
 .home-st{flex:none;margin-left:auto;display:inline-flex;align-items:center}.home-st+.home-who{margin-left:10px!important}.home-st .pill{margin:0}
 .home-who{flex:none;font-size:12.5px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:2px 10px;margin:0 12px 0 auto;white-space:nowrap}.home-who.none{color:var(--sub);background:#F4F5F7;border-color:var(--line);font-weight:400}
 .price-sup{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:12px;color:var(--sub);margin:-2px 0 8px;padding:0 0 8px;border-bottom:1px dashed var(--line)}
@@ -1606,13 +1608,14 @@ function pickItemsDialog(title, body, items, selected, ok, period = "", lots = [
   });
 }
 // 画面に出す作業内訳：1件ずつカードにして、金額は右に大きく（スマホでも1行で読める）
-function workListHtml(items, taxMode = "税別", showPrice = true, pick = false){
+function workListHtml(items, taxMode = "税別", showPrice = true, pick = false, job = null){
   if(!items?.length) return "";
   const total = itemsTotal(items);
   if(pick){
     // 応募するとき：分類ごとにまとめ、工事の左にチェック（最初は全部チェック）
     const list = itemsWithId(items), groups = new Map(); list.forEach(i => { if(!groups.has(i.cat)) groups.set(i.cat, []); groups.get(i.cat).push(i); });
-    return `${[...groups].map(([cat, g]) => `<div class="pick-grp"><label class="pick-head"><input type="checkbox" data-pickgrp checked><b>${esc(cat)}</b><span class="small">${g.length}件・${yenFull(itemsTotal(g))}</span></label>
+    const lots = job ? lotDays(job) : [], dayOf = g => [...new Set(g.map(i => lots.find(l => l.iids.includes(i.iid))?.when).filter(Boolean))].join("・");
+    return `${[...groups].map(([cat, g]) => `<div class="pick-grp"><label class="pick-head"><input type="checkbox" data-pickgrp checked><b>${esc(cat)}</b><span class="small">${g.length}件・${yenFull(itemsTotal(g))}</span>${dayOf(g) ? `<span class="pick-day">日程 ${esc(dayOf(g))}</span>` : ""}</label>
       <ul class="wlist">${g.map(i => `<li class="witem pick"><input type="checkbox" class="w-pick" name="pick" value="${esc(i.iid)}" checked aria-label="${esc(i.name)}をやる">
         <span class="wn">${i.loc ? `<span class="loc">${esc(i.loc)}</span>` : ""}${esc(i.name)}${zaiTag(i)}${accTag(i)}</span>
         ${showPrice && i.unitPrice ? `<span class="wa">${yenFull(itemAmount(i))}</span>` : ""}
@@ -2771,6 +2774,9 @@ function workDays(j){
   if(j.craftStart) return {start:j.craftStart, end:j.craftEnd && j.craftEnd >= j.craftStart ? j.craftEnd : j.craftStart, actual:false, craft:true, ps, pe, days};
   return {start:j.startDate, end:j.endDate && j.endDate >= j.startDate ? j.endDate : j.startDate, actual:false, ps, pe, days};
 }
+// 工種ごとの日程（工務店が工事メモ・案件で決めた分）。日にちの入っていない工種は出さない
+function lotDays(j){ return (j.lots || []).filter(l => l.start || l.end).map(l => ({key:l.key, iids:l.iids || [], when:l.start ? fmtRange(l.start, l.end || l.start) : `〜${fmtDay(l.end)}`})); }
+function lotDaysHtml(j){ const L = lotDays(j); return L.length ? `<ul class="lot-days">${L.map(l => `<li><b>${esc(l.key)}</b>${esc(l.when)}</li>`).join("")}</ul>` : ""; }
 // カードで工事の中身を少し見せる（最初の3件と、ほか何件）
 function itemsPeek(j){
   const it = itemsWithId(j.items); if(!it.length) return "";
@@ -2781,7 +2787,7 @@ function jobCard(j, {href, stampHtml = "", foot = "", showPrice = false} = {}){
     ${j.status === "open" && j.audience === "priority" ? `<span class="aud-tag">${myRole() === "admin" ? "既存業者に先行公開中" : "既存業者さまへ先行公開"}</span>` : ""}
     ${tagsHtml(tradeLabels(j.trades))}
     <h3>${esc(j.title)}</h3>
-    <dl class="meta">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>日程</dt><dd>${fmtRange(workDays(j).start, workDays(j).end)}</dd></dl>
+    <dl class="meta">${j.pref || j.city ? `<dt>場所</dt><dd>${esc(j.pref)}${esc(j.city)}</dd>` : ""}<dt>日程</dt><dd>${fmtRange(workDays(j).start, workDays(j).end)}${j.craftStart ? "" : lotDaysHtml(j)}</dd></dl>
     ${myRole() !== "admin" ? itemsPeek(j) : ""}
     ${showPrice && Number(j.price) > 0 ? `<div class="price"><span class="num">${yen(j.price)}</span><small>支払金額（税抜）</small></div>` : ""}
     ${foot}${stampHtml}</a>`;
@@ -3875,7 +3881,7 @@ function craftJobBlock(j, site, {full = false, showPrice = true, itemsHtml = "",
       <dt>場所</dt><dd>${addr ? esc(addr) : esc((j.pref || "") + (j.city || ""))}${map}${addr ? "" : `<br><span class="small">くわしい住所は発注後に表示されます</span>`}</dd>
       ${row("オートロック", esc(site.autolock))}${row("エレベーター", esc(site.elevator))}
       ${full ? row("鍵・入室方法", esc(site.keyInfo)) + row("連絡事項", esc(site.contact)) : ""}
-      ${row("日程", j.craftStart ? `${fmtRange(j.craftStart, j.craftEnd)}（入る日）` : esc(fmtRange(w.start, w.end)))}
+      ${row("日程", j.craftStart ? `${fmtRange(j.craftStart, j.craftEnd)}（入る日）` : esc(fmtRange(w.start, w.end)) + lotDaysHtml(j))}
       ${j.staff?.name ? row("Refore担当", `${esc(j.staff.name)}${j.staff.phone ? `（<a href="tel:${esc(j.staff.phone)}">${esc(j.staff.phone)}</a>）` : ""}`) : ""}
     </dl>
     ${(() => { const urls = full && site.photoUrls?.length ? site.photoUrls : j.photoLinks || [];   // 発注前も、現場写真のリンクは見られる
@@ -4171,7 +4177,7 @@ async function viewJobDetail(id){
   } else {
     action = `<form class="panel" data-form="apply" data-id="${esc(id)}">
       <h2>${again ? "もう一度応募する" : "この案件に応募する"}</h2>${again ? `<p class="note" style="margin:0 0 10px">${esc(coNameOf(job))}から再応募の許可が出ています。</p>` : ""}
-      <p class="small" style="margin:0 0 10px">工期：${fmtRange(job.startDate, job.endDate)}。現場に入る日は、発注を承諾したあとに決めます。</p>
+      <p class="small" style="margin:0 0 10px">工期：${fmtRange(job.startDate, job.endDate)}。${lotDays(job).length ? "工事ごとの日程は下のとおりです。" : "現場に入る日は、発注を承諾したあとに決めます。"}</p>${lotDaysHtml(job) ? `<div style="margin:-4px 0 10px">${lotDaysHtml(job)}</div>` : ""}
       <label class="field"><span>${esc(coNameOf(job))}へのひとこと <small>任意</small></span><textarea name="message" maxlength="1000" placeholder="例：当日は9時から作業できます。前日の下見も可能です。"></textarea></label>
       <button class="btn block">応募する</button>
       <p class="small" style="margin:10px 0 0">鍵・入室方法と連絡事項は、発注が決まった業者さまにだけ表示されます。</p></form>`;
@@ -4182,7 +4188,7 @@ async function viewJobDetail(id){
   const canPick = job.status === "open" && (!app || again) && job.assignedTo !== uid && (itemsWithId(job.items).length > 1 || itemsWithId(job.items).some(canTema));
   const anyTema = canPick && itemsWithId(job.items).some(canTema);
   const items0 = itemsWithId(job.items);
-  const work = !canPick ? "" : `<section class="panel"><h2>工事の内容</h2>${canPick ? `<p class="note" style="margin:0 0 10px">できない工事は<b>左のチェックを外して</b>から、「この案件に応募する」を押してください。${anyTema ? `<br>「材工」の工事は、材料の用意ができなければ<b>「手間のみでやる」</b>を選べます（単価が手間のみの金額になります）。` : ""}</p>` : ""}${workListHtml(job.items, taxModeOf(job), true, canPick) || `<p class="small" style="margin:0">作業内訳はまだ登録されていません。</p>`}</section>`;
+  const work = !canPick ? "" : `<section class="panel"><h2>工事の内容</h2>${canPick ? `<p class="note" style="margin:0 0 10px">できない工事は<b>左のチェックを外して</b>から、「この案件に応募する」を押してください。${anyTema ? `<br>「材工」の工事は、材料の用意ができなければ<b>「手間のみでやる」</b>を選べます（単価が手間のみの金額になります）。` : ""}</p>` : ""}${workListHtml(job.items, taxModeOf(job), true, canPick, job) || `<p class="small" style="margin:0">作業内訳はまだ登録されていません。</p>`}</section>`;
 
   const askBox = job.status === "open" || job.assignedTo === uid ? `<div class="panel"><p class="small" style="margin:0 0 10px">案件についてわからないことがあれば、${esc(coNameOf(job))}に質問できます。</p>
     <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${esc(coNameOf(job))}に質問する</button></div>` : "";
