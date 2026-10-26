@@ -2882,7 +2882,7 @@ function stageNextHtml(r, big = false){
   if(st === "") return r.manual && !r.estimateId ? `<a class="${cls}" href="#/admin/est/from/${esc(r.id)}">見積を作る</a>` : "";
   if(st === "est") return b("wait", "見積を送信済み ›");
   if(st === "wait") return b("won", "受注 ›");
-  if(st === "won") return r.jobId ? "" : b("done", "完了報告済み ›");   // 案件とつながった行は、案件で「完了を確認する」を押すと完了待ちになる
+  if(st === "won") return !r.jobId ? b("done", "完了報告済み ›") : r.doneCheck ? b("arr", "手配済み・完了待ちへ ›") : "";   // 案件とつながった行は、手配が終わって完了確認の予定を入れたら完了待ちへ進める（案件で「完了を確認する」を押しても完了待ちになる）
   if(st === "arr") return b("done", "完了報告済み ›");
   return "";
 }
@@ -3793,6 +3793,7 @@ async function viewMoneyEdit(id){
   return `${back(backTo, "収支")}<h1>${auto ? "収支の入力" : id === "new" ? "案件を追加" : "案件を編集"}</h1>
     ${id === "new" ? `<p class="lead">工事番号・物件名・管理会社を入れて保存すると、この案件の見積を作れます。</p>` : ""}
     ${r.id && !auto ? `<section class="panel est-link"><span>状態：${stageCell(dispStage(r))}</span>${stageNextHtml(r, true)}${r.estimateId ? `<a class="btn sub" href="#/admin/est/edit/${esc(r.estimateId)}">見積を開く${r.estAmount ? `（${yenFull(r.estAmount)}）` : ""}</a>` : !["tachiai", "lost"].includes(r.stage) ? `<a class="btn" href="#/admin/est/from/${esc(r.id)}">この案件の見積を作る</a>` : ""}</section>` : ""}
+    ${auto && stageNextHtml(r, true) ? `<section class="panel est-link"><span>状態：${stageCell(dispStage(r))}</span>${r.doneCheck ? `<span class="small">完了確認 ${fmtDate(r.doneCheck)}</span>` : ""}${stageNextHtml(r, true)}</section>` : ""}
     <form data-form="money" data-id="${esc(r.id)}" data-job="${esc(r.jobId || "")}" class="stack">
       <section class="panel">${auto ? `<p style="margin:0 0 12px"><b>${esc(r.name)}</b>　<span class="small">${esc(r.jobNo)}　<a href="#/admin/job/${esc(r.jobId)}">案件を開く</a></span></p>` : `
         <div class="two"><label class="field"><span>工事番号</span><input type="text" name="jobNo" value="${esc(r.jobNo)}" placeholder="例：FT-2627-122"></label>
@@ -7678,6 +7679,7 @@ const ACTIONS = {
       await api().saveLedger({...await cur(), ...extra, stage:step, updatedAt:now});
     } else if(step === "arr"){
       if(!r.doneCheck) throw new Error("先に完了確認の予定を入れてください");
+      if(!await ask({title:"完了待ちにしますか？", body:`手配が終わった案件を「完了待ち」にします。完了確認は ${fmtDate(r.doneCheck)} です。`, ok:"完了待ちにする"})) return;
       await api().saveLedger({...await cur(), stage:"arr", arranged:true, updatedAt:now});
     } else if(step === "done"){
       const day = cfg.close?.[coKey(r.company)] ?? 0, month = periodOf(now, day);
