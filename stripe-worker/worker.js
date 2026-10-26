@@ -5,6 +5,9 @@
 //                           （工事代金は職人さんの Stripe アカウントへ、運営手数料は Refore へ自動で分ける）
 //  2. POST /webhook         Stripe から「支払い完了」が届いたら、自動で発注を確定する（ポータルのデータを書き換える）
 //  3. POST /connect/onboard 職人さんが自分で Stripe の受け取り登録をする（登録用の画面を作る）
+//  4. POST /sub             工務店の月額（プラン・オプション・追加枠）を、ポータルのボタンから直接変える
+//                           （はじめての有料プランだけ Stripe の画面でカード登録。あとは登録済みのカードで自動。運営の確認なし）
+//     Webhook で受けるもの：checkout.session.completed / invoice.paid / customer.subscription.deleted
 //
 // 秘密の値は Cloudflare の「Variables and Secrets」に入れる（このファイルには書かない）
 //  STRIPE_SECRET_KEY      Stripe のシークレットキー（テストは sk_test_…）
@@ -28,6 +31,7 @@ export default {
       if (req.method === "POST" && url.pathname === "/webhook") return await webhook(req, env);
       if (req.method === "POST" && url.pathname === "/checkout") return json(await checkout(req, env), 200, cors);
       if (req.method === "POST" && url.pathname === "/connect/onboard") return json(await onboard(req, env), 200, cors);
+      if (req.method === "POST" && url.pathname === "/sub") return json(await sub(req, env), 200, cors);
       if (url.pathname === "/") return json({ ok: true, name: "genpuku-stripe" }, 200, cors);
       return json({ error: "not found" }, 404, cors);
     } catch (e) {
@@ -189,7 +193,11 @@ async function webhook(req, env) {
   if (["checkout.session.completed", "checkout.session.async_payment_succeeded"].includes(ev.type)) {
     const s = ev.data.object;
     if (s.payment_status === "paid" && s.metadata?.payId) await confirmPay(env, s.metadata.payId, s);
+    if (s.metadata?.kind === "sub" && s.subscription) await subStarted(env, s);
+    if (s.metadata?.kind === "extra" && s.payment_status === "paid") await extraPaid(env, s);
   }
+  if (ev.type === "invoice.paid") await subRenewed(env, ev.data.object);
+  if (ev.type === "customer.subscription.deleted") await subEnded(env, ev.data.object);
   return new Response("ok");
 }
 export async function confirmPay(env, payId, s) {
@@ -244,4 +252,173 @@ async function onboard(req, env) {
   const back = `${env.PORTAL_URL}#/profile`;
   const l = await stripe2(env, "POST", "core/account_links", { account: acct, use_case: { type: "account_onboarding", account_onboarding: { refresh_url: back, return_url: back } } });
   return { url: l.url, done: false };
+}
+
+/* ---------- 4. 工務店の月額（プラン・オプション・追加枠） ---------- */
+// ポータルの OP_DEFAULT と同じ（運営の「設定」で金額を変えていれば、そちらを使う）
+const PLAN_KEYS = ["free", "beginner", "pro", "master"];
+const PLAN_INCL = { free: [], beginner: [], pro: ["calendar", "money", "docs"], master: ["calendar", "money", "docs", "staff"] };
+const DEF_FEES = { plans: { free: 0, beginner: 980, pro: 4980, master: 14800 }, opt: 1000, member: 1000, extra: 1000 };
+const NAMES = { beginner: "ビギナープラン", pro: "プロプラン", master: "マスタープラン", calendar: "オプション：予定表カレンダー自動反映", money: "オプション：収支閲覧",
+  docs: "オプション：工事メモ・見積書・管理会社請求書作成", staff: "オプション：従業員追加（1人あたり）", extra: "案件追加（1件）" };
+const OPT_KEYS = ["calendar", "money", "docs", "staff"];
+const ymJst = (ms = Date.now()) => new Date(ms + 9 * 3600000).toISOString().slice(0, 7);
+async function fees(env, bot) {
+  const o = (await getDoc(env, "opdata/settings", bot)) || {};
+  const plans = Object.fromEntries(PLAN_KEYS.map(k => [k, Number(o.plans?.[k]?.price ?? DEF_FEES.plans[k]) || 0]));
+  return { plans, opt: Number(o.moneyFee) || DEF_FEES.opt, member: Number(o.memberFee) || DEF_FEES.member, extra: Number(o.extraFee) || DEF_FEES.extra };
+}
+const amountOf = (f, key) => PLAN_KEYS.includes(key) ? f.plans[key] : key === "staff" ? f.member : key === "extra" ? f.extra : f.opt;
+// Stripe の価格（lookup_key で探し、無ければ作る。商品は同じ名前のものがあれば使う）
+export async function priceFor(env, key, amount) {
+  const recurring = key !== "extra", lk = `gp_${key}_${amount}`;
+  const found = await stripe(env, "GET", `prices?active=true&limit=1&lookup_keys[]=${encodeURIComponent(lk)}`);
+  if (found.data?.[0]) return found.data[0].id;
+  let product = null;
+  try { const q = await stripe(env, "GET", `products/search?query=${encodeURIComponent(`active:'true' AND name:'${NAMES[key]}'`)}`); product = q.data?.[0]?.id || null; } catch (e) { product = null; }
+  const p = await stripe(env, "POST", "prices", { currency: "jpy", unit_amount: amount, lookup_key: lk, ...(recurring ? { recurring: { interval: "month" } } : {}),
+    ...(product ? { product } : { product_data: { name: NAMES[key] } }) });
+  return p.id;
+}
+const keyOfItem = i => { const m = /^gp_([a-z]+)_\d+$/.exec(i?.price?.lookup_key || ""); return m ? m[1] : ""; };
+const periodEnd = s => 1000 * Number(s.current_period_end || s.items?.data?.[0]?.current_period_end || 0);
+const cardOf = s => { const c = s.default_payment_method?.card; return c ? `${(c.brand || "card").replace(/^./, x => x.toUpperCase())} ****${c.last4}` : ""; };
+// プランを変えたときの会社の値（含まれるオプションは外す）
+export function planUpd(c, key) {
+  const opts = { ...(c.opts || {}) }, upd = { plan: key, nextPlan: null };
+  (PLAN_INCL[key] || []).forEach(k => { if (k === "money") upd.money = false; else delete opts[k]; });
+  upd.opts = opts; return upd;
+}
+async function sub(req, env) {
+  const me = await whoAmI(req, env);
+  const body = await req.json().catch(() => ({}));
+  const bot = await botToken(env);
+  const prof = await getDoc(env, `users/${me.uid}`, bot);
+  if (!prof || prof.role !== "co" || prof.coRole !== "管理者" || prof.status !== "approved" || !prof.companyId) fail("会社の管理者だけが変更できます", 403);
+  const cid = prof.companyId, c = await getDoc(env, `companies/${cid}`, bot);
+  if (!c) fail("会社が見つかりません");
+  return await subChange(env, bot, cid, c, body, me.email);
+}
+export async function subChange(env, bot, cid, c, { op, key, t, k } = {}, email = "") {
+  const f = await fees(env, bot), back = `${env.PORTAL_URL}#/admin/plan`, save = upd => commit(env, [updWrite(env, `companies/${cid}`, upd)], bot);
+  let s = c.stripeSub ? await stripe(env, "GET", `subscriptions/${c.stripeSub}`).catch(() => null) : null;
+  if (s && ["canceled", "incomplete_expired"].includes(s.status)) s = null;
+  const items = s ? s.items.data : [], itemOf = x => items.find(i => keyOfItem(i) === x), planItem = items.find(i => PLAN_KEYS.includes(keyOfItem(i)));
+  const curPlan = PLAN_KEYS.includes(c.plan) ? c.plan : "free", upd0 = s ? { nextBill: periodEnd(s) } : {};
+  const subPost = b => stripe(env, "POST", `subscriptions/${s.id}`, b);
+  if (op === "down") { op = t === "plan" ? "plan" : "optoff"; key = k; }
+  if (op === "plan") {
+    if (!PLAN_KEYS.includes(key)) fail("プランが正しくありません");
+    if (key === curPlan && !c.nextPlan) return { done: true };
+    if (f.plans[key] === 0) {
+      if (!s) { await save(planUpd(c, "free")); return { done: true, msg: "無料プランにしました" }; }
+      await subPost({ cancel_at_period_end: true });
+      await save({ ...upd0, nextPlan: "free" }); return { done: true, msg: "次の請求日から無料プランになります" };
+    }
+    const price = await priceFor(env, key, f.plans[key]);
+    if (!s) {   // はじめての有料プラン：Stripe の画面でカードを登録して申し込む
+      const cs = await stripe(env, "POST", "checkout/sessions", { mode: "subscription", line_items: { 0: { price, quantity: 1 } },
+        ...(c.stripeCustomer ? { customer: c.stripeCustomer } : { customer_email: email || undefined }),
+        client_reference_id: cid, metadata: { cid, kind: "sub", plan: key }, subscription_data: { metadata: { cid } },
+        success_url: `${back}/paid`, cancel_url: back, locale: "ja" });
+      return { url: cs.url };
+    }
+    const up = f.plans[key] > f.plans[curPlan];
+    const its = { 0: planItem ? { id: planItem.id, price } : { price, quantity: 1 } };
+    let n = 1; if (up) items.filter(i => (PLAN_INCL[key] || []).includes(keyOfItem(i))).forEach(i => { its[n++] = { id: i.id, deleted: true }; });
+    await subPost({ items: its, proration_behavior: up ? "create_prorations" : "none", cancel_at_period_end: false });
+    if (up) { await save({ ...upd0, ...planUpd(c, key) }); return { done: true, msg: `${NAMES[key]}に変更しました（今月分は日割りで次回の請求に足します）` }; }
+    await save({ ...upd0, nextPlan: key }); return { done: true, msg: "次の請求日からプランが切り替わります" };
+  }
+  if (op === "opt") {
+    if (!OPT_KEYS.includes(key)) fail("オプションが正しくありません");
+    if (!s || !f.plans[curPlan]) fail("オプションは有料プランの方だけが使えます。先にプランを変更してください");
+    if ((PLAN_INCL[curPlan] || []).includes(key)) fail("このオプションは今のプランに含まれています");
+    const it = itemOf(key), price = await priceFor(env, key, amountOf(f, key));
+    if (it && key !== "staff") fail("もう使っています");
+    await subPost({ items: { 0: it ? { id: it.id, quantity: Number(it.quantity || 1) + 1 } : { price, quantity: 1 } }, proration_behavior: "create_prorations" });
+    const opts = { ...(c.opts || {}) }, optEnd = { ...(c.optEnd || {}) }; delete optEnd[key];
+    const upd = { ...upd0, optEnd };
+    if (key === "money") upd.money = true; else { opts[key] = key === "staff" ? (Number(opts.staff) || 0) + 1 : true; upd.opts = opts; }
+    await save(upd); return { done: true, msg: `${NAMES[key].replace("オプション：", "")}を追加しました` };
+  }
+  if (op === "optoff") {   // オプションをやめる：次の請求日から（それまでは使える）
+    if (!s) fail("月額のお申し込みがありません");
+    const it = itemOf(key); if (!it) fail("このオプションは使っていません");
+    const q = Number(it.quantity || 1);
+    await subPost({ items: { 0: key === "staff" && q > 1 ? { id: it.id, quantity: q - 1 } : { id: it.id, deleted: true } }, proration_behavior: "none" });
+    const optEnd = { ...(c.optEnd || {}), [key]: key === "staff" ? Number(c.optEnd?.staff || 0) + 1 : periodEnd(s) };
+    await save({ ...upd0, optEnd }); return { done: true, msg: "次の請求日からやめます（それまでは使えます）" };
+  }
+  if (op === "undo") {   // 予約していた変更を取り消す
+    if (!s) fail("月額のお申し込みがありません");
+    if (t === "plan") {
+      if (c.nextPlan === "free") await subPost({ cancel_at_period_end: false });
+      else if (planItem) await subPost({ items: { 0: { id: planItem.id, price: await priceFor(env, curPlan, f.plans[curPlan]) } }, proration_behavior: "none" });
+      await save({ ...upd0, nextPlan: null }); return { done: true, msg: "予約していた変更を取り消しました" };
+    }
+    const it = itemOf(k), price = await priceFor(env, k, amountOf(f, k));
+    await subPost({ items: { 0: it ? { id: it.id, quantity: Number(it.quantity || 1) + 1 } : { price, quantity: 1 } }, proration_behavior: "none" });
+    const optEnd = { ...(c.optEnd || {}) }; delete optEnd[k];
+    await save({ ...upd0, optEnd }); return { done: true, msg: "予約していた変更を取り消しました" };
+  }
+  if (op === "extra") {
+    const price = await priceFor(env, "extra", f.extra), ym = ymJst();
+    if (s) {   // 登録済みのカードで、次の請求に足す
+      await stripe(env, "POST", "invoiceitems", { customer: s.customer, price, subscription: s.id, description: `${NAMES.extra}（${ym}）` });
+      const extra = { ...(c.extra || {}) }; extra[ym] = Number(extra[ym] || 0) + 1;
+      await save({ ...upd0, extra }); return { done: true, msg: "追加枠を1件買いました（次回の請求に足します）" };
+    }
+    const cs = await stripe(env, "POST", "checkout/sessions", { mode: "payment", line_items: { 0: { price, quantity: 1 } },
+      ...(c.stripeCustomer ? { customer: c.stripeCustomer } : { customer_email: email || undefined, customer_creation: "always" }),
+      client_reference_id: cid, metadata: { cid, kind: "extra", ym }, success_url: `${back}/paid`, cancel_url: back, locale: "ja" });
+    return { url: cs.url };
+  }
+  fail("操作が正しくありません");
+}
+// はじめての有料プランの申し込みが済んだ
+export async function subStarted(env, cs) {
+  const bot = await botToken(env), cid = cs.metadata?.cid; if (!cid) return "skip";
+  const c = await getDoc(env, `companies/${cid}`, bot); if (!c) return "skip";
+  if (c.stripeSub === cs.subscription && c.plan === cs.metadata.plan) return "skip";
+  const s = await stripe(env, "GET", `subscriptions/${cs.subscription}?expand[]=default_payment_method`);
+  const upd = { ...planUpd(c, cs.metadata.plan), stripeSub: s.id, stripeCustomer: s.customer, nextBill: periodEnd(s), optEnd: {} };
+  const card = cardOf(s); if (card) upd.card = card;
+  await commit(env, [updWrite(env, `companies/${cid}`, upd, ["pendingPay"])], bot);
+  return "ok";
+}
+// 追加枠（無料プランの人がカードで買った）
+export async function extraPaid(env, cs) {
+  const bot = await botToken(env), cid = cs.metadata?.cid; if (!cid) return "skip";
+  const c = await getDoc(env, `companies/${cid}`, bot); if (!c || c.lastExtraSession === cs.id) return "skip";
+  const ym = cs.metadata.ym || ymJst(), extra = { ...(c.extra || {}) }; extra[ym] = Number(extra[ym] || 0) + 1;
+  const upd = { extra, lastExtraSession: cs.id }; if (cs.customer && !c.stripeCustomer) upd.stripeCustomer = cs.customer;
+  await commit(env, [updWrite(env, `companies/${cid}`, upd)], bot);
+  return "ok";
+}
+async function companyOfSub(env, bot, subId) { return subId ? (await queryEq(env, "companies", "stripeSub", subId, bot))[0] || null : null; }
+// 毎月の更新（請求が済んだ）：予約していたプランの変更・オプションの終了を反映し、次回の請求日を進める
+export async function subRenewed(env, inv) {
+  const subId = inv.subscription || inv.parent?.subscription_details?.subscription; if (!subId) return "skip";
+  const bot = await botToken(env), c = await companyOfSub(env, bot, subId); if (!c) return "skip";
+  const end = 1000 * Number(inv.lines?.data?.[0]?.period?.end || 0), upd = end ? { nextBill: end } : {};
+  if (inv.billing_reason === "subscription_cycle") {
+    let base = c;
+    if (c.nextPlan && c.nextPlan !== "free") { Object.assign(upd, planUpd(c, c.nextPlan)); base = { ...c, ...upd }; }
+    const ends = Object.keys(c.optEnd || {}).filter(k => c.optEnd[k]);
+    if (ends.length) {
+      const opts = { ...(base.opts || {}) };
+      ends.forEach(k => { if (k === "money") upd.money = false; else if (k === "staff") opts.staff = Math.max(0, (Number(opts.staff) || 0) - Number(c.optEnd.staff || 0)); else delete opts[k]; });
+      upd.opts = opts; upd.optEnd = {};
+    }
+  }
+  if (!Object.keys(upd).length) return "skip";
+  await commit(env, [updWrite(env, `companies/${c.id}`, upd)], bot);
+  return "ok";
+}
+// 解約（次の請求日に終わった）：無料プランへ
+export async function subEnded(env, s) {
+  const bot = await botToken(env), c = await companyOfSub(env, bot, s.id); if (!c) return "skip";
+  await commit(env, [updWrite(env, `companies/${c.id}`, { plan: "free", nextPlan: null, opts: {}, optEnd: {}, money: false, stripeSub: null })], bot);
+  return "ok";
 }
