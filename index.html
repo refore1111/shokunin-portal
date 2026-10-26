@@ -7133,7 +7133,10 @@ async function route(){
       else if(a === "settings"){ html = await viewSettings(b); after = () => { renderPropList(); renderDelList(); return null; }; }
       else if(a === "craftsman") html = await viewCraftsman(b);
       else if(a === "members" && tenant()) html = await viewCoMembers();
-      else if(a === "plan" && tenant() && SUBSCRIPTION_ON) html = b === "down" ? await viewCoDown(c, parts[4]) : await viewCoPlan();
+      else if(a === "plan" && tenant() && SUBSCRIPTION_ON){
+        if(b === "paid"){ S.company = await api().getCompany(S.cid) || S.company; toast("お支払いありがとうございます。反映まで数秒かかることがあります"); location.replace("#/admin/plan"); return; }
+        html = b === "down" ? await viewCoDown(c, parts[4]) : await viewCoPlan();
+      }
       else { location.replace("#/admin"); return; }
       return done(html);
     }
@@ -8842,6 +8845,17 @@ const stripeLive = () => SUBSCRIPTION_ON && Object.values(stripeCfg().links).som
 // 新しいタブで開く（スマホ・埋め込み表示でも開けるように a タグで）
 function openTab(url){ const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); }
 const STRIPE_LABEL = k => ({extra:"追加枠（1件）", staff:"従業員追加（1人分）"})[k] || opCfg().plans[k]?.name || OPTS[k]?.name || k;
+// 自動化サーバーがあれば、月額の変更はボタンから直接（はじめての有料プランだけ Stripe の画面でカード登録）
+const subAuto = () => SUBSCRIPTION_ON && tenant() && api()?.mode !== "demo" && !!stripeCfg().api;
+async function subGo(body, after){
+  toast("処理しています…");
+  const d = await stripeApi("/sub", body);
+  if(d.url){ location.href = d.url; return true; }
+  S.company = await api().getCompany(S.cid) || S.company;
+  toast(d.msg || "変更しました");
+  if(after) location.hash = after; else route();
+  return true;
+}
 async function stripeGo(key){
   if(!stripeLive()) return false;
   const url = stripeCfg().links[key];
@@ -9576,6 +9590,7 @@ Object.assign(ACTIONS, {
     const body = p.price ? `月額 ${yenFull(p.price)}（税込）・月 ${p.limit}件まで公開。すぐに切り替わり、今月分は日割りで次回のカード決済に足します。${needCard ? "\n\n（デモ）本番では Stripe のカード登録画面が開きます。デモでは Visa ****4242 を登録します。" : ""}`
       : "月1件まで公開になり、オプションと従業員の追加は使えなくなります。次回の請求日から切り替わります（デモではすぐに切り替えます）。";
     if(!await ask({title:`${p.name}に変更しますか？`, body, ok:needCard ? "カードを登録して変更する" : "変更する"})) return;
+    if(subAuto()) return subGo({op:"plan", key:k});
     if(p.price && await stripeGo(k)) return;
     const upd = {plan:k, nextPlan:null}; if(needCard) upd.card = "Visa ****4242";
     if(!planOf(S.company).price) upd.nextBill = addMonth(Date.now());
@@ -9586,11 +9601,13 @@ Object.assign(ACTIONS, {
     const k = el.dataset.k, n = OPTS[k].name, c = S.company, staff = k === "staff";
     if(staff && !planOf(c).price){ await ask({title:"従業員追加は有料プランのオプションです", body:"ビギナープラン以上に変更すると追加できます。", ok:"閉じる"}); return; }
     if(!await ask({title:staff ? `従業員を1人分追加しますか？（${staffSlots(c)}人 → ${staffSlots(c) + 1}人）` : `${n}を追加しますか？`, body:`月額 ${yenFull(staff ? opCfg().memberFee : optFee())}（税込）が足され、すぐに使えます。${staff ? "「メンバー」から1人招待できるようになります。" : ""}今月分は日割りで次回のカード決済（${fmtDate(nextBillOf(c))}）に足します。`, ok:"追加する"})) return;
+    if(subAuto()) return subGo({op:"opt", key:k});
     if(await stripeGo(k)) return;
     const upd = payUpd(c, k);
     await api().updateCompany(S.cid, upd); Object.assign(S.company, upd); toast(staff ? `従業員の枠を${upd.opts.staff}人にしました` : `${n}を追加しました`); route();
   },
   async "co-undo"(el){
+    if(subAuto()) return subGo({op:"undo", t:el.dataset.what === "plan" ? "plan" : "opt", k:el.dataset.k || ""});
     const upd = el.dataset.what === "plan" ? {nextPlan:null} : {optEnd:{...(S.company.optEnd || {}), [el.dataset.k]:null}};
     await api().updateCompany(S.cid, upd); Object.assign(S.company, upd); toast("予約していた変更を取り消しました"); route();
   },
@@ -9611,6 +9628,7 @@ Object.assign(ACTIONS, {
     const c0 = S.company, ex0 = Number((c0.extra || {})[ym] || 0), nx = PLAN_KEYS[PLAN_KEYS.indexOf(c0.plan) + 1], P0 = planOf(c0);
     const hint = nx && (ex0 + 1) * o.extraFee >= o.plans[nx].price - P0.price ? `\n\n今月の追加枠が${ex0 + 1}件（${yenFull((ex0 + 1) * o.extraFee)}）になります。${o.plans[nx].name}（月${o.plans[nx].limit}件・差額 月${yenFull(o.plans[nx].price - P0.price)}）に上げたほうがお得です。「契約・料金」から変更できます。` : "";
     if(!await ask({title:"追加枠を1件買いますか？", body:`今月だけ公開できる件数が1件増えます。${yenFull(o.extraFee)}（税込）を${P0.price ? "次回のカード決済に足します" : "登録のカードでお支払いいただきます"}。${hint}`, ok:"買う"})) return;
+    if(subAuto()) return subGo({op:"extra"});
     if(await stripeGo("extra")) return;
     const extra = {...(S.company.extra || {})}; extra[ym] = Number(extra[ym] || 0) + 1;
     await api().updateCompany(S.cid, {extra}); S.company.extra = extra; toast("追加枠を1件買いました"); route();
@@ -9618,6 +9636,7 @@ Object.assign(ACTIONS, {
   async "co-money"(el){
     const on = el.dataset.on === "1";
     if(!await ask({title:on ? "収支オプションを使いますか？" : "収支オプションをやめますか？", body:on ? `月額 ${yenFull(opCfg().moneyFee)}（税込）が足されます。` : "データは残ります。あとから再開できます。", ok:on ? "使う" : "やめる"})) return;
+    if(subAuto()) return subGo(on ? {op:"opt", key:"money"} : {op:"down", t:"opt", k:"money"});
     if(on && await stripeGo("money")) return;
     await api().updateCompany(S.cid, {money:on}); S.company.money = on; toast(on ? "収支オプションを始めました" : "収支オプションをやめました"); route();
   },
@@ -9764,6 +9783,7 @@ Object.assign(FORMS, {
   },
   async churnconfirm(form){
     const T = downTarget(form.dataset.t); if(!T) return;
+    if(subAuto()){ await logChurn("changed").catch(e => console.warn(e)); CHURN = {}; return subGo({op:"down", t:T.kind === "plan" ? "plan" : "opt", k:T.k}, "#/admin/plan"); }
     const c = S.company, upd = {nextBill:nextBillOf(c)};
     if(T.kind === "plan") upd.nextPlan = T.k; else upd.optEnd = {...(c.optEnd || {}), [T.k]:T.k === "staff" ? Number(c.optEnd?.staff || 0) + 1 : upd.nextBill};
     await api().updateCompany(S.cid, upd); Object.assign(S.company, upd);
