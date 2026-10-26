@@ -78,6 +78,14 @@ service cloud.firestore {
               && request.resource.data.role == 'crew'
               && request.resource.data.ownerUid == invite(request.resource.data.inviteId).ownerUid))
         && !('priority' in request.resource.data) && !('invoiceVerified' in request.resource.data);
+      // 工務店が招待なしで登録：自分が代表者の会社（同じ書き込みで作る）の管理者として作れる
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'co' && request.resource.data.coRole == '管理者' && request.resource.data.owner == true
+        && request.resource.data.status == 'approved'
+        && request.resource.data.email.lower() == request.auth.token.email.lower()
+        && request.resource.data.companyId is string
+        && getAfter(/databases/$(database)/documents/companies/$(request.resource.data.companyId)).data.ownerUid == request.auth.uid
+        && !('priority' in request.resource.data) && !('invoiceVerified' in request.resource.data) && !('inviteId' in request.resource.data);
       allow update: if isAdmin() || isOp()
         // 本人は審査状態・権限・所属などを変えられない
         || (signedIn() && request.auth.uid == uid
@@ -105,6 +113,14 @@ service cloud.firestore {
     match /companies/{cid} {
       allow read: if signedIn();
       allow create, delete: if isAdmin() || isOp();
+      // 工務店が招待なしで登録：無料プラン・利用中で、代表者は本人。本人のプロフィールも同じ書き込みでこの会社に入る
+      allow create: if signedIn() && !hasProfile()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerEmail == request.auth.token.email.lower()
+        && request.resource.data.status == 'active' && request.resource.data.plan == 'free'
+        && request.resource.data.get('money', false) == false
+        && !request.resource.data.keys().hasAny(['stripeSub', 'stripeCustomer', 'card', 'nextBill', 'opts', 'trialEnds', 'nextPlan', 'optEnd'])
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == cid;
       allow update: if isAdmin() || isOp()
         // 工務店の管理者：自社の設定（利用状態は運営だけ）
         // お試しの期限は変えられず、お試しプランに戻すこともできない
