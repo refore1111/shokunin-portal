@@ -1,0 +1,10 @@
+name = "genpuku-stripe"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+FIREBASE_PROJECT_ID = "shokunin-portal"
+PORTAL_URL = "https://refore1111.github.io/shokunin-portal/"
+ALLOWED_ORIGIN = "https://refore1111.github.io"
+# 秘密の値（STRIPE_SECRET_KEY・STRIPE_WEBHOOK_SECRET・BOT_EMAIL・BOT_PASSWORD・FIREBASE_API_KEY）は
+# Cloudflare の管理画面の「Variables and Secrets」に入れます（ここには書かない）

@@ -108,7 +108,8 @@ service cloud.firestore {
       allow update: if isAdmin() || isOp()
         // 工務店の管理者：自社の設定（利用状態は運営だけ）
         // お試しの期限は変えられず、お試しプランに戻すこともできない
-        || (isCoAdmin() && cid == myCid() && noChange(['status', 'createdAt', 'id', 'ownerEmail', 'trialEnds'])
+        // プラン・オプション・追加枠・カード・次回請求日は、Stripe の入金を確かめた運営だけが変える（工務店が自分で変えられない）
+        || (isCoAdmin() && cid == myCid() && noChange(['status', 'createdAt', 'id', 'ownerEmail', 'trialEnds', 'plan', 'opts', 'money', 'extra', 'card', 'nextBill'])
             && (request.resource.data.get('plan', '') != 'trial' || resource.data.get('plan', '') == 'trial'))
         // 担当者も、既存業者の登録は変えられる
         || (isCo() && cid == myCid() && onlyKeys(['priority']));
@@ -325,7 +326,7 @@ service cloud.firestore {
         && request.resource.data.fee >= 0 && request.resource.data.total == request.resource.data.amount + request.resource.data.fee;
       allow update: if isOp() || isAdmin()
         // 工務店：「振り込みました」と、発注を取り消したときの「返金が必要」
-        || (inCo(resource.data) && resource.data.status == 'waiting' && request.resource.data.status == 'reported' && onlyKeys(['status', 'reportedAt']))
+        || (inCo(resource.data) && resource.data.status == 'waiting' && request.resource.data.status == 'reported' && onlyKeys(['status', 'reportedAt', 'method']))
         || (inCo(resource.data) && resource.data.status == 'held' && request.resource.data.status == 'refund' && onlyKeys(['status', 'refundAt']))
         // 職人：請求書を出したら「職人の請求あり」
         || (isApproved() && resource.data.craftsmanId == request.auth.uid && resource.data.status == 'held'
