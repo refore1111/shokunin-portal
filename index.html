@@ -4291,10 +4291,9 @@ function viewTermsAgree(p){
   const again = !!p?.termsVersion;
   return `<div class="auth-wrap">${authHead()}<form class="panel" data-form="termsagree">
     <h2>${again ? "利用規約などを改定しました" : "利用規約などへの同意のお願い"}</h2>
-    <p class="small" style="margin:0 0 12px">${again ? "内容を変更しました。" : ""}本サービスを使うには、次の内容を読んで同意していただく必要があります。リンクを押すと別の画面で開きます。</p>
+    <p class="small" style="margin:0 0 12px">${again ? "内容を変更しました。" : ""}本サービスを使うには、次の内容への同意が必要です。内容はリンクを押すと別の画面で読めます。</p>
     <ul class="legal-list">${LEGAL_DOCS.map(([k, l]) => `<li><a href="#/terms/${k}" target="_blank" rel="noopener">${l}</a></li>`).join("")}</ul>
-    ${agreeBox()}
-    <button class="btn block" style="margin-top:12px">同意して使い始める</button></form>
+    <button class="btn block" style="margin-top:4px">すべてに同意して使い始める</button></form>
     <p class="center"><button class="textlink" data-act="logout">ログアウト</button></p></div>`;
 }
 // マイページ：同意した日と、規約へのリンク
@@ -8183,7 +8182,6 @@ const FORMS = {
     window.open(gm, "_blank", "noopener"); toast("Gmailに招待メールを作りました。送信を押してください"); form.reset();
   },
   async termsagree(form){
-    if(!form.elements.agree?.checked) throw new Error("内容を読んで、同意のチェックを入れてください");
     await api().updateProfile(S.user.uid, termsStamp());
     S.profile = await api().getProfile(S.user.uid); toast("同意しました"); route();
   },
