@@ -878,7 +878,7 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .op-cos{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}.op-co{display:inline-flex;align-items:center;gap:2px;font-size:12.5px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:1px 4px 1px 10px}
 .op-co.blk{color:#B0285A;background:#FBEFF3;border-color:#F0C6D4}.op-co button{border:0;background:none;cursor:pointer;color:inherit;font-size:13px;padding:0 4px;line-height:1}.op-add{display:inline-flex;gap:6px;align-items:center}.op-add select{font-size:13px;padding:2px 6px}
 .home-st{flex:none;margin-left:auto;display:inline-flex;align-items:center}.home-st+.home-who{margin-left:10px!important}.home-st .pill{margin:0}
-.home-who{flex:none;font-size:12.5px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:2px 10px;margin:0 12px 0 auto;white-space:nowrap}.home-who.none{color:var(--sub);background:#F4F5F7;border-color:var(--line);font-weight:400}
+.home-who{flex:none;font-size:12.5px;font-weight:700;color:var(--kon-text,#1B2A55);background:#EEF2FA;border:1px solid #D3DCEE;border-radius:999px;padding:2px 10px;margin:0 12px 0 auto;white-space:nowrap}.home-del{flex:none;margin-right:14px;font-size:13px}.home-who.none{color:var(--sub);background:#F4F5F7;border-color:var(--line);font-weight:400}
 .price-sup{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:12px;color:var(--sub);margin:-2px 0 8px;padding:0 0 8px;border-bottom:1px dashed var(--line)}
 .price-sup select{width:auto;max-width:260px;padding:4px 6px!important;font-size:12.5px!important}.price-sup input{width:64px!important;padding:4px 6px!important;font-size:12.5px!important}
 .price-sup .ps-net{display:inline-flex;flex-wrap:wrap;gap:4px 10px;align-items:center}.price-sup .ps-net[hidden]{display:none}.price-sup .ps-net label{display:inline-flex;align-items:center;gap:4px;color:#8A5A00;font-weight:700}.price-sup [name=p_netp]{width:80px!important}.price-sup [name=p_netu]{width:240px!important}
@@ -5620,7 +5620,7 @@ function chatPanel(threads, jobId, assignedTo){
 // やることの1行。まとめた枠の中（head あり）では、物件名を省いて「（クリーニング・雑工事）」のような分だけ出す
 function homeRow(x, head){
   const sub = head && x.t !== head && x.t.startsWith(head) ? x.t.slice(head.length).trim() : head && x.t !== head ? x.t : "";
-  return `<a class="row-item${head ? " rg-i" : ""}" href="${x.href}"><span class="row-main">${head ? (sub ? `<b>${esc(sub)}</b>` : "") : `<b>${esc(x.t)}</b>`}<span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span>${x.st ? `<span class="home-st">${x.st}</span>` : ""}${x.who === undefined ? "" : `<span class="home-who${x.who ? "" : " none"}">${x.who ? `担当：${esc(x.who)}` : "担当なし"}</span>`}<span class="small">開く ›</span></a>`;
+  return `<a class="row-item${head ? " rg-i" : ""}" href="${x.href}"><span class="row-main">${head ? (sub ? `<b>${esc(sub)}</b>` : "") : `<b>${esc(x.t)}</b>`}<span class="small ${x.cls === "danger" ? "danger-text" : x.cls}">${esc(x.what)}</span></span>${x.st ? `<span class="home-st">${x.st}</span>` : ""}${x.who === undefined ? "" : `<span class="home-who${x.who ? "" : " none"}">${x.who ? `担当：${esc(x.who)}` : "担当なし"}</span>`}${x.del ? `<button type="button" class="textlink danger-text home-del" data-act="memo-draft-del" data-id="${esc(x.del)}">消す</button>` : ""}<span class="small">開く ›</span></a>`;
 }
 // 同じ案件（分離発注・是正はもとの案件）のやることを、最初に出てきた場所に1つの枠でまとめる。見出しはもとの案件の名前
 function homeGroups(todo, jobs){
@@ -5640,7 +5640,7 @@ async function viewHome(){
   const rootOf = id => { const j = id && jobs.find(x => x.id === id); return j ? j.parentId || j.fixOf || j.id : id || ""; };
   const jst = j => j ? `<span class="pill ${pillClass(j)}">${esc(statusLabel(j))}</span>` : "", est = e => stageCell(EST_TO_STAGE[e.status] || "est");   // who：Reforeの担当（undefined＝担当のない項目）
   if(mineOnly && !S.staff?.length) S.staff = await api().getStaff().catch(() => []);
-  (await api().getMemoDrafts().catch(() => [])).filter(d => !mineOnly || isMine(d.staff)).forEach(d => add(d.title, "工事メモの下書き。続きを入れる", `#/admin/memo/${d.id}`, "", d.staff || "", `<span class="stg stg-none">工事メモ</span>`));
+  (await api().getMemoDrafts().catch(() => [])).filter(d => !mineOnly || isMine(d.staff)).forEach(d => { add(d.title, "工事メモの下書き。続きを入れる", `#/admin/memo/${d.id}`, "", d.staff || "", `<span class="stg stg-none">工事メモ</span>`); todo[todo.length - 1].del = d.id; });   // del：ホームから消せる下書き
   ests.filter(e => estMine(e) && e.status === "draft" && e.fromMemo).forEach(e => add(estTitle(e) || "工事メモ", "見積を仕上げて出す", `#/admin/memo/${e.id}`, "", e.staff?.name || "", est(e), rootOf(e.jobId)));
   ests.filter(e => estMine(e) && e.status === "ordered").forEach(e => add(estTitle(e), "受注しました。発注する", `#/admin/memo/${e.id}`, "warn", e.staff?.name || "", est(e), rootOf(e.jobId)));
   const cnt = {}; apps.forEach(a => { if(a.status === "applied") cnt[a.jobId] = (cnt[a.jobId] || 0) + 1; });
