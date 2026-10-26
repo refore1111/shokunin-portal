@@ -2265,6 +2265,7 @@ class DemoBackend {
   async getCompany(cid){ return clone((this.data.companies || {})[cid] || null); }
   async listCompanies(){ return clone(Object.values(this.data.companies || {})); }
   async createCompany(c){ const id = c.id || "co_" + newId(); (this.data.companies ||= {})[id] = {...c, id, createdAt:Date.now()}; this.save(); return id; }
+  async createOwnCompany(uid, c, prof){ const id = "co_" + newId(); (this.data.companies ||= {})[id] = {...c, id, createdAt:Date.now()}; this.data.users[uid] = {...prof, uid, companyId:id}; this.save(); return id; }
   async updateCompany(cid, d){ Object.assign(this.data.companies[cid], d); this.save(); }
   async listMembers(cid){ return clone(Object.values(this.data.users).filter(u => u.role === "co" && u.companyId === cid)); }
   async listCrew(owner){ return clone(Object.values(this.data.users).filter(u => u.role === "crew" && u.ownerUid === owner)); }
@@ -2753,6 +2754,12 @@ class FirebaseBackend {
   async getCompany(cid){ const s = await this.col("companies").doc(cid).get(); return s.exists ? {id:s.id, ...s.data()} : null; }
   async listCompanies(){ return this.docs(await this.col("companies").get()); }
   async createCompany(c){ const ref = c.id ? this.col("companies").doc(c.id) : this.col("companies").doc(); await ref.set({...c, createdAt:Date.now()}); return ref.id; }
+  // 工務店が招待なしで登録：会社と本人（管理者）を同じ書き込みで作る（ルールで「本人が代表者の会社」だけ許す）
+  async createOwnCompany(uid, c, prof){
+    const ref = this.col("companies").doc(), b = this.db.batch();
+    b.set(ref, {...c, createdAt:Date.now()}); b.set(this.col("users").doc(uid), {...prof, companyId:ref.id});
+    await b.commit(); return ref.id;
+  }
   async updateCompany(cid, d){ await this.col("companies").doc(cid).update(d); }
   async listMembers(cid){ const s = await this.col("users").where("companyId", "==", cid).get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
   async listCrew(owner){ const s = await this.col("users").where("ownerUid", "==", owner).get(); return s.docs.map(d => ({uid:d.id, ...d.data()})); }
@@ -4318,17 +4325,17 @@ function viewLogin(){
       <button class="btn block">ログイン</button>
       <p class="center" style="margin:12px 0 0"><button type="button" class="textlink" data-act="forgot">パスワードを忘れた場合</button></p>
     </form>
-    <p class="center">はじめての方は <a href="#/signup">協力業者として登録する</a></p>
+    <p class="center">はじめての方は <a href="#/signup">協力業者として登録する</a>${SUBSCRIPTION_ON ? `<br><a href="#/signup/co">工務店（元請）として登録する</a>` : ""}</p>
     <p class="center" style="margin-top:8px"><a href="manual.html" target="_blank" rel="noopener">使い方ガイドを見る</a></p>${legalFoot()}</div>`;
 }
 // 従業員の招待リンク（#/signup/staff/〇〇）：名前・メール・担当者名を入れておく
 const staffInvEnc = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const staffInvDec = t => { try { return JSON.parse(decodeURIComponent(escape(atob(String(t || "").replace(/-/g, "+").replace(/_/g, "/"))))); } catch(e) { return null; } };
 const staffInvUrl = o => location.href.split("#")[0] + "#/signup/staff/" + staffInvEnc(o);
-function viewSignup(staff = false, inv = null){
+function viewSignup(staff = false, inv = null, co = false){
   return `<div class="auth-wrap">${authHead()}
-    <form class="panel" data-form="signup" data-staff="${staff ? "1" : ""}"${inv ? ` data-inv="${esc(JSON.stringify(inv))}"` : ""}>
-      <h2>${staff ? "従業員のアカウントを作る" : "アカウントを作る"}</h2>${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
+    <form class="panel" data-form="signup" data-staff="${staff ? "1" : ""}" data-co="${co ? "1" : ""}"${inv ? ` data-inv="${esc(JSON.stringify(inv))}"` : ""}>
+      <h2>${staff ? "従業員のアカウントを作る" : co ? "工務店（元請）のアカウントを作る" : "アカウントを作る"}</h2>${co ? `<p class="small" style="margin:0 0 10px">案件を作って協力業者に発注する会社の登録です。無料プラン（月1件まで公開）から始まり、あとからプランを変えられます。協力業者として案件を受ける方は<a href="#/signup">こちら</a>。</p>` : ""}${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
       <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off" value="${esc(inv?.e || "")}"></label>
       <label class="field"><span>パスワード <small>6文字以上</small></span><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
       <label class="field"><span>パスワード（確認）</span><input type="password" name="password2" required minlength="6" autocomplete="new-password"></label>
@@ -4336,6 +4343,19 @@ function viewSignup(staff = false, inv = null){
       <button class="btn block" style="margin-top:10px">すべてに同意して次へ</button>
     </form>
     <p class="center">登録済みの方は <a href="#/">ログイン</a></p></div>`;
+}
+// 工務店の登録（会社名・代表者名・電話など）。登録するとすぐ使える（無料プラン）
+function viewCoSignup(){
+  return `<div class="auth-wrap">${authHead()}<form class="panel" data-form="cosignup">
+    <h2>会社の情報</h2>
+    <p class="small" style="margin:0 0 10px">登録するとすぐに管理画面が使えます（無料プラン：月1件まで公開）。あとから「設定」で変えられます。</p>
+    <label class="field"><span>会社名</span><input name="name" required autocomplete="organization" placeholder="例：みどり建装株式会社"></label>
+    <label class="field"><span>あなたのお名前（代表者・管理者）</span><input name="ownerName" required autocomplete="name"></label>
+    <label class="field"><span>電話番号</span><input name="tel" type="tel" required autocomplete="tel"></label>
+    <div class="two"><label class="field"><span>工事番号の頭 <small>英字2〜3文字・任意</small></span><input name="prefix" maxlength="3" placeholder="例：MD" style="text-transform:uppercase"></label>
+      <label class="field"><span>締め日 <small>協力業者からの請求</small></span><select name="closeDay">${CLOSE_DAYS.map(([d, l]) => `<option value="${d}" ${d === 0 ? "selected" : ""}>毎月${l}</option>`).join("")}</select></label></div>
+    <button class="btn block">登録して使い始める</button></form>
+    <p class="center"><button class="textlink" data-act="logout">ログアウト</button>　<button class="textlink" data-act="not-co">協力業者として登録する</button></p></div>`;
 }
 // 従業員の登録（名前・電話・担当者名だけ。承認は会社の管理者がする）
 function viewStaffSignup(){
@@ -7081,9 +7101,9 @@ async function route(){
   try {
     if(parts[0] === "terms") return done(viewTerms(parts[1]), {bare:true});
     if(parts[0] === "join") return done(await viewJoin(parts[1]), {bare:true});
-    if(!S.user) return done(parts[0] === "signup" ? viewSignup(parts[1] === "staff", parts[1] === "staff" ? staffInvDec(parts[2]) : null) : viewLogin(), {bare:true});
+    if(!S.user) return done(parts[0] === "signup" ? viewSignup(parts[1] === "staff", parts[1] === "staff" ? staffInvDec(parts[2]) : null, parts[1] === "co") : viewLogin(), {bare:true});
     if(S.pendingJoin){ const t = S.pendingJoin; return done(await viewJoin(t), {bare:true}); }
-    if(!S.profile){ let st = false; try { st = localStorage.getItem("refore_signup_staff") === "1"; } catch(e) {} return done(st ? viewStaffSignup() : viewProfileForm(null, true), {bare:true}); }
+    if(!S.profile){ let st = false, co = false; try { st = localStorage.getItem("refore_signup_staff") === "1"; co = localStorage.getItem("refore_signup_co") === "1"; } catch(e) {} return done(co ? viewCoSignup() : st ? viewStaffSignup() : viewProfileForm(null, true), {bare:true}); }
     const p = S.profile;
     if(!termsOk(p)) return done(viewTermsAgree(p), {bare:true});
     if(p.role === "op") return done(await routeOp(parts));
@@ -7812,6 +7832,7 @@ const ACTIONS = {
     S.rxKeepScroll = true;
     await api().reactMessage(tid, mid, myRole(), cur ? null : e);
   },
+  async "not-co"(){ try { localStorage.removeItem("refore_signup_co"); } catch(e) {} route(); },
   async "not-staff"(){ try { localStorage.removeItem("refore_signup_staff"); } catch(e) {} route(); },
   // 従業員：承認（管理者にする）・担当者名と通知の範囲・利用停止
   async "emp-approve"(el){
@@ -8186,6 +8207,18 @@ const FORMS = {
     const gm = "https://mail.google.com/mail/?" + new URLSearchParams({...(S.user?.email ? {authuser:S.user.email} : {}), view:"cm", fs:"1", to:email, su:"【GENPUKU Pro】従業員としての招待", body}).toString();
     window.open(gm, "_blank", "noopener"); toast("Gmailに招待メールを作りました。送信を押してください"); form.reset();
   },
+  async cosignup(form){
+    const g = k => String(form.elements[k]?.value || "").trim(), email = String(S.user.email || "").toLowerCase();
+    if(!g("name")) throw new Error("会社名を入れてください");
+    const prefix = g("prefix").toUpperCase(); if(prefix && !/^[A-Z]{1,3}$/.test(prefix)) throw new Error("工事番号の頭は英字1〜3文字で入れてください");
+    const co = {name:g("name"), status:"active", plan:"free", money:false, extra:{}, priority:[], closeDay:Number(g("closeDay")) || 0, prefix, ownerEmail:email, notifyEmail:email, info:{tel:g("tel")}, ownerUid:S.user.uid, selfSignup:true};
+    let tok = ""; try { tok = localStorage.getItem("refore_terms_ok") || ""; } catch(e) {}
+    const prof = {name:g("ownerName"), phone:g("tel"), email, role:"co", coRole:"管理者", owner:true, status:"approved", createdAt:Date.now(), ...(tok === TERMS_VERSION ? termsStamp() : {})};
+    await api().createOwnCompany(S.user.uid, co, prof);
+    try { localStorage.removeItem("refore_signup_co"); } catch(e) {}
+    S.profile = await api().getProfile(S.user.uid); await afterLogin();
+    toast("登録しました。ようこそ GENPUKU Pro へ"); location.hash = "#/admin";
+  },
   async termsagree(form){
     await api().updateProfile(S.user.uid, termsStamp());
     S.profile = await api().getProfile(S.user.uid); toast("同意しました"); route();
@@ -8195,6 +8228,7 @@ const FORMS = {
     if(fd.get("password") !== fd.get("password2")) throw new Error("確認用のパスワードが一致しません");
     if(!fd.get("agree")) throw new Error("利用規約・料金・支払いポリシー・プライバシーポリシーに同意してください");
     try { localStorage.setItem("refore_terms_ok", TERMS_VERSION); } catch(e) {}
+    try { if(form.dataset.co) localStorage.setItem("refore_signup_co", "1"); else localStorage.removeItem("refore_signup_co"); } catch(e) {}
     try { if(form.dataset.staff) localStorage.setItem("refore_signup_staff", "1"); else localStorage.removeItem("refore_signup_staff"); if(form.dataset.inv) localStorage.setItem("refore_staff_inv", form.dataset.inv); } catch(e) {}
     await api().signUp(fd.get("email"), fd.get("password"));
     location.hash = "#/";
