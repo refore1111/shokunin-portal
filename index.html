@@ -712,6 +712,11 @@ body{font-size:17px}
 .flow-chips a{font-size:14px}.flow-chips a b{font-size:14px}.fl-odd{display:inline-flex;gap:6px;margin-left:14px;padding-left:14px;border-left:1px solid var(--line);opacity:.75}.fl-odd a{font-size:12.5px}
 .jflow{display:inline-flex;flex-direction:column;align-items:flex-end;gap:4px}.jflow .sflow{margin:0}.jflow-key .sflow{margin-right:4px}
 .flow-chips .fl-arr{color:var(--sub);font-style:normal;font-size:18px}.fl-odd{display:inline-flex;gap:6px;margin-left:14px;padding-left:14px;border-left:1px solid var(--line);opacity:.75}.fl-odd a{font-size:12.5px}
+.legal-foot{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;padding:18px 16px 28px;font-size:12.5px;color:var(--sub)}.legal-foot a{color:var(--sub)}
+.legal-wrap{max-width:820px}.legal h1{font-size:22px;margin:0 0 12px}.legal h3{font-size:15px;margin:18px 0 6px}.legal p,.legal li{font-size:14px;line-height:1.8}.legal ol{margin:0;padding-left:1.4em}
+.legal-nav{margin:0 0 12px;flex-wrap:wrap}.legal-date{text-align:right;margin-top:18px}.legal-table{width:100%;border-collapse:collapse;font-size:14px}.legal-table th,.legal-table td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;line-height:1.7}.legal-table th{width:30%;background:var(--surface);font-weight:700}
+@media (max-width:560px){.legal-table th,.legal-table td{display:block;width:auto}.legal-table th{border-bottom:0}}
+.agree-box{display:flex;gap:8px;align-items:flex-start;margin:6px 0 4px;font-size:14px;line-height:1.6}.agree-box input{margin-top:3px;flex:none}.legal-list{margin:0 0 12px;padding-left:1.2em;line-height:1.9}
 .flowbar{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
 .flowbar .fb{flex:1;min-width:110px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--surface);display:grid}
 .flowbar .fb b{font-size:26px;font-family:"Barlow Condensed",var(--font);line-height:1}
@@ -2046,6 +2051,7 @@ function seedDemo(){
     o.issuedAt = d.jobs[jid].assignedAt;
     d.documents[o.id] = o;
   }
+  Object.values(d.users).forEach(u => { if(u.uid !== "c3") Object.assign(u, {termsVersion:TERMS_VERSION, termsAt:now - 30 * day}); });
   return d;
 }
 
@@ -2890,7 +2896,7 @@ function paint(content, {bare = false} = {}){
       <button class="link" data-act="logout">ログアウト</button></div>${isAdmin ? adminNav() : ""}</header>`;
   const tabs = (!isAdmin && p.status === "approved") ? craftTabs() : "";
   if(isAdmin && tenant() && S.company && S.company.status !== "active") content = coStatusNote() + content;
-  app.innerHTML = demoBar() + header + tabs + `<main class="main">${content}</main>`;
+  app.innerHTML = demoBar() + header + tabs + `<main class="main">${content}</main>` + legalFoot();
 }
 // 戻る：前に見ていた画面に戻る（このサイトの中で来たとき）。外から直接開いたときは決めた画面へ
 const back = (href, label) => `<a class="back" href="${href}" data-act="go-back" title="${esc(label)}">‹ 戻る</a>`;
@@ -4214,6 +4220,88 @@ function docRow(label, doc, note, canSee = true){
 function saveBlob(blob, name){ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
 
 /* ---------- ログイン・登録 ---------- */
+
+// ===== 利用規約など（ログインしなくても #/terms で読める） =====
+// 内容を変えたら TERMS_VERSION を新しい日付にする。次にログインした人に、もう一度同意を求める
+const TERMS_VERSION = "2026-11-01";
+const LEGAL = {company:"株式会社Refore", service:"GENPUKU Pro 協力業者ポータル", rep:"金子セバスティアン",
+  address:"請求があった場合には、遅滞なく開示いたします", phone:"03-6824-7282", email:"info@refore.co.jp", court:"東京地方裁判所"};
+const LEGAL_DOCS = [["terms", "利用規約"], ["pay", "料金・支払いポリシー"], ["privacy", "プライバシーポリシー"], ["law", "特定商取引法に基づく表記"]];
+const legalLinks = (sep = "・", blank = true) => LEGAL_DOCS.map(([k, l]) => `<a href="#/terms/${k}"${blank ? ' target="_blank" rel="noopener"' : ""}>${l}</a>`).join(sep);
+const legalFoot = () => `<footer class="legal-foot">${legalLinks("　", false)}<span>© ${LEGAL.company}</span></footer>`;
+const termsOk = p => !p || ["op", "admin"].includes(p.role) || p.termsVersion === TERMS_VERSION;
+const agreeBox = (name = "agree") => `<label class="toggle agree-box"><input type="checkbox" name="${name}" required> ${legalLinks()}を読み、同意します</label>`;
+const termsStamp = () => ({termsVersion:TERMS_VERSION, termsAt:Date.now()});
+function legalTerms(){
+  const L = LEGAL, sec = (t, items) => `<h3>${t}</h3><ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`;
+  return `<p>この利用規約（以下「本規約」）は、${L.company}（以下「運営者」）が提供する「${L.service}」（以下「本サービス」）の利用条件を定めるものです。本サービスを利用するすべての方（以下「利用者」）は、本規約に同意したうえで本サービスを利用するものとします。</p>
+  ${sec("第1条（定義）", ["「協力業者」とは、本サービスに登録し、案件に応募・受注する個人事業主または法人をいいます。", "「工務店」とは、運営者の承認を受けて本サービスに登録し、案件を作成・発注する事業者（その管理者・担当者を含みます）をいいます。", "「案件」とは、本サービス上で募集・発注される工事・作業をいいます。運営者自身が発注する案件を「運営者の案件」、工務店が発注する案件を「工務店の案件」といいます。"])}
+  ${sec("第2条（登録）", ["本サービスの利用を希望する方は、本規約に同意のうえ、運営者の定める方法で登録を申し込むものとします。", "協力業者の登録は、運営者の審査により承認された時点で完了します。運営者は、審査の結果や理由を開示する義務を負いません。", "登録内容（氏名・屋号・連絡先・振込先・インボイス登録番号など）は、正確かつ最新の内容に保つものとします。"])}
+  ${sec("第3条（アカウントの管理）", ["利用者は、自己の責任でメールアドレスとパスワードを管理し、第三者に利用させてはなりません。", "アカウントでの操作は、その利用者本人による操作とみなします。"])}
+  ${sec("第4条（本サービスの内容）", ["本サービスは、案件の募集・応募・発注・連絡・書類の作成などを行うための場を提供するものです。", "工務店の案件の工事請負契約は、工務店と協力業者の間で成立し、運営者はその当事者になりません。運営者の案件の契約は、運営者と協力業者の間で成立します。", "工事の内容・品質・工期・安全管理などの責任は、その案件の発注者と受注した協力業者が負うものとします。"])}
+  ${sec("第5条（料金・支払い）", ["本サービスの料金、案件の先払い、運営手数料、返金などは、別に定める「料金・支払いポリシー」によります。"])}
+  ${sec("第6条（禁止事項）", ["法令または公序良俗に反する行為", "虚偽の登録・申告、他人になりすます行為", "運営者・他の利用者・第三者の権利や信用を傷つける行為", "本サービスで知った他の利用者の情報を、案件の遂行以外の目的に使う行為", "運営者の手数料を免れることを目的として、本サービスで知り合った相手と本サービスを通さずに取引する行為", "本サービスの運営を妨げる行為、不正なアクセス、プログラムの改ざん", "その他、運営者が不適切と判断する行為"])}
+  ${sec("第7条（情報の取扱い）", ["案件の住所・鍵・入室方法などの現場情報は、発注が確定した協力業者だけが見られます。協力業者は、案件の遂行以外に使ってはなりません。", "個人情報の取扱いは、別に定める「プライバシーポリシー」によります。"])}
+  ${sec("第8条（利用停止・登録の取消し）", ["運営者は、利用者が本規約に違反したとき、登録内容に虚偽があったとき、料金の支払いが滞ったとき、その他運営者が必要と判断したときは、事前の通知なく、利用の停止または登録の取消しができるものとします。", "利用者は、運営者の定める方法で、いつでも退会を申し出ることができます。"])}
+  ${sec("第9条（免責）", ["運営者は、本サービスにより必ず案件の受注・発注ができることを保証しません。", "利用者どうしの取引・トラブルは当事者間で解決するものとし、運営者は、運営者に故意または重大な過失がある場合を除き、責任を負いません。", "通信障害・システムの不具合・外部サービス（決済・データ保存など）の停止により生じた損害について、運営者は、運営者に故意または重大な過失がある場合を除き、責任を負いません。"])}
+  ${sec("第10条（サービスの変更・停止）", ["運営者は、利用者に事前に通知のうえ、本サービスの内容を変更し、または提供を停止することができます。緊急の場合は、事後の通知とすることがあります。"])}
+  ${sec("第11条（規約の変更）", ["運営者は、必要に応じて本規約を変更できます。変更後の規約は、本サービス上に表示した時点から効力を生じます。重要な変更のときは、本サービス上で改めて同意をいただきます。"])}
+  ${sec("第12条（準拠法・管轄）", [`本規約は日本法に準拠します。本サービスに関して紛争が生じた場合は、${L.court}を第一審の専属的合意管轄裁判所とします。`])}`;
+}
+function legalPay(){
+  const o = opCfg(), L = LEGAL, pct = Math.round(opFee() * 100), plans = PLAN_KEYS.map(k => o.plans[k]).filter(x => x);
+  const sec = (t, items) => `<h3>${t}</h3><ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`;
+  return `<p>${L.service}（以下「本サービス」）の料金と支払い方法は、次のとおりです。金額はすべて税込です。</p>
+  ${SUBSCRIPTION_ON ? sec("1. 工務店の月額料金", [`プラン：${plans.map(x => `${esc(x.name)} ${x.price ? `月 ${yenFull(x.price)}` : "無料"}（案件の作成 月${x.limit}件まで）`).join("、")}`, `オプション：各 月 ${yenFull(o.moneyFee)}。案件の追加枠：1件 ${yenFull(o.extraFee)}。`, "月額料金は、クレジットカード（決済代行：Stripe）で申し込み日から1か月ごとに自動で請求します。", "解約・カードの変更は、本サービスの「プラン」画面から開くお支払い管理画面で、いつでもできます。解約は次の請求日の前日までに手続きしてください。", "すでに支払われた月額料金は、途中で解約した場合も日割りでの返金はいたしません。"]) : ""}
+  ${sec(`${SUBSCRIPTION_ON ? 2 : 1}. 全体公開の案件の先払い（工務店）`, [`工務店が協力業者全体に公開した案件を発注するときは、工事代金に運営手数料（工事代金の${pct}%）を加えた金額を、発注の前に先払いします。`, "先払いはクレジットカード（決済代行：Stripe）または運営者の指定口座への振込でお支払いいただけます。振込手数料は工務店の負担です。", "カード払いの場合、支払いと同時に、工事代金は受注した協力業者へ、運営手数料は運営者へ、Stripe により自動で分けて支払われ、発注が確定します。振込の場合は、運営者が入金を確認した時点で発注が確定します。", "発注の確定後に工事を取りやめる場合の工事代金の扱いは、工務店と協力業者で協議して決めるものとします。運営者は、合意の内容に従い返金の手続きを行います。運営手数料は、運営者の責めによる場合を除き、返金いたしません。"])}
+  ${sec(`${SUBSCRIPTION_ON ? 3 : 2}. 協力業者への支払い`, ["運営者の案件の工事代金は、協力業者が本サービスで発行する請求書に基づき、運営者が定める期日に、登録された口座へ振り込みます。", "工務店の案件の工事代金は、先払いの場合は Stripe から協力業者の Stripe アカウントへ支払われ、Stripe の入金スケジュールに従って協力業者の口座へ振り込まれます。それ以外の場合は、工務店と協力業者の取り決めによります。", "協力業者が Stripe で受け取りを登録する際は、Stripe の利用規約に同意するものとします。カード決済の手数料は運営者が負担し、協力業者の受取額からは差し引きません。"])}
+  ${sec(`${SUBSCRIPTION_ON ? 4 : 3}. 領収書・請求書`, ["運営手数料・月額料金の領収書は、本サービスの画面からダウンロードできます。", `ご不明な点は ${L.email} までお問い合わせください。`])}`;
+}
+function legalPrivacy(){
+  const L = LEGAL, sec = (t, items) => `<h3>${t}</h3><ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`;
+  return `<p>${L.company}（以下「運営者」）は、${L.service}（以下「本サービス」）における個人情報を、次のとおり取り扱います。</p>
+  ${sec("1. 取得する情報", ["氏名・屋号・会社名・住所・電話番号・メールアドレス", "振込先の口座情報・インボイス登録番号・保有資格・対応エリアなど、登録時や登録情報の画面で入力された情報", "案件・応募・チャット・完了報告・請求書など、本サービスの利用によって生じる情報", "カード決済の情報は決済代行会社（Stripe）が取得し、運営者はカード番号を保持しません。"])}
+  ${sec("2. 利用目的", ["本サービスの提供・本人確認・審査のため", "案件の募集・発注・連絡・書類（発注書・請求書・領収書など）の作成のため", "料金の請求・支払い・返金のため", "お問い合わせへの対応、重要なお知らせの連絡のため", "不正利用の防止、サービスの改善のため"])}
+  ${sec("3. 他の利用者への提供", ["協力業者の屋号・工種・対応エリア・評価などは、案件の発注を検討する運営者・工務店に表示されます。", "発注が確定した案件では、発注者と受注した協力業者の間で、案件の遂行に必要な連絡先・現場情報を共有します。", "協力業者の振込先の口座情報は、運営者のみが扱い、工務店には表示しません。"])}
+  ${sec("4. 第三者への提供・委託", ["法令に基づく場合を除き、本人の同意なく第三者に提供しません。", "本サービスの運営のため、次の事業者にデータの保存・処理を委託しています：Google（Firebase・Google ドライブ）、Stripe（決済）、Cloudflare（決済の自動処理）。"])}
+  ${sec("5. 安全管理", ["個人情報への不正なアクセス・漏えい・改ざんを防ぐため、アクセス権限の管理など必要な措置を講じます。"])}
+  ${sec("6. 開示・訂正・削除", [`本人から個人情報の開示・訂正・利用停止・削除の求めがあった場合は、本人であることを確認のうえ、法令に従い対応します。${L.email} までご連絡ください。`])}
+  ${sec("7. 改定", ["本ポリシーは、必要に応じて改定します。改定後の内容は本サービス上に表示した時点から効力を生じます。"])}`;
+}
+function legalLaw(){
+  const o = opCfg(), L = LEGAL, pct = Math.round(opFee() * 100), plans = PLAN_KEYS.map(k => o.plans[k]).filter(x => x && x.price);
+  const rows = [["販売事業者", L.company], ["運営責任者", L.rep], ["所在地", L.address], ["電話番号", `${L.phone}（受付：平日 9:00〜18:00）`], ["メールアドレス", L.email],
+    ["販売価格", `${SUBSCRIPTION_ON && plans.length ? `月額プラン：${plans.map(x => `${esc(x.name)} 月 ${yenFull(x.price)}`).join("、")}／オプション：各 月 ${yenFull(o.moneyFee)}／案件の追加枠：1件 ${yenFull(o.extraFee)}／` : ""}全体公開の案件の運営手数料：工事代金の${pct}%（すべて税込）`],
+    ["商品代金以外の必要料金", "インターネットの通信費、銀行振込の場合の振込手数料"], ["支払方法", "クレジットカード（決済代行：Stripe）、銀行振込"],
+    ["支払時期", `${SUBSCRIPTION_ON ? "月額料金：申し込み時と、以後1か月ごとの自動更新時／" : ""}運営手数料：案件の発注前（先払い）`], ["サービスの提供時期", "決済の完了後、すぐにご利用いただけます"],
+    ["返品・キャンセル", `サービスの性質上、決済後の返金はいたしません。${SUBSCRIPTION_ON ? "月額プランはいつでも解約でき、次の更新日以降は請求されません。" : ""}詳しくは「料金・支払いポリシー」をご覧ください`],
+    ["動作環境", "最新版の Google Chrome・Safari・Microsoft Edge など"]];
+  return `<table class="legal-table"><tbody>${rows.map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join("")}</tbody></table>`;
+}
+function viewTerms(key){
+  const cur = LEGAL_DOCS.find(([k]) => k === key) ? key : "terms", title = LEGAL_DOCS.find(([k]) => k === cur)[1];
+  const body = {terms:legalTerms, pay:legalPay, privacy:legalPrivacy, law:legalLaw}[cur]();
+  return `<div class="auth-wrap legal-wrap"><div class="auth-brand"><span class="brand-mark gp" aria-hidden="true"></span><div><b>${LEGAL.service}</b><small>${LEGAL.company}</small></div></div>
+    <nav class="chips legal-nav" aria-label="規約・ポリシー">${LEGAL_DOCS.map(([k, l]) => `<a href="#/terms/${k}" ${k === cur ? 'aria-current="true"' : ""}>${l}</a>`).join("")}</nav>
+    <article class="panel legal"><h1>${title}</h1>${body}<p class="small legal-date">${TERMS_VERSION.replace(/-0?/g, (m, i) => i === 4 ? "年" : "月").replace(/$/, "日")} 制定</p></article>
+    <p class="center"><a href="#/">ポータルに戻る</a></p></div>`;
+}
+// 規約に同意していない（または改定された）人：使う前に同意してもらう
+function viewTermsAgree(p){
+  const again = !!p?.termsVersion;
+  return `<div class="auth-wrap">${authHead()}<form class="panel" data-form="termsagree">
+    <h2>${again ? "利用規約などを改定しました" : "利用規約などへの同意のお願い"}</h2>
+    <p class="small" style="margin:0 0 12px">${again ? "内容を変更しました。" : ""}本サービスを使うには、次の内容を読んで同意していただく必要があります。リンクを押すと別の画面で開きます。</p>
+    <ul class="legal-list">${LEGAL_DOCS.map(([k, l]) => `<li><a href="#/terms/${k}" target="_blank" rel="noopener">${l}</a></li>`).join("")}</ul>
+    ${agreeBox()}
+    <button class="btn block" style="margin-top:12px">同意して使い始める</button></form>
+    <p class="center"><button class="textlink" data-act="logout">ログアウト</button></p></div>`;
+}
+// マイページ：同意した日と、規約へのリンク
+function legalPanel(p){
+  return `<section class="panel legal-panel"><h2>利用規約・ポリシー</h2><p class="small" style="margin:0 0 8px">${p?.termsAt ? `${fmtDate(p.termsAt)} に同意済み（${esc(p.termsVersion || "")}版）` : "まだ同意していません"}</p>
+    <p style="margin:0">${legalLinks("　")}</p></section>`;
+}
 function authHead(){
   return `<div class="auth-brand"><span class="brand-mark gp" aria-hidden="true"></span><div><b>GENPUKU Pro 協力業者ポータル</b><small>株式会社Refore</small></div></div>
     <p class="lead">原状回復・クリーニング・修繕の案件に応募できる、協力業者さま専用のページです。</p>
@@ -4231,7 +4319,7 @@ function viewLogin(){
       <p class="center" style="margin:12px 0 0"><button type="button" class="textlink" data-act="forgot">パスワードを忘れた場合</button></p>
     </form>
     <p class="center">はじめての方は <a href="#/signup">協力業者として登録する</a></p>
-    <p class="center" style="margin-top:8px"><a href="manual.html" target="_blank" rel="noopener">使い方ガイドを見る</a></p></div>`;
+    <p class="center" style="margin-top:8px"><a href="manual.html" target="_blank" rel="noopener">使い方ガイドを見る</a></p>${legalFoot()}</div>`;
 }
 // 従業員の招待リンク（#/signup/staff/〇〇）：名前・メール・担当者名を入れておく
 const staffInvEnc = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -4244,7 +4332,8 @@ function viewSignup(staff = false, inv = null){
       <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off" value="${esc(inv?.e || "")}"></label>
       <label class="field"><span>パスワード <small>6文字以上</small></span><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
       <label class="field"><span>パスワード（確認）</span><input type="password" name="password2" required minlength="6" autocomplete="new-password"></label>
-      <button class="btn block">${staff ? "次へ（お名前の入力）" : "次へ（業者情報の入力）"}</button>
+      ${agreeBox()}
+      <button class="btn block" style="margin-top:10px">${staff ? "次へ（お名前の入力）" : "次へ（業者情報の入力）"}</button>
     </form>
     <p class="center">登録済みの方は <a href="#/">ログイン</a></p></div>`;
 }
@@ -6990,11 +7079,13 @@ async function route(){
   const done = (html, opts) => { if(token !== S.tok) return; paint(html, opts); if(moved) window.scrollTo(0, 0); if(after) S.pageUnsub = after(); decorateNotices(); };
   if(!api()) return;
   try {
+    if(parts[0] === "terms") return done(viewTerms(parts[1]), {bare:true});
     if(parts[0] === "join") return done(await viewJoin(parts[1]), {bare:true});
     if(!S.user) return done(parts[0] === "signup" ? viewSignup(parts[1] === "staff", parts[1] === "staff" ? staffInvDec(parts[2]) : null) : viewLogin(), {bare:true});
     if(S.pendingJoin){ const t = S.pendingJoin; return done(await viewJoin(t), {bare:true}); }
     if(!S.profile){ let st = false; try { st = localStorage.getItem("refore_signup_staff") === "1"; } catch(e) {} return done(st ? viewStaffSignup() : viewProfileForm(null, true), {bare:true}); }
     const p = S.profile;
+    if(!termsOk(p)) return done(viewTermsAgree(p), {bare:true});
     if(p.role === "op") return done(await routeOp(parts));
     if(p.role === "crew") return done(`<div class="auth-wrap"><div class="alert-box"><b>このアカウントは使えなくなりました</b><p>職人さんの従業員としてのログインは終わりました。わからないことは、親方か運営（Refore）にお問い合わせください。</p></div><button class="btn sub" data-act="logout">ログアウト</button></div>`, {bare:true});
     if(p.role === "co" && (p.status === "suspended" || !S.company)) return done(viewSuspended());
@@ -7054,7 +7145,7 @@ async function route(){
     if(a === "job") html = await viewJobDetail(b);
     else if(a === "applied") html = await viewApplied();
     else if(a === "work") html = b ? await viewWorkDetail(b) : await viewWork();
-    else if(a === "profile") html = craftStripePanel(p) + viewProfileForm(p, false);
+    else if(a === "profile") html = craftStripePanel(p) + viewProfileForm(p, false) + legalPanel(p);
     else if(a === "invoice") html = await viewInvoice(b);
     else if(a === "schedule") html = await viewMySchedule(b);
     else if(a === "chat"){ if(b){ html = await viewChat(b); after = () => startChat(b); } else html = await viewChatList(); }
@@ -8091,9 +8182,16 @@ const FORMS = {
     const gm = "https://mail.google.com/mail/?" + new URLSearchParams({...(S.user?.email ? {authuser:S.user.email} : {}), view:"cm", fs:"1", to:email, su:"【GENPUKU Pro】従業員としての招待", body}).toString();
     window.open(gm, "_blank", "noopener"); toast("Gmailに招待メールを作りました。送信を押してください"); form.reset();
   },
+  async termsagree(form){
+    if(!form.elements.agree?.checked) throw new Error("内容を読んで、同意のチェックを入れてください");
+    await api().updateProfile(S.user.uid, termsStamp());
+    S.profile = await api().getProfile(S.user.uid); toast("同意しました"); route();
+  },
   async signup(form){
     const fd = new FormData(form);
     if(fd.get("password") !== fd.get("password2")) throw new Error("確認用のパスワードが一致しません");
+    if(!fd.get("agree")) throw new Error("利用規約・料金・支払いポリシー・プライバシーポリシーに同意してください");
+    try { localStorage.setItem("refore_terms_ok", TERMS_VERSION); } catch(e) {}
     try { if(form.dataset.staff) localStorage.setItem("refore_signup_staff", "1"); else localStorage.removeItem("refore_signup_staff"); if(form.dataset.inv) localStorage.setItem("refore_staff_inv", form.dataset.inv); } catch(e) {}
     await api().signUp(fd.get("email"), fd.get("password"));
     location.hash = "#/";
@@ -8113,7 +8211,8 @@ const FORMS = {
     if(!S.profile){
       let ci = ""; try { ci = localStorage.getItem("refore_craft_inv") || ""; } catch(e) {}
       const inv = ci ? await api().getInvite(ci).catch(() => null) : null, okInv = inv && inv.kind === "craft" && !inv.usedAt && inv.expiresAt > Date.now() && String(inv.email || "").toLowerCase() === String(S.user.email || "").toLowerCase();
-      await api().createProfile(S.user.uid, {...data, role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now(), ...(okInv ? {invitedBy:inv.companyId} : {})});
+      let tok = ""; try { tok = localStorage.getItem("refore_terms_ok") || ""; } catch(e) {}
+      await api().createProfile(S.user.uid, {...data, role:"craftsman", status:"pending", plan:"free", email:S.user.email, createdAt:Date.now(), ...(okInv ? {invitedBy:inv.companyId} : {}), ...(tok === TERMS_VERSION ? termsStamp() : {})});
       if(okInv) await api().useInvite(inv.id, S.user.uid).catch(e => console.warn("招待を使用済みにできません", e));
       try { localStorage.removeItem("refore_craft_inv"); } catch(e) {}
       if(okInv && location.hash.startsWith("#/join/")) location.hash = "#/";
@@ -9229,13 +9328,15 @@ async function viewJoin(token){
     return wrap(`<form class="panel" data-form="joinaccept" data-id="${esc(inv.id)}"><h2>${who}として参加する</h2>
       <label class="field"><span>名前</span><input name="name" required value="${esc(inv.name || "")}"></label>
       ${inv.kind === "co" ? `<label class="field"><span>電話番号 <small>任意</small></span><input name="phone" type="tel"></label>` : ""}
-      <button class="btn block">参加する</button></form>`);
+      ${agreeBox()}
+      <button class="btn block" style="margin-top:10px">参加する</button></form>`);
   }
   return wrap(`<form class="panel" data-form="joinsignup" data-id="${esc(inv.id)}"><h2>${who}への招待</h2>
     <p class="small" style="margin:0 0 10px">招待されたメールアドレスでアカウントを作ります。すでにこのメールでアカウントがある場合は、パスワードを入れて「ログインして参加」にチェックしてください。</p>
     <label class="field"><span>メールアドレス</span><input name="email" type="email" value="${esc(inv.email)}" readonly></label>
     <label class="field"><span>パスワード <small>6文字以上</small></span><input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
     <label class="toggle"><input type="checkbox" name="existing">このメールのアカウントを持っているので、ログインして参加する</label>
+    ${agreeBox()}
     <button class="btn block" style="margin-top:10px">次へ</button></form>`);
 }
 
@@ -9696,12 +9797,15 @@ Object.assign(FORMS, {
   },
   async joinsignup(form){
     const pw = form.elements.password.value, email = form.elements.email.value;
+    if(!form.elements.agree?.checked) throw new Error("利用規約・料金・支払いポリシー・プライバシーポリシーに同意してください");
+    try { localStorage.setItem("refore_terms_ok", TERMS_VERSION); } catch(e) {}
     if(form.elements.existing.checked) await api().signIn(email, pw); else await api().signUp(email, pw);
   },
   async joinaccept(form){
     const inv = await api().getInvite(form.dataset.id), name = form.elements.name.value.trim();
     if(!inv || inv.usedAt || inv.expiresAt < Date.now() || inv.kind === "crew") throw new Error("この招待は使えません");
-    const base = {name, email:S.user.email, status:"approved", inviteId:inv.id, createdAt:Date.now()};
+    if(!form.elements.agree?.checked) throw new Error("利用規約・料金・支払いポリシー・プライバシーポリシーに同意してください");
+    const base = {name, email:S.user.email, status:"approved", inviteId:inv.id, createdAt:Date.now(), ...termsStamp()};
     const prof = {...base, role:"co", companyId:inv.companyId, coRole:inv.coRole === "管理者" ? "管理者" : "担当者", owner:!!inv.owner, phone:form.elements.phone?.value.trim() || ""};
     await api().acceptInvite(inv, S.user.uid, prof);
     S.profile = await api().getProfile(S.user.uid); await afterLogin();
