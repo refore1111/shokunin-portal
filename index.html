@@ -1081,6 +1081,7 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .est-form input[readonly],form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled{background:#EEF1F5;color:var(--sub);cursor:not-allowed}
 .memo-price{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:12px;color:var(--sub);margin:-2px 0 4px}
+.vend-auto{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0 0 8px}.vend-auto>span:first-child{min-width:8em;font-weight:700}.vend-auto input{width:140px}
 .memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-why{flex:1 1 100%}.memo-price .mp-why input{flex:1;width:auto}.memo-price .mp-wsn input{width:220px}.memo-price label[hidden]{display:none}.memo-price .mp-spec{flex:1 1 100%;flex-wrap:wrap}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}.mp-pf{margin-left:10px;white-space:nowrap;color:var(--ok,#2E7D4F)}.mp-pf.danger-text{color:var(--danger,#C0392B)}
 .memo-sum{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px 18px;margin:6px 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 -2px 8px rgba(0,0,0,.06);font-size:13px}
 .memo-sum b{font-family:var(--num);font-size:16px;margin-left:4px}
@@ -2035,7 +2036,7 @@ function seedDemo(){
     m1: {id:"m1", companyId:"midori", coName:"みどり建装株式会社", coEmail:"midori@demo.jp", coClose:20, status:"open", audience:"all", pay:true, priCrafts:[], countedYm:curMonth(),
       title:"2DK 退去後クリーニング", trades:["ハウスクリーニング"], pref:"東京都", city:"墨田区", startDate:iso(6), endDate:iso(6), price:28000, taxMode:"税別", priceNote:"",
       description:"2DK（約40㎡）の退去後クリーニング一式です。", photos:[], assignedTo:null, createdAt:now - 4*hour, publishedAt:now - 4*hour},
-    m2: {id:"m2", companyId:"midori", coName:"みどり建装株式会社", coEmail:"midori@demo.jp", coClose:20, status:"open", audience:"priority", pay:false, priCrafts:["c3"], countedYm:curMonth(),
+    m2: {id:"m2", companyId:"midori", coName:"みどり建装株式会社", coEmail:"midori@demo.jp", coClose:20, status:"open", audience:"priority", pay:false, priCrafts:["c3"], countedYm:"",
       title:"1LDK クロス張替え（壁のみ）", trades:["クロス張替え"], pref:"東京都", city:"墨田区", startDate:iso(8), endDate:iso(8), price:52000, taxMode:"税別", priceNote:"",
       description:"1LDKの壁のみ。量産品。", photos:[], assignedTo:null, createdAt:now - 2*hour, publishedAt:now - 2*hour},
     ...Object.fromEntries([["m3", "1K 退去後クリーニング", 18000, 9], ["m4", "2DK エアコンクリーニング 2台", 24000, 6], ["m5", "1R 退去後クリーニング（浴室カビ取り）", 20000, 3]].map(([id, title, price, d0]) => [id,
@@ -2124,13 +2125,13 @@ class DemoBackend {
   async getJob(id){ return clone(this.data.jobs[id] || null); }
   async saveJob(id, d){ S.ldCache = null;
     d = coJobPatch(d, !id);
-    if(d.status === "open") await coPostGuard(id, d);
+    if(d.status === "open" || d.audience === "all") await coPostGuard(id, d);
     if(!id){ id = "j_" + newId(); this.data.jobs[id] = {...d, id, companyId:coId(), assignedTo:null, createdAt:Date.now()}; }
     else Object.assign(this.data.jobs[id], d);
     this.data.jobs[id].updatedAt = Date.now(); this.save(); return id;
   }
   async setJobStatus(id, status){ S.ldCache = null; const x = {};
-    if(status === "open") await coPostGuard(id, x);
+    if(status === "open") await coPostGuard(id, x, "open");
     Object.assign(this.data.jobs[id], {status, ...stampFor(status), ...x, updatedAt:Date.now()}); this.save(); }
   async setWorkProgress(id, status, extra = {}){ Object.assign(this.data.jobs[id], {status, ...stampFor(status), ...extra, updatedAt:Date.now()}); this.save(); }
   async acceptOrder(id){ Object.assign(this.data.jobs[id], {acceptedAt:Date.now(), updatedAt:Date.now()}); this.save(); }
@@ -2489,12 +2490,12 @@ class FirebaseBackend {
   }
   async saveJob(id, d){ S.ldCache = null;
     d = coJobPatch(d, !id);
-    if(d.status === "open") await coPostGuard(id, d);
+    if(d.status === "open" || d.audience === "all") await coPostGuard(id, d);
     if(!id){ const ref = this.col("jobs").doc(); await ref.set({...d, companyId:coId(), assignedTo:null, createdAt:Date.now(), updatedAt:Date.now()}); return ref.id; }
     await this.col("jobs").doc(id).update({...d, updatedAt:Date.now()}); return id;
   }
   async setJobStatus(id, status){ S.ldCache = null; const x = {};
-    if(status === "open") await coPostGuard(id, x);
+    if(status === "open") await coPostGuard(id, x, "open");
     await this.col("jobs").doc(id).update({status, ...stampFor(status), ...x, updatedAt:Date.now()}); }
   // 業者が自分で押す「作業開始」「作業完了」（ルールで許可された項目だけを更新）
   async setWorkProgress(id, status, extra = {}){ await this.col("jobs").doc(id).update({status, ...stampFor(status), ...extra, updatedAt:Date.now()}); }
@@ -3698,17 +3699,19 @@ async function ledgerDataLoad(){
   const fixesOf = key => jobs.filter(j => j.fixOf && j.fixOf === key);   // 完了後の是正・追加の発注（元の案件・自社施工の行につながる）
   const fixVend = async key => { const fx = fixesOf(key); if(!fx.length) return null;
     const asg = fx.filter(x => x.assignedTo && !x.declinedAt), docs = await Promise.all(asg.map(x => orderDocCached(x.id))), mos = (await Promise.all(fx.map(x => jobAdminCached(x.id)))).flatMap(a => a[1] || []);
-    return {fv:asg.map((x, k) => ({name:craftName(x.assignedTo), amount:vendorAmount(x, docs[k]), auto:true, fix:true, col:vendorCol(docs[k]?.job?.items || x.items, S.crafts?.get(x.assignedTo)?.trades)})),
-      mv:mos.map(o => ({name:o.supplierName || "発注先", amount:o.net ? moTotals(o).base : moTotals(o).total, auto:true, fix:true, col:o.net || o.kind !== "work" ? 0 : vendorCol(o.items)}))}; };
+    return {fv:asg.map((x, k) => ({key:"j:" + x.id, name:craftName(x.assignedTo), amount:vendorAmount(x, docs[k]), auto:true, fix:true, col:vendorCol(docs[k]?.job?.items || x.items, S.crafts?.get(x.assignedTo)?.trades)})),
+      mv:mos.map(o => ({key:"m:" + o.id, name:o.supplierName || "発注先", amount:o.net ? moTotals(o).base : moTotals(o).total, auto:true, fix:true, col:o.net || o.kind !== "work" ? 0 : vendorCol(o.items)}))}; };
   const roots = jobs.filter(j => !j.parentId && !j.fixOf && !byJob.get(j.id)?.hidden && (["assigned", "working", "finished", "completed", "paid"].includes(j.status) || byJob.get(j.id)?.contract || byJob.get(j.id)?.ki));
   const auto = await Promise.all(roots.map(async j => {
     const L = byJob.get(j.id) || {};
     const [info, mos] = await jobAdminCached(j.id, jobOld(j));
     const fam = [j, ...jobs.filter(k => k.parentId === j.id)].filter(x => x.assignedTo && !x.declinedAt);
     const docs = await Promise.all(fam.map(x => orderDocCached(x.id, jobOld(x))));
-    const fv = fam.map((x, k) => ({name:craftName(x.assignedTo), amount:vendorAmount(x, docs[k]), auto:true, col:vendorCol(docs[k]?.job?.items || x.items, S.crafts?.get(x.assignedTo)?.trades)}));
-    const mv = mos.map(o => ({name:o.supplierName || "発注先", amount:o.net ? moTotals(o).base : moTotals(o).total, auto:true, col:o.net || o.kind !== "work" ? 0 : vendorCol(o.items)}));   // 業者・材料屋さんは税込（ネットで買った物は買った金額のまま）
+    const fv = fam.map((x, k) => ({key:"j:" + x.id, name:craftName(x.assignedTo), amount:vendorAmount(x, docs[k]), auto:true, col:vendorCol(docs[k]?.job?.items || x.items, S.crafts?.get(x.assignedTo)?.trades)}));
+    const mv = mos.map(o => ({key:"m:" + o.id, name:o.supplierName || "発注先", amount:o.net ? moTotals(o).base : moTotals(o).total, auto:true, col:o.net || o.kind !== "work" ? 0 : vendorCol(o.items)}));   // 業者・材料屋さんは税込（ネットで買った物は買った金額のまま）
     const fx = await fixVend(j.id); if(fx){ fv.push(...fx.fv); mv.push(...fx.mv); }
+    // 手で直した金額（autoFix）があれば、自動の金額の代わりに使う（autoAmt に自動の金額を残す）
+    const af = L.autoFix || {}; [fv, mv].forEach(list => list.forEach(v => { if(v.key && af[v.key] != null){ v.autoAmt = v.amount; v.amount = Number(af[v.key]) || 0; v.edited = true; } }));
     const vendors = [...fv, ...mv, ...(L.extraVendors || [])], vcols = vendorCols([...mv, ...fv], L.extraVendors || []);
     const doneAt = j.completedAt || j.finishedAt;
     return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), monthSet:!!L.month, jobNo:j.jobNo || "", name:j.title, company:L.company || info.manager || "",
@@ -3955,7 +3958,7 @@ async function viewMoneyEdit(id){
           ${tenant() ? `<input type="hidden" name="ki" value="${esc(r.ki || kiNow())}">` : `<label class="field" style="margin:0"><span>期 <small>未完了の行をどの期に出すか</small></span><input type="number" name="ki" value="${esc(r.ki || kiNow())}" min="1" style="max-width:120px"></label>`}</div>`}
 </section>
       <section class="panel"><h2>発注業者・発注金額</h2>
-        ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<p style="margin:0 0 6px">${esc(v.name)}　<b>${yenFull(v.amount)}</b> <span class="small">税込・ポータルから自動</span></p>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
+        ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<div class="vend-auto"><span>${esc(v.name)}</span><input type="number" name="af_amt" data-key="${esc(v.key || "")}" data-auto="${esc(v.edited ? v.autoAmt : v.amount)}" value="${esc(v.amount)}" inputmode="numeric" aria-label="${esc(v.name)}の発注金額"${v.key ? "" : " disabled"}><span class="small">${v.edited ? `手で直した金額（自動は ${yenFull(v.autoAmt)}。空にすると自動に戻ります）` : "税込・ポータルから自動。違っていたら直せます"}</span></div>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
         <div id="vend-ed">${extra.map(vrow).join("")}</div><p class="small" style="margin:0 0 8px">工種を選ぶと、収支のその列（1 材料屋 2 表装 3 クリーニング 4 リペア 5 設備 6 電気）に入ります。「その他」は7列目から。</p><button type="button" class="btn sub" data-act="add-vend">＋ 発注業者を追加</button></section>
       <label class="field"><span>備考</span><textarea name="note" rows="2">${esc(r.note)}</textarea></label>
       <div class="row between"><button class="btn">保存する</button>${!auto && r.id ? `<button type="button" class="btn sub danger-text" data-act="money-del" data-id="${esc(r.id)}">この行を削除</button>` : ""}</div>
@@ -4268,7 +4271,7 @@ function legalPay(){
   const o = opCfg(), L = LEGAL, pct = Math.round(opFee() * 100), plans = PLAN_KEYS.map(k => o.plans[k]).filter(x => x);
   const sec = (t, items) => `<h3>${t}</h3><ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`;
   return `<p>${L.service}（以下「本サービス」）の料金と支払い方法は、次のとおりです。金額はすべて税込です。</p>
-  ${SUBSCRIPTION_ON ? sec("1. 工務店の月額料金", [`プラン：${plans.map(x => `${esc(x.name)} ${x.price ? `月 ${yenFull(x.price)}` : "無料"}（案件の作成 月${x.limit}件まで）`).join("、")}`, `オプション：各 月 ${yenFull(o.moneyFee)}。案件の追加枠：1件 ${yenFull(o.extraFee)}。`, "月額料金は、クレジットカード（決済代行：Stripe）で申し込み日から1か月ごとに自動で請求します。", "解約・カードの変更は、本サービスの「プラン」画面から開くお支払い管理画面で、いつでもできます。解約は次の請求日の前日までに手続きしてください。", "すでに支払われた月額料金は、途中で解約した場合も日割りでの返金はいたしません。"]) : ""}
+  ${SUBSCRIPTION_ON ? sec("1. 工務店の月額料金", [`プラン：${plans.map(x => `${esc(x.name)} ${x.price ? `月 ${yenFull(x.price)}` : "無料"}（全体公開 月${x.limit}件まで。既存業者のみの案件は件数に含まない）`).join("、")}`, `オプション：各 月 ${yenFull(o.moneyFee)}。案件の追加枠：1件 ${yenFull(o.extraFee)}。`, "月額料金は、クレジットカード（決済代行：Stripe）で申し込み日から1か月ごとに自動で請求します。", "解約・カードの変更は、本サービスの「プラン」画面から開くお支払い管理画面で、いつでもできます。解約は次の請求日の前日までに手続きしてください。", "すでに支払われた月額料金は、途中で解約した場合も日割りでの返金はいたしません。"]) : ""}
   ${sec(`${SUBSCRIPTION_ON ? 2 : 1}. 全体公開の案件の先払い（工務店）`, [`工務店が協力業者全体に公開した案件を発注するときは、工事代金に運営手数料（工事代金の${pct}%）を加えた金額を、発注の前に先払いします。`, "先払いはクレジットカード（決済代行：Stripe）または運営者の指定口座への振込でお支払いいただけます。振込手数料は工務店の負担です。", "カード払いの場合、支払いと同時に、工事代金は受注した協力業者へ、運営手数料は運営者へ、Stripe により自動で分けて支払われ、発注が確定します。振込の場合は、運営者が入金を確認した時点で発注が確定します。", "発注の確定後に工事を取りやめる場合の工事代金の扱いは、工務店と協力業者で協議して決めるものとします。運営者は、合意の内容に従い返金の手続きを行います。運営手数料は、運営者の責めによる場合を除き、返金いたしません。"])}
   ${sec(`${SUBSCRIPTION_ON ? 3 : 2}. 協力業者への支払い`, ["運営者の案件の工事代金は、協力業者が本サービスで発行する請求書に基づき、運営者が定める期日に、登録された口座へ振り込みます。", "工務店の案件の工事代金は、先払いの場合は Stripe から協力業者の Stripe アカウントへ支払われ、Stripe の入金スケジュールに従って協力業者の口座へ振り込まれます。それ以外の場合は、工務店と協力業者の取り決めによります。", "協力業者が Stripe で受け取りを登録する際は、Stripe の利用規約に同意するものとします。カード決済の手数料は運営者が負担し、協力業者の受取額からは差し引きません。"])}
   ${sec(`${SUBSCRIPTION_ON ? 4 : 3}. 領収書・請求書`, ["運営手数料・月額料金の領収書は、本サービスの画面からダウンロードできます。", `ご不明な点は ${L.email} までお問い合わせください。`])}`;
@@ -4343,7 +4346,7 @@ const staffInvUrl = o => location.href.split("#")[0] + "#/signup/staff/" + staff
 function viewSignup(staff = false, inv = null, co = false){
   return `<div class="auth-wrap">${authHead()}
     <form class="panel" data-form="signup" data-staff="${staff ? "1" : ""}" data-co="${co ? "1" : ""}"${inv ? ` data-inv="${esc(JSON.stringify(inv))}"` : ""}>
-      <h2>${staff ? "従業員のアカウントを作る" : co ? "工務店（元請）のアカウントを作る" : "アカウントを作る"}</h2>${co ? `<p class="small" style="margin:0 0 10px">案件を作って協力業者に発注する会社の登録です。無料プラン（月1件まで公開）から始まり、あとからプランを変えられます。協力業者として案件を受ける方は<a href="#/signup">こちら</a>。</p>` : ""}${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
+      <h2>${staff ? "従業員のアカウントを作る" : co ? "工務店（元請）のアカウントを作る" : "アカウントを作る"}</h2>${co ? `<p class="small" style="margin:0 0 10px">案件を作って協力業者に発注する会社の登録です。無料プラン（全体公開は月1件まで・既存業者への発注は無制限）から始まり、あとからプランを変えられます。協力業者として案件を受ける方は<a href="#/signup">こちら</a>。</p>` : ""}${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
       <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off" value="${esc(inv?.e || "")}"></label>
       <label class="field"><span>パスワード <small>6文字以上</small></span><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
       <label class="field"><span>パスワード（確認）</span><input type="password" name="password2" required minlength="6" autocomplete="new-password"></label>
@@ -4356,7 +4359,7 @@ function viewSignup(staff = false, inv = null, co = false){
 function viewCoSignup(){
   return `<div class="auth-wrap">${authHead()}<form class="panel" data-form="cosignup">
     <h2>会社の情報</h2>
-    <p class="small" style="margin:0 0 10px">登録するとすぐに管理画面が使えます（無料プラン：月1件まで公開）。あとから「設定」で変えられます。</p>
+    <p class="small" style="margin:0 0 10px">登録するとすぐに管理画面が使えます（無料プラン：全体公開は月1件まで・既存業者への発注は無制限）。あとから「設定」で変えられます。</p>
     <label class="field"><span>会社名</span><input name="name" required autocomplete="organization" placeholder="例：みどり建装株式会社"></label>
     <label class="field"><span>あなたのお名前（代表者・管理者）</span><input name="ownerName" required autocomplete="name"></label>
     <label class="field"><span>電話番号</span><input name="tel" type="tel" required autocomplete="tel"></label>
@@ -8323,7 +8326,9 @@ const FORMS = {
     const base = {...(f.doneCheck ? {doneCheck:f.doneCheck.value} : {}), company:f.company.value.trim(), contract:exTax(f.contract.value), contractTaxIn:Number(f.contract.value) || 0, month:f.month.value || "", kind:f.kind.value.trim(), staff:f.staff.value, staff2:f.staff2.value, note:f.note.value.trim(), updatedAt:Date.now()};
     let row;
     const prevRow = (await api().listLedger()).find(x => x.id === (jobId || id)) || {};
-    if(jobId) row = {...prevRow, id:jobId, jobId, ...base, extraVendors:vend};
+    // ポータルから自動で入った金額を直したもの：自動と違う金額だけ覚える（空にしたら自動に戻す）
+    const autoFix = {}; form.querySelectorAll("[name=af_amt]").forEach(i => { const k = i.dataset.key, v = i.value.trim(); if(k && v !== "" && Number(v) !== Number(i.dataset.auto)) autoFix[k] = Math.round(Number(v) || 0); });
+    if(jobId) row = {...prevRow, id:jobId, jobId, ...base, extraVendors:vend, autoFix};
     else {
       const old = prevRow.id ? prevRow : null;
       if(old && Number(old.contract) === base.contract){ ["netOv", "staffFeeOv", "staff2FeeOv"].forEach(k => { if(old[k] !== undefined) base[k] = old[k]; }); }
@@ -8953,9 +8958,9 @@ async function coQuotaBox(){
   const c = S.company; if(!SUBSCRIPTION_ON || !tenant() || !c) return "";
   const ym = curMonth(), used = await api().countPosted(S.cid, ym), p = planOf(c), ex = Number((c.extra || {})[ym] || 0), cap = p.limit + ex, left = Math.max(0, cap - used);
   const pct = Math.min(100, used / Math.max(1, cap) * 100), cls = left === 0 ? " full" : left <= Math.max(1, Math.round(cap * 0.1)) ? " low" : "";
-  return `<div class="quota${cls}"><div class="qh"><span>${esc(p.name)}　今月の公開</span><span><span class="qn num">${used}</span> / ${cap}件　<span class="small">残り${left}件${ex ? `（追加枠 ${ex}件を含む）` : ""}・${fmtDate(lastDayIso(ym))}まで</span></span></div>
+  return `<div class="quota${cls}"><div class="qh"><span>${esc(p.name)}　今月の全体公開 <small>（既存業者のみは数えません）</small></span><span><span class="qn num">${used}</span> / ${cap}件　<span class="small">残り${left}件${ex ? `（追加枠 ${ex}件を含む）` : ""}・${fmtDate(lastDayIso(ym))}まで</span></span></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
-    ${left === 0 ? `<span class="small warn">今月公開できる件数を使い切りました。追加枠を買うか、プランを上げるとすぐに公開できます。</span>
+    ${left === 0 ? `<span class="small warn">今月の全体公開を使い切りました。既存業者のみの公開は、このまま何件でもできます。全体に公開するときは、追加枠を買うか、プランを上げてください。</span>
       <div class="row"><button class="btn" data-act="co-extra">追加枠を買う（1件 ${yenFull(opCfg().extraFee)}）</button><a class="btn sub" href="#/admin/plan">プランを変更する</a></div>` : ""}</div>`;
 }
 // オプション（各 月1,000円・税込。有料プランの人だけ）。staff（従業員追加）は「メンバー」画面で人数を増やす
@@ -9020,14 +9025,15 @@ function coInfo(){
 }
 const coTermsOf = j => j.pay ? "代金は工務店からReforeへ先払い済みです。完了確認のあと、株式会社Refore宛てに本件の請求書を発行してください。"
   : `締め日（毎月${coCloseLabel(S.company?.closeDay)}）でまとめて${S.company?.name || "工務店"}宛てにご請求ください（翌月末日払い）。`;
-// 今月の投稿数（プランの上限＋追加枠まで）。初めて公開するときに数える
-async function coPostGuard(id, x){
+// 今月の全体公開の数（プランの上限＋追加枠まで）。全体に公開したときに数える。既存業者のみの案件は数えない（何件でも無料）
+async function coPostGuard(id, x, status){
   if(!tenant()) return;
   const cur = id ? await api().getJob(id).catch(() => null) : null;
   if(cur?.countedYm || !SUBSCRIPTION_ON) return;
+  if((status || x.status || cur?.status) !== "open" || (x.audience ?? cur?.audience ?? "all") !== "all") return;
   if(isTrial(S.company) && trialLeft(S.company) <= 0) throw new Error("お試し期間が終わりました。「契約・料金」でプランを選ぶと、続けて案件を公開できます");
   const ym = curMonth(), c = S.company || {}, used = await api().countPosted(S.cid, ym), cap = planOf(c).limit + Number((c.extra || {})[ym] || 0);
-  if(used >= cap) throw new Error(`今月の投稿数（${cap}件）を使い切りました。「契約・料金」で追加枠を買うか、プランを変えてください`);
+  if(used >= cap) throw new Error(`今月の全体公開（${cap}件）を使い切りました。既存業者のみに公開すれば、件数に関係なく出せます。全体に公開するときは「契約・料金」で追加枠を買うか、プランを変えてください`);
   x.countedYm = ym;
 }
 // ログインした直後：工務店なら会社、職人のメンバーなら親方、運営の設定を読む
@@ -9045,7 +9051,7 @@ function coNavExtra(){
 }
 function coPostNote(){
   const c = S.company || {}, p = planOf(c);
-  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${isTrial(c) ? esc(trialNote(c)) + "。" : ""}${esc(p.name)}：今月 ${p.limit}件まで公開できます${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。既存業者のみの案件は先払い・運営手数料はありません。</p>`;
+  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${isTrial(c) ? esc(trialNote(c)) + "。" : ""}${esc(p.name)}：全体公開は今月 ${p.limit}件まで${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。既存業者のみの案件は件数に数えず、先払い・運営手数料もありません。</p>`;
 }
 // 職人さんが見る工務店の案件の帯（掲載元・代金・請求先）
 function coJobBanner(j){
@@ -9189,7 +9195,7 @@ async function viewCoPlan(){
       : up ? `<button class="btn block" data-act="co-plan" data-id="${k}">このプランに変更</button>` : `<a class="btn sub block" href="#/admin/plan/down/p-${k}/1">このプランに変更</a>`;
     return `<div class="tier ${TIER[k]}${cur ? " cur" : ""}">${k === "pro" ? `<span class="rec">おすすめ</span>` : ""}${cur ? `<span class="curtag">ご利用中</span>` : ""}
       <b class="nm">${esc(x.name)}</b><span class="pr num">${x.price ? `月額 ${yenFull(x.price)}` : "0円"}</span><span class="tax">${x.price ? "税込" : "カード登録なし"}</span>
-      <ul><li><b>月${x.limit}件</b>まで公開</li>${feat(k)}</ul>${btn}</div>`; };
+      <ul><li>全体公開 <b>月${x.limit}件</b>まで</li><li class="inc">既存業者への発注は<b>無制限</b></li>${feat(k)}</ul>${btn}</div>`; };
   const optRow = k => {
     const inc = (p.incl || []).includes(k), on = optOwned(c, k), end = c.optEnd?.[k];
     let right;
@@ -9253,7 +9259,7 @@ async function viewCoDown(t, step){
     let rows;
     if(T.kind === "plan"){
       const after = k => { const v = st(N, k); return v === "オプションで使える" && optOwned(c, k) ? "使えない（オプションを契約し直す）" : v; };
-      rows = `<tr><th>公開できる案件</th><td>月${P.limit}件</td><td class="after">月${N.limit}件</td></tr>
+      rows = `<tr><th>全体公開できる案件</th><td>月${P.limit}件</td><td class="after">月${N.limit}件</td></tr>
         <tr><th>月額（税込）</th><td>${P.price ? yenFull(P.price) : "0円"}</td><td>${N.price ? yenFull(N.price) : "0円"}</td></tr>
         ${OPT_KEYS.map(k => { const a = st(P, k), b = after(k); return a === b ? "" : `<tr><th>${esc(OPTS[k].name)}</th><td>${esc(a)}</td><td class="after">${esc(b)}</td></tr>`; }).join("")}`;
     } else if(T.k === "staff"){ const n = staffSlots(c) - Number(c.optEnd?.staff || 0);
@@ -9640,8 +9646,8 @@ Object.assign(ACTIONS, {
   async "crew-remove"(el){ if(!await ask({title:"この従業員を外しますか？", ok:"外す", danger:true})) return; await api().removeMember(el.dataset.uid); toast("外しました"); route(); },
   async "co-plan"(el){
     const k = el.dataset.id, p = opCfg().plans[k], needCard = p.price > 0 && !S.company.card;
-    const body = p.price ? `月額 ${yenFull(p.price)}（税込）・月 ${p.limit}件まで公開。すぐに切り替わり、今月分は日割りで次回のカード決済に足します。${needCard ? "\n\n（デモ）本番では Stripe のカード登録画面が開きます。デモでは Visa ****4242 を登録します。" : ""}`
-      : "月1件まで公開になり、オプションと従業員の追加は使えなくなります。次回の請求日から切り替わります（デモではすぐに切り替えます）。";
+    const body = p.price ? `月額 ${yenFull(p.price)}（税込）・全体公開 月 ${p.limit}件まで（既存業者への発注は無制限）。すぐに切り替わり、今月分は日割りで次回のカード決済に足します。${needCard ? "\n\n（デモ）本番では Stripe のカード登録画面が開きます。デモでは Visa ****4242 を登録します。" : ""}`
+      : "全体公開が月1件までになり、オプションと従業員の追加は使えなくなります。次回の請求日から切り替わります（デモではすぐに切り替えます）。";
     if(!await ask({title:`${p.name}に変更しますか？`, body, ok:needCard ? "カードを登録して変更する" : "変更する"})) return;
     if(subAuto()) return subGo({op:"plan", key:k});
     if(p.price && await stripeGo(k)) return;
@@ -9680,7 +9686,7 @@ Object.assign(ACTIONS, {
     const ym = curMonth(), o = opCfg();
     const c0 = S.company, ex0 = Number((c0.extra || {})[ym] || 0), nx = PLAN_KEYS[PLAN_KEYS.indexOf(c0.plan) + 1], P0 = planOf(c0);
     const hint = nx && (ex0 + 1) * o.extraFee >= o.plans[nx].price - P0.price ? `\n\n今月の追加枠が${ex0 + 1}件（${yenFull((ex0 + 1) * o.extraFee)}）になります。${o.plans[nx].name}（月${o.plans[nx].limit}件・差額 月${yenFull(o.plans[nx].price - P0.price)}）に上げたほうがお得です。「契約・料金」から変更できます。` : "";
-    if(!await ask({title:"追加枠を1件買いますか？", body:`今月だけ公開できる件数が1件増えます。${yenFull(o.extraFee)}（税込）を${P0.price ? "次回のカード決済に足します" : "登録のカードでお支払いいただきます"}。${hint}`, ok:"買う"})) return;
+    if(!await ask({title:"追加枠を1件買いますか？", body:`今月だけ全体公開できる件数が1件増えます。${yenFull(o.extraFee)}（税込）を${P0.price ? "次回のカード決済に足します" : "登録のカードでお支払いいただきます"}。${hint}`, ok:"買う"})) return;
     if(subAuto()) return subGo({op:"extra"});
     if(await stripeGo("extra")) return;
     const extra = {...(S.company.extra || {})}; extra[ym] = Number(extra[ym] || 0) + 1;
