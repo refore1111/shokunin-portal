@@ -4279,10 +4279,10 @@ function legalPay(){
   const o = opCfg(), L = LEGAL, pct = Math.round(opFee() * 100), plans = PLAN_KEYS.map(k => o.plans[k]).filter(x => x);
   const sec = (t, items) => `<h3>${t}</h3><ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`;
   return `<p>${L.service}（以下「本サービス」）の料金と支払い方法は、次のとおりです。金額はすべて税込です。</p>
-  ${SUBSCRIPTION_ON ? sec("1. 工務店の月額料金", [`プラン：${plans.map(x => `${esc(x.name)} ${x.price ? `月 ${yenFull(x.price)}` : "無料"}（全体公開 月${x.limit}件まで。既存業者のみの案件は件数に含まない）`).join("、")}`, `オプション：各 月 ${yenFull(o.moneyFee)}。案件の追加枠：1件 ${yenFull(o.extraFee)}。`, "月額料金は、クレジットカード（決済代行：Stripe）で申し込み日から1か月ごとに自動で請求します。", "解約・カードの変更は、本サービスの「プラン」画面から開くお支払い管理画面で、いつでもできます。解約は次の請求日の前日までに手続きしてください。", "すでに支払われた月額料金は、途中で解約した場合も日割りでの返金はいたしません。"]) : ""}
-  ${sec(`${SUBSCRIPTION_ON ? 2 : 1}. 全体公開の案件の先払い（工務店）`, [`工務店が協力業者全体に公開した案件を発注するときは、工事代金に運営手数料（工事代金の${pct}%）を加えた金額を、発注の前に先払いします。`, "先払いはクレジットカード（決済代行：Stripe）または運営者の指定口座への振込でお支払いいただけます。振込手数料は工務店の負担です。", "カード払いの場合、支払いと同時に、工事代金は受注した協力業者へ、運営手数料は運営者へ、Stripe により自動で分けて支払われ、発注が確定します。振込の場合は、運営者が入金を確認した時点で発注が確定します。", "発注の確定後に工事を取りやめる場合の工事代金の扱いは、工務店と協力業者で協議して決めるものとします。運営者は、合意の内容に従い返金の手続きを行います。運営手数料は、運営者の責めによる場合を除き、返金いたしません。"])}
-  ${sec(`${SUBSCRIPTION_ON ? 3 : 2}. 協力業者への支払い`, ["運営者の案件の工事代金は、協力業者が本サービスで発行する請求書に基づき、運営者が定める期日に、登録された口座へ振り込みます。", "工務店の案件の工事代金は、先払いの場合は Stripe から協力業者の Stripe アカウントへ支払われ、Stripe の入金スケジュールに従って協力業者の口座へ振り込まれます。それ以外の場合は、工務店と協力業者の取り決めによります。", "協力業者が Stripe で受け取りを登録する際は、Stripe の利用規約に同意するものとします。カード決済の手数料は運営者が負担し、協力業者の受取額からは差し引きません。"])}
-  ${sec(`${SUBSCRIPTION_ON ? 4 : 3}. 領収書・請求書`, ["運営手数料・月額料金の領収書は、本サービスの画面からダウンロードできます。", `ご不明な点は ${L.email} までお問い合わせください。`])}`;
+  ${!subPaid() ? sec("1. 工務店の月額料金", ["現在、工務店の月額料金は無料です。全体公開・既存業者への発注とも、件数の上限はありません。", "将来、有料プランを始めるときは、始める1か月以上前に本サービス上でお知らせします。お知らせの前に料金がかかることはありません。"]) : ""}${subPaid() ? sec("1. 工務店の月額料金", [`プラン：${plans.map(x => `${esc(x.name)} ${x.price ? `月 ${yenFull(x.price)}` : "無料"}（全体公開 月${x.limit}件まで。既存業者のみの案件は件数に含まない）`).join("、")}`, `オプション：各 月 ${yenFull(o.moneyFee)}。案件の追加枠：1件 ${yenFull(o.extraFee)}。`, "月額料金は、クレジットカード（決済代行：Stripe）で申し込み日から1か月ごとに自動で請求します。", "解約・カードの変更は、本サービスの「プラン」画面から開くお支払い管理画面で、いつでもできます。解約は次の請求日の前日までに手続きしてください。", "すでに支払われた月額料金は、途中で解約した場合も日割りでの返金はいたしません。"]) : ""}
+  ${sec(`2. 全体公開の案件の先払い（工務店）`, [`工務店が協力業者全体に公開した案件を発注するときは、工事代金に運営手数料（工事代金の${pct}%）を加えた金額を、発注の前に先払いします。`, "先払いはクレジットカード（決済代行：Stripe）または運営者の指定口座への振込でお支払いいただけます。振込手数料は工務店の負担です。", "カード払いの場合、支払いと同時に、工事代金は受注した協力業者へ、運営手数料は運営者へ、Stripe により自動で分けて支払われ、発注が確定します。振込の場合は、運営者が入金を確認した時点で発注が確定します。", "発注の確定後に工事を取りやめる場合の工事代金の扱いは、工務店と協力業者で協議して決めるものとします。運営者は、合意の内容に従い返金の手続きを行います。運営手数料は、運営者の責めによる場合を除き、返金いたしません。"])}
+  ${sec(`3. 協力業者への支払い`, ["運営者の案件の工事代金は、協力業者が本サービスで発行する請求書に基づき、運営者が定める期日に、登録された口座へ振り込みます。", "工務店の案件の工事代金は、先払いの場合は Stripe から協力業者の Stripe アカウントへ支払われ、Stripe の入金スケジュールに従って協力業者の口座へ振り込まれます。それ以外の場合は、工務店と協力業者の取り決めによります。", "協力業者が Stripe で受け取りを登録する際は、Stripe の利用規約に同意するものとします。カード決済の手数料は運営者が負担し、協力業者の受取額からは差し引きません。"])}
+  ${sec(`4. 領収書・請求書`, [`運営手数料${subPaid() ? "・月額料金" : ""}の領収書は、本サービスの画面からダウンロードできます。`, `ご不明な点は ${L.email} までお問い合わせください。`])}`;
 }
 function legalPrivacy(){
   const L = LEGAL, sec = (t, items) => `<h3>${t}</h3><ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`;
@@ -4298,10 +4298,10 @@ function legalPrivacy(){
 function legalLaw(){
   const o = opCfg(), L = LEGAL, pct = Math.round(opFee() * 100), plans = PLAN_KEYS.map(k => o.plans[k]).filter(x => x && x.price);
   const rows = [["販売事業者", L.company], ["運営責任者", L.rep], ["所在地", L.address], ["電話番号", `${L.phone}（受付：平日 9:00〜18:00）`], ["メールアドレス", L.email],
-    ["販売価格", `${SUBSCRIPTION_ON && plans.length ? `月額プラン：${plans.map(x => `${esc(x.name)} 月 ${yenFull(x.price)}`).join("、")}／オプション：各 月 ${yenFull(o.moneyFee)}／案件の追加枠：1件 ${yenFull(o.extraFee)}／` : ""}全体公開の案件の運営手数料：工事代金の${pct}%（すべて税込）`],
+    ["販売価格", `${subPaid() && plans.length ? `月額プラン：${plans.map(x => `${esc(x.name)} 月 ${yenFull(x.price)}`).join("、")}／オプション：各 月 ${yenFull(o.moneyFee)}／案件の追加枠：1件 ${yenFull(o.extraFee)}／` : ""}全体公開の案件の運営手数料：工事代金の${pct}%（すべて税込）`],
     ["商品代金以外の必要料金", "インターネットの通信費、銀行振込の場合の振込手数料"], ["支払方法", "クレジットカード（決済代行：Stripe）、銀行振込"],
-    ["支払時期", `${SUBSCRIPTION_ON ? "月額料金：申し込み時と、以後1か月ごとの自動更新時／" : ""}運営手数料：案件の発注前（先払い）`], ["サービスの提供時期", "決済の完了後、すぐにご利用いただけます"],
-    ["返品・キャンセル", `サービスの性質上、決済後の返金はいたしません。${SUBSCRIPTION_ON ? "月額プランはいつでも解約でき、次の更新日以降は請求されません。" : ""}詳しくは「料金・支払いポリシー」をご覧ください`],
+    ["支払時期", `${subPaid() ? "月額料金：申し込み時と、以後1か月ごとの自動更新時／" : ""}運営手数料：案件の発注前（先払い）`], ["サービスの提供時期", "決済の完了後、すぐにご利用いただけます"],
+    ["返品・キャンセル", `サービスの性質上、決済後の返金はいたしません。${subPaid() ? "月額プランはいつでも解約でき、次の更新日以降は請求されません。" : ""}詳しくは「料金・支払いポリシー」をご覧ください`],
     ["動作環境", "最新版の Google Chrome・Safari・Microsoft Edge など"]];
   return `<table class="legal-table"><tbody>${rows.map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join("")}</tbody></table>`;
 }
@@ -4354,7 +4354,7 @@ const staffInvUrl = o => location.href.split("#")[0] + "#/signup/staff/" + staff
 function viewSignup(staff = false, inv = null, co = false){
   return `<div class="auth-wrap">${authHead()}
     <form class="panel" data-form="signup" data-staff="${staff ? "1" : ""}" data-co="${co ? "1" : ""}"${inv ? ` data-inv="${esc(JSON.stringify(inv))}"` : ""}>
-      <h2>${staff ? "従業員のアカウントを作る" : co ? "工務店（元請）のアカウントを作る" : "アカウントを作る"}</h2>${co ? `<p class="small" style="margin:0 0 10px">案件を作って協力業者に発注する会社の登録です。無料プラン（全体公開は月1件まで・既存業者への発注は無制限）から始まり、あとからプランを変えられます。協力業者として案件を受ける方は<a href="#/signup">こちら</a>。</p>` : ""}${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
+      <h2>${staff ? "従業員のアカウントを作る" : co ? "工務店（元請）のアカウントを作る" : "アカウントを作る"}</h2>${co ? `<p class="small" style="margin:0 0 10px">案件を作って協力業者に発注する会社の登録です。${subPaid() ? "無料プラン（全体公開は月1件まで・既存業者への発注は無制限）から始まり、あとからプランを変えられます。" : "今は無料で、全部の機能を件数の上限なしで使えます（全体公開の案件だけ、工事代金と運営手数料の先払いがあります）。"}協力業者として案件を受ける方は<a href="#/signup">こちら</a>。</p>` : ""}${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
       <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off" value="${esc(inv?.e || "")}"></label>
       <label class="field"><span>パスワード <small>6文字以上</small></span><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
       <label class="field"><span>パスワード（確認）</span><input type="password" name="password2" required minlength="6" autocomplete="new-password"></label>
@@ -4367,7 +4367,7 @@ function viewSignup(staff = false, inv = null, co = false){
 function viewCoSignup(){
   return `<div class="auth-wrap">${authHead()}<form class="panel" data-form="cosignup">
     <h2>会社の情報</h2>
-    <p class="small" style="margin:0 0 10px">登録するとすぐに管理画面が使えます（無料プラン：全体公開は月1件まで・既存業者への発注は無制限）。あとから「設定」で変えられます。</p>
+    <p class="small" style="margin:0 0 10px">登録するとすぐに管理画面が使えます${subPaid() ? "（無料プラン：全体公開は月1件まで・既存業者への発注は無制限）。あとから「設定」で変えられます。" : "（今は無料・件数の上限なし）。"}</p>
     <label class="field"><span>会社名</span><input name="name" required autocomplete="organization" placeholder="例：みどり建装株式会社"></label>
     <label class="field"><span>あなたのお名前（代表者・管理者）</span><input name="ownerName" required autocomplete="name"></label>
     <label class="field"><span>電話番号</span><input name="tel" type="tel" required autocomplete="tel"></label>
@@ -7204,7 +7204,7 @@ async function route(){
       else if(a === "settings"){ html = await viewSettings(b); after = () => { renderPropList(); renderDelList(); return null; }; }
       else if(a === "craftsman") html = await viewCraftsman(b);
       else if(a === "members" && tenant()) html = await viewCoMembers();
-      else if(a === "plan" && tenant() && SUBSCRIPTION_ON){
+      else if(a === "plan" && tenant() && subPaid()){
         if(b === "paid"){ S.company = await api().getCompany(S.cid) || S.company; toast("お支払いありがとうございます。反映まで数秒かかることがあります"); location.replace("#/admin/plan"); return; }
         html = b === "down" ? await viewCoDown(c, parts[4]) : await viewCoPlan();
       }
@@ -8908,6 +8908,9 @@ const STRIPE = {
   api:"https://genpuku-stripe-live.calm-shadow-1050.workers.dev",   // 自動化サーバー（Cloudflare Workers）の URL。stripe-worker フォルダの README を見て作る
 };
 const SUBSCRIPTION_ON = true;    // サブスク（プラン・月額のカード決済・投稿数の上限・オプション）を使うときは true に
+// 無料期間（工務店が30社くらいになるまで）：月額・プラン・件数の上限・オプションなしで全部使える。全体公開の先払い（カード）はそのまま。有料にするときは false に
+const FREE_NOW = true;
+const subPaid = () => SUBSCRIPTION_ON && !FREE_NOW;
 // プラン（税込）。incl = 追加料金なしで使えるオプション（staff は従業員追加が無制限）
 const OP_DEFAULT = {
   plans:{free:{name:"無料プラン", price:0, limit:1, incl:[]}, beginner:{name:"ビギナープラン", price:980, limit:3, incl:[]},
@@ -8920,7 +8923,7 @@ const OP_DEFAULT = {
 const opCfg = () => ({...OP_DEFAULT, ...(S.opCfg || {}), plans:Object.fromEntries(Object.entries(OP_DEFAULT.plans).map(([k, p]) => [k, {...p, ...(((S.opCfg || {}).plans || {})[k] || {}), incl:p.incl}])), trial:{...OP_DEFAULT.trial, ...((S.opCfg || {}).trial || {})}, stripe:{...OP_DEFAULT.stripe, ...((S.opCfg || {}).stripe || {}), links:{...(((S.opCfg || {}).stripe || {}).links || {})}}});
 const opFee = () => Number(opCfg().fee) || 0.1;
 // お試しプラン：運営が招待するときに選ぶ。期間中は月額が無料（全体公開の案件の運営手数料はかかる）。終わると新しい案件を公開できない
-const isTrial = c => SUBSCRIPTION_ON && c?.plan === "trial";
+const isTrial = c => subPaid() && c?.plan === "trial";
 const planOf = c => isTrial(c) ? {...opCfg().trial, price:0, trial:true, incl:["calendar", "money", "docs", "staff"]} : opCfg().plans[c?.plan] || opCfg().plans.free;
 const PLAN_KEYS = ["free", "beginner", "pro", "master"];
 const DAY_MS = 86400000;
@@ -8988,13 +8991,13 @@ function scheduledUpd(c, force = false){
   return upd;
 }
 async function applyScheduled(force = false){
-  const c = S.company; if(!SUBSCRIPTION_ON || stripeLive() || !tenant() || !c) return false;
+  const c = S.company; if(!subPaid() || stripeLive() || !tenant() || !c) return false;
   const upd = scheduledUpd(c, force); if(!upd) return false;
   await api().updateCompany(S.cid, upd); Object.assign(S.company, upd); return true;
 }
 // 今月の公開数（プランの上限＋追加枠）。使い切ったら追加枠・プラン変更へ案内する
 async function coQuotaBox(){
-  const c = S.company; if(!SUBSCRIPTION_ON || !tenant() || !c) return "";
+  const c = S.company; if(!subPaid() || !tenant() || !c) return "";
   const ym = curMonth(), used = await api().countPosted(S.cid, ym), p = planOf(c), ex = Number((c.extra || {})[ym] || 0), cap = p.limit + ex, left = Math.max(0, cap - used);
   const pct = Math.min(100, used / Math.max(1, cap) * 100), cls = left === 0 ? " full" : left <= Math.max(1, Math.round(cap * 0.1)) ? " low" : "";
   return `<div class="quota${cls}"><div class="qh"><span>${esc(p.name)}　今月の全体公開 <small>（既存業者のみは数えません）</small></span><span><span class="qn num">${used}</span> / ${cap}件　<span class="small">残り${left}件${ex ? `（追加枠 ${ex}件を含む）` : ""}・${fmtDate(lastDayIso(ym))}まで</span></span></div>
@@ -9011,7 +9014,7 @@ const optOwned = (c, k) => k === "money" ? !!c?.money : !!c?.opts?.[k];
 const staffSlots = c => Number(c?.opts?.staff) || 0;   // 買った従業員の枠（人数）
 // 工務店がそのオプションを使えるか（Reforeの管理画面はいつでも使える）
 function hasOpt(k, c = S.company){
-  if(!SUBSCRIPTION_ON) return true;   // サブスクを使わないあいだは、全部の機能を使える
+  if(!subPaid()) return true;   // サブスクを使わないあいだ・無料期間は、全部の機能を使える
   if(!tenant() && c === S.company) return true;
   const p = planOf(c);
   if((p.incl || []).includes(k)) return true;
@@ -9068,7 +9071,7 @@ const coTermsOf = j => j.pay ? "代金は工務店からReforeへ先払い済み
 async function coPostGuard(id, x, status){
   if(!tenant()) return;
   const cur = id ? await api().getJob(id).catch(() => null) : null;
-  if(cur?.countedYm || !SUBSCRIPTION_ON) return;
+  if(cur?.countedYm || !subPaid()) return;
   if((status || x.status || cur?.status) !== "open" || (x.audience ?? cur?.audience ?? "all") !== "all") return;
   if(isTrial(S.company) && trialLeft(S.company) <= 0) throw new Error("お試し期間が終わりました。「契約・料金」でプランを選ぶと、続けて案件を公開できます");
   const ym = curMonth(), c = S.company || {}, used = await api().countPosted(S.cid, ym), cap = planOf(c).limit + Number((c.extra || {})[ym] || 0);
@@ -9086,7 +9089,7 @@ async function afterLogin(){
 function coStatusNote(){ return `<div class="alert-box"><b>この会社の利用は停止中です。</b><p>運営（Refore）にお問い合わせください。</p></div>`; }
 function coNavExtra(){
   const h = location.hash;
-  return coAdmin() ? `<a href="#/admin/members" ${h.startsWith("#/admin/members") ? 'aria-current="page"' : ""}>メンバー</a>${SUBSCRIPTION_ON ? `<a href="#/admin/plan" ${h.startsWith("#/admin/plan") ? 'aria-current="page"' : ""}>契約・料金</a>` : ""}` : "";
+  return coAdmin() ? `<a href="#/admin/members" ${h.startsWith("#/admin/members") ? 'aria-current="page"' : ""}>メンバー</a>${subPaid() ? `<a href="#/admin/plan" ${h.startsWith("#/admin/plan") ? 'aria-current="page"' : ""}>契約・料金</a>` : ""}` : "";
 }
 function coPostNote(){
   const c = S.company || {}, p = planOf(c);
@@ -9179,12 +9182,12 @@ function coInfoPanel(){
 async function viewCoMembers(){
   const [mem, inv] = await Promise.all([api().listMembers(S.cid), api().listInvites({companyId:S.cid}).catch(() => [])]);
   const c = S.company, active = mem.filter(m => m.status !== "suspended"), paid = active.filter(m => !m.owner).length;
-  const staffFree = (planOf(c).incl || []).includes("staff"), paidPlan = planOf(c).price > 0, slots = staffSlots(c), usedSlots = paid + inv.length, canAdd = !SUBSCRIPTION_ON || staffFree || usedSlots < slots;
-  return `<h1>メンバー</h1><p class="lead">管理画面にログインする人（従業員）を招待します。${!SUBSCRIPTION_ON ? "従業員は何人でも追加できます。" : !paidPlan && !staffFree ? "従業員の追加は有料プラン（ビギナー以上）のオプションです。" : staffFree ? `${esc(planOf(c).name)}は従業員を何人でも追加できます（追加料金なし）。` : `従業員追加オプションで買った人数まで招待できます（1人分 月額 ${yenFull(opCfg().memberFee)}・税込。最初の管理者は数えません）。今の枠：<b>${slots}人</b>（使用中 ${usedSlots}人・招待中を含む）`}</p>
+  const staffFree = (planOf(c).incl || []).includes("staff"), paidPlan = planOf(c).price > 0, slots = staffSlots(c), usedSlots = paid + inv.length, canAdd = !subPaid() || staffFree || usedSlots < slots;
+  return `<h1>メンバー</h1><p class="lead">管理画面にログインする人（従業員）を招待します。${!subPaid() ? "従業員は何人でも追加できます。" : !paidPlan && !staffFree ? "従業員の追加は有料プラン（ビギナー以上）のオプションです。" : staffFree ? `${esc(planOf(c).name)}は従業員を何人でも追加できます（追加料金なし）。` : `従業員追加オプションで買った人数まで招待できます（1人分 月額 ${yenFull(opCfg().memberFee)}・税込。最初の管理者は数えません）。今の枠：<b>${slots}人</b>（使用中 ${usedSlots}人・招待中を含む）`}</p>
     <div class="cols"><section class="panel"><h2>メンバー <small>${active.length}人</small></h2>
       ${active.map(m => `<div class="doc-row"><span class="row-main"><b>${esc(m.name || m.email)}${m.uid === S.user.uid ? "（あなた）" : ""}${m.owner ? `　<span class="small">代表</span>` : ""}</b><span class="small">${esc(m.email)}</span></span>
         <span class="row">${m.owner ? `<span class="pill approved">管理者</span>` : `<select data-memrole="${esc(m.uid)}" aria-label="役割">${["管理者", "担当者"].map(r => `<option ${r === m.coRole ? "selected" : ""}>${r}</option>`).join("")}</select>${m.uid !== S.user.uid ? `<button class="btn sub danger-text" data-act="mem-remove" data-uid="${esc(m.uid)}">外す</button>` : ""}`}</span></div>`).join("")}
-      <p class="small" style="margin:10px 0 0"><b>管理者</b>はすべての画面と契約を扱えます。<b>担当者</b>は見積・案件・予定表・チャット・請求書を扱えます（収支・設定・契約は見えません）。${SUBSCRIPTION_ON && !staffFree && slots ? `従業員追加の月額は今 ${slots}人分 × ${yenFull(opCfg().memberFee)} です。` : ""}</p></section>
+      <p class="small" style="margin:10px 0 0"><b>管理者</b>はすべての画面と契約を扱えます。<b>担当者</b>は見積・案件・予定表・チャット・請求書を扱えます（収支・設定・契約は見えません）。${subPaid() && !staffFree && slots ? `従業員追加の月額は今 ${slots}人分 × ${yenFull(opCfg().memberFee)} です。` : ""}</p></section>
     <div class="stack">${canAdd ? "" : !paidPlan ? `<section class="panel"><h2>招待する</h2>${lockWrap("staff", `<div style="height:220px"></div>`)}</section>`
       : `<section class="panel"><h2>招待する</h2><p class="small" style="margin:0 0 10px">${slots ? `従業員の枠（${slots}人）を使い切っています。` : "従業員の枠がまだありません。"}1人分（月${yenFull(opCfg().memberFee)}・税込）追加すると、すぐに招待できます。</p><button class="btn" data-act="co-opt" data-k="staff">従業員を1人分追加する</button></section>`}<form class="panel" data-form="coinvite" ${canAdd ? "" : "hidden"}><h2>招待する</h2>
       <label class="field"><span>名前</span><input name="name" required placeholder="例：佐々木"></label>
@@ -9906,7 +9909,7 @@ Object.assign(FORMS, {
   async coinvite(form){
     const g = k => String(form.elements[k]?.value || "").trim(), email = g("email").toLowerCase();
     const mem = await api().listMembers(S.cid);
-    if(SUBSCRIPTION_ON && tenant() && !(planOf(S.company).incl || []).includes("staff")){
+    if(subPaid() && tenant() && !(planOf(S.company).incl || []).includes("staff")){
       const ivs = await api().listInvites({companyId:S.cid}).catch(() => []);
       if(mem.filter(m => m.status !== "suspended" && !m.owner).length + ivs.length >= staffSlots(S.company)) throw new Error("従業員の枠を使い切っています。「契約・料金」で従業員追加を1人分足してください");
     }
