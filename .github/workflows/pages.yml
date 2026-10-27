@@ -1,0 +1,47 @@
+# main に変更が入るたびに、公開用（プログラムを読みにくくした版）を作って GitHub Pages に出す。
+# リポジトリの index.html はそのまま読めるので、これまでどおり index.html を直して main に入れれば反映されます。
+name: 公開（難読化してGitHub Pagesへ）
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 道具を入れる
+        run: npm install --prefix tools --no-audit --no-fund
+      - name: 公開用ファイルを作る
+        run: |
+          set -e
+          mkdir -p _site
+          # 公開しないもの（.github、tools、README、ルール、ワーカーのコード）以外をコピー
+          rsync -a --exclude '.git' --exclude '.github' --exclude 'tools' --exclude 'stripe-worker' \
+            --exclude 'README.md' --exclude 'LICENSE' --exclude 'firestore.rules' --exclude '*.md' ./ _site/
+          cd tools
+          for f in index.html preview/index.html api-keys.html manual.html; do
+            if [ -f "../$f" ]; then node protect.mjs "../$f" "../_site/$f" --strong; fi
+          done
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

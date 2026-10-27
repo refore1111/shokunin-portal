@@ -1,0 +1,9 @@
+{
+  "name": "shokunin-portal-deploy",
+  "private": true,
+  "description": "公開用ファイルを作る道具（GitHub Actions から使う）",
+  "dependencies": {
+    "terser": "5.31.0",
+    "javascript-obfuscator": "4.1.1"
+  }
+}

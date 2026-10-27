@@ -1,3 +1,11 @@
+# 【重要】このリポジトリは非公開・著作物です
+
+- 著作権は株式会社Reforeにあります（LICENSE を参照）。無断の複製・転載・解析を禁じます。
+- **公開の仕組み**：main に入った `index.html` などは、GitHub Actions（`.github/workflows/pages.yml`）が
+  `tools/protect.mjs` でプログラムを読みにくくしてから GitHub Pages に出します。
+  リポジトリの `index.html` は読めるままなので、これまでどおり **main の最新の index.html を直して入れれば反映されます**（1〜2分かかります）。
+- 反映されないときは、GitHub の「Actions」タブで失敗していないか確認してください。
+
 # Refore 協力業者ポータル（プロトタイプ）
 
 協力業者（職人）が登録し、Reforeが掲載した案件に応募、Reforeが発注先を選び、職人が完了報告を送るまでの流れが動くプロトタイプです。
