@@ -2359,13 +2359,15 @@ const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedger
   "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders"]);
 // 受信しているコレクションが変わったら、読み直すもの
 const READ_WATCH_DROP = {jobs:["listJobs", "getJob", "getJobPrivate", "getDocument", "getAdminInfo"], applications:["listApplications", "getJob"], reports:["listReports", "getJob"], invoices:[], threads:[]};
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 class FirebaseBackend {
   constructor(){
     this.mode = "firebase";
     firebase.initializeApp(FIREBASE_CONFIG);
     this.auth = firebase.auth(); this.db = firebase.firestore();
     try { this.db.settings({ignoreUndefinedProperties:true, merge:true}); } catch(e) { console.warn(e); }
-    this.db.enablePersistence({synchronizeTabs:true}).catch(e => console.warn("端末への保存は使いません：", e.code || e));
+    // iPhone・iPad は、PDFを開いて戻ると端末の保存場所（IndexedDB）が切れて、つながらなくなる（The client has already been terminated）ので使わない
+    if(!IS_IOS) this.db.enablePersistence({synchronizeTabs:true}).catch(e => console.warn("端末への保存は使いません：", e.code || e));
     this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.error(e));
     // 書き込み（save・set・assign…）をしたら、覚えている全案件を捨てる
     const proto = Object.getPrototypeOf(this);
@@ -7201,6 +7203,8 @@ async function route(){
     done(html);
   } catch(err) {
     console.error(err);
+    // つながりが切れていたら、自動で開き直す（続けて何度も開き直さないよう、30秒に1回まで）
+    if(/terminated/i.test(err?.message || "")){ let last = 0; try { last = Number(sessionStorage.getItem("gp_reload_at")) || 0; } catch(e) {} if(Date.now() - last > 30000){ try { sessionStorage.setItem("gp_reload_at", String(Date.now())); } catch(e) {} location.reload(); return; } }
     done(`<div class="empty">読み込めませんでした（${esc(err.message || err)}）<br><br><button class="btn sub" data-act="reload">もう一度読み込む</button></div>`);
   }
 }
