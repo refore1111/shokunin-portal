@@ -1111,6 +1111,10 @@ form.memo .memo-row{margin-bottom:4px}form.memo .memo-price{margin:-2px 0 2px}
 .price-co p{margin:0}
 .price-head{display:grid;grid-template-columns:120px 1fr 64px 96px 96px 96px 130px 34px;gap:6px;font-size:11.5px;color:var(--sub);margin:2px 0 4px;line-height:1.3}
 .price-head b{color:#B4235A;font-weight:600}
+.price-find{display:flex;flex-direction:column;gap:8px;margin:4px 0 8px}.price-find input[type=search]{max-width:420px}
+.price-chips{display:flex;flex-wrap:wrap;gap:6px}.price-chips .chip{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer}.price-chips .chip.on{background:#1B2A55;color:#fff;border-color:#1B2A55}
+.price-cat-h{font-weight:700;color:#1B2A55;border-left:4px solid #1B2A55;padding:2px 0 2px 8px;margin:14px 0 4px}.price-cat-h:first-child{margin-top:4px}.price-cat-h small{font-weight:400;color:var(--sub)}
+.price-row[hidden],.price-cat-h[hidden]{display:none}
 .price-row input.co-set{background:#FDEBF1;color:#B4235A;font-weight:600}
 .price-sub{margin:22px 0 6px;font-size:15px}
 .price-sub small{display:block;font-weight:400;font-size:12px;color:var(--sub);margin-top:2px}
@@ -5431,6 +5435,24 @@ function staffRowHtml(p = {}){
     <input type="tel" name="s_phone" value="${esc(p.phone)}" placeholder="電話番号（任意・書類に載ります）" aria-label="電話番号">
     <button type="button" class="i-x" data-act="rm-staff" aria-label="この担当者を削除">×</button></div>`;
 }
+// 単価表を工種（分類）ごとにまとめて、見出しを付けて並べる
+function priceGroupsHtml(list){
+  const cats = [...new Set([...PRICE_CATS, ...list.map(p => p.cat || "未分類")])];
+  return cats.map(c => { const g = list.filter(p => (p.cat || "未分類") === c); return g.length ? `<div class="price-cat-h" data-cat="${esc(c)}">${esc(c)} <small>${g.length}件</small></div>${g.map(priceRowHtml).join("")}` : ""; }).join("");
+}
+// 単価表の検索：工事名・備考・分類に言葉が入っている行と、選んだ工種の行だけ出す
+const kanaFold = t => String(t || "").toLowerCase().replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)).replace(/\s+/g, "");
+function priceFilter(form){
+  if(!form) return;
+  const q = kanaFold(form.querySelector("[data-price-q]")?.value), cat = form.querySelector(".price-chips .chip.on")?.dataset.cat || "";
+  let shown = 0;
+  form.querySelectorAll("#price-ed .price-row").forEach(r => { const rc = r.querySelector("[name=p_cat]").value.trim() || "未分類";
+    const hit = (!cat || rc === cat) && (!q || kanaFold(r.querySelector("[name=p_name]").value + " " + r.querySelector("[name=p_note]").value + " " + rc).includes(q));
+    r.hidden = !hit; if(hit) shown++; });
+  form.querySelectorAll("#price-ed .price-cat-h").forEach(h => { let n = h.nextElementSibling, any = false; while(n && !n.classList.contains("price-cat-h")){ if(!n.hidden) any = true; n = n.nextElementSibling; } h.hidden = !any; });
+  form.querySelector(".price-none").hidden = !!shown;
+}
+document.addEventListener("input", e => { if(e.target.matches?.("[data-price-q]")) priceFilter(e.target.closest("form")); });
 function priceRowHtml(p = {unit:"式"}){
   const co = S.priceCo || "", std = p.sellPrice ?? defSell(p.name) ?? "", by = p.sellBy || {};
   return `<div class="price-row${p.estOnly ? " est-only" : ""}${p.onlyCo ? " only-co" : ""}" data-id="${esc(p.id || "")}"${p.estOnly ? ' data-est="1"' : ""} data-only="${esc(p.onlyCo || "")}" title="${p.onlyCo ? esc(p.onlyCo) + "だけの項目" : ""}" data-sell="${esc(std)}" data-sellby="${esc(JSON.stringify(by))}">
@@ -5546,8 +5568,11 @@ async function viewSettings(tab){
       <form data-form="prices" class="stack">
         <div class="price-co"><label><span>見積単価を見る・変える管理会社</span><select data-price-co><option value="">標準（全部の管理会社）</option>${(S.priceCos || []).map(c => `<option ${c === S.priceCo ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
           <p class="small">管理会社を選ぶと、見積単価の列がその管理会社だけの単価になります。空のままの作業は標準の見積単価を使います。見積と工事メモで、宛先の管理会社に合わせた単価が入ります。</p></div>
+        <div class="price-find"><input type="search" data-price-q placeholder="工事名で探す（例：クロス、エアコン）" aria-label="工事名で探す">
+          <div class="price-chips" role="group" aria-label="工種でしぼる"><button type="button" class="chip on" data-act="price-cat" data-cat="">すべて</button>${[...new Set([...PRICE_CATS, ...[...S.prices.filter(p => !p.estOnly), ...estOnlyRows()].map(p => p.cat || "未分類")])].map(c => `<button type="button" class="chip" data-act="price-cat" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}</div>
+          <p class="small price-none" hidden>見つかりませんでした。</p></div>
         <div class="price-head" aria-hidden="true"><span>分類</span><span>作業名</span><span>単位</span><span id="ph-sell">見積単価${S.priceCo ? `<br><b>${esc(S.priceCo)}</b>` : ""}</span><span>業者単価</span><span>手間のみ単価</span><span>備考・品番</span><span></span></div>
-        <div class="items-ed" id="price-ed">${[...S.prices.filter(p => !p.estOnly), ...estOnlyRows()].map(priceRowHtml).join("")}</div>
+        <div class="items-ed" id="price-ed">${priceGroupsHtml([...S.prices.filter(p => !p.estOnly), ...estOnlyRows()])}</div>
         <div class="row between" style="flex-wrap:wrap"><span class="row" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button>${tenant() ? "" : `<button type="button" class="btn sub" data-act="add-default-prices">標準の単価を追加</button>`}<button type="button" class="btn sub" data-act="price-co-import" title="管理会社の単価表から作ったファイルを読み込み、その管理会社の見積単価に入れます">管理会社の見積単価を取り込む</button></span><button class="btn">単価表を保存</button></div>
       </form>
       <datalist id="cat-list-p">${[...new Set([...PRICE_CATS, ...S.prices.map(p => p.cat)].filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
@@ -7369,8 +7394,14 @@ const ACTIONS = {
     ed.querySelector(".staff-row:last-child [name=s_name]").focus();
   },
   async "rm-staff"(el){ el.closest(".staff-row").remove(); },
+  async "price-cat"(el){
+    el.parentNode.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === el)); priceFilter(el.closest("form"));
+  },
   async "add-price"(el){
-    const ed = el.closest("form").querySelector("#price-ed");
+    const form = el.closest("form"), ed = form.querySelector("#price-ed"), cat = form.querySelector(".price-chips .chip.on")?.dataset.cat || "";
+    // 工種でしぼっているときは、その工種の最後に足す（分類も入れておく）
+    const hs = [...ed.querySelectorAll(".price-cat-h")].find(h => h.dataset.cat === cat);
+    if(cat && hs){ let n = hs.nextElementSibling, last = hs; while(n && !n.classList.contains("price-cat-h")){ last = n; n = n.nextElementSibling; } last.insertAdjacentHTML("afterend", priceRowHtml({unit:"式", cat:cat === "未分類" ? "" : cat})); ed.querySelectorAll("[name=p_name]").forEach(i => { if(!i.value && i.closest(".price-row").querySelector("[name=p_cat]").value === (cat === "未分類" ? "" : cat)) i.focus(); }); return; }
     ed.insertAdjacentHTML("beforeend", priceRowHtml());
     ed.querySelector(".price-row:last-child [name=p_name]").focus();
   },
