@@ -1081,7 +1081,7 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .est-form input[readonly],form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled{background:#EEF1F5;color:var(--sub);cursor:not-allowed}
 .memo-price{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:12px;color:var(--sub);margin:-2px 0 4px}
-.vend-auto{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0 0 8px}.vend-auto>span:first-child{min-width:8em;font-weight:700}.vend-auto input{width:140px}
+.vend-auto{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0 0 8px}.vend-auto>span:first-child{min-width:8em;font-weight:700}.vend-auto input{width:140px}.vend-add{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex-basis:100%;padding-left:8em}.vend-add input[name=af_addn]{width:260px;max-width:100%}@media(max-width:600px){.vend-add{padding-left:0}}
 .memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-why{flex:1 1 100%}.memo-price .mp-why input{flex:1;width:auto}.memo-price .mp-wsn input{width:220px}.memo-price label[hidden]{display:none}.memo-price .mp-spec{flex:1 1 100%;flex-wrap:wrap}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}.mp-pf{margin-left:10px;white-space:nowrap;color:var(--ok,#2E7D4F)}.mp-pf.danger-text{color:var(--danger,#C0392B)}
 .memo-sum{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px 18px;margin:6px 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 -2px 8px rgba(0,0,0,.06);font-size:13px}
 .memo-sum b{font-family:var(--num);font-size:16px;margin-left:4px}
@@ -3712,6 +3712,8 @@ async function ledgerDataLoad(){
     const fx = await fixVend(j.id); if(fx){ fv.push(...fx.fv); mv.push(...fx.mv); }
     // 手で直した金額（autoFix）があれば、自動の金額の代わりに使う（autoAmt に自動の金額を残す）
     const af = L.autoFix || {}; [fv, mv].forEach(list => list.forEach(v => { if(v.key && af[v.key] != null){ v.autoAmt = v.amount; v.amount = Number(af[v.key]) || 0; v.edited = true; } }));
+    // 現場で出た追加（autoAdd）：自動（または直した）金額はそのままで、追加分だけ足す
+    const ad = L.autoAdd || {}; [fv, mv].forEach(list => list.forEach(v => { v.base = v.amount; const a = v.key && ad[v.key]; if(a && Number(a.amt)){ v.addAmt = Number(a.amt); v.addNote = a.note || ""; v.amount += v.addAmt; } }));
     const vendors = [...fv, ...mv, ...(L.extraVendors || [])], vcols = vendorCols([...mv, ...fv], L.extraVendors || []);
     const doneAt = j.completedAt || j.finishedAt;
     return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), monthSet:!!L.month, jobNo:j.jobNo || "", name:j.title, company:L.company || info.manager || "",
@@ -3958,7 +3960,7 @@ async function viewMoneyEdit(id){
           ${tenant() ? `<input type="hidden" name="ki" value="${esc(r.ki || kiNow())}">` : `<label class="field" style="margin:0"><span>期 <small>未完了の行をどの期に出すか</small></span><input type="number" name="ki" value="${esc(r.ki || kiNow())}" min="1" style="max-width:120px"></label>`}</div>`}
 </section>
       <section class="panel"><h2>発注業者・発注金額</h2>
-        ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<div class="vend-auto"><span>${esc(v.name)}</span><input type="number" name="af_amt" data-key="${esc(v.key || "")}" data-auto="${esc(v.edited ? v.autoAmt : v.amount)}" value="${esc(v.amount)}" inputmode="numeric" aria-label="${esc(v.name)}の発注金額"${v.key ? "" : " disabled"}><span class="small">${v.edited ? `手で直した金額（自動は ${yenFull(v.autoAmt)}。空にすると自動に戻ります）` : "税込・ポータルから自動。違っていたら直せます"}</span></div>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
+        ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<div class="vend-auto"><span>${esc(v.name)}</span><input type="number" name="af_amt" data-key="${esc(v.key || "")}" data-auto="${esc(v.edited ? v.autoAmt : v.base ?? v.amount)}" value="${esc(v.base ?? v.amount)}" inputmode="numeric" aria-label="${esc(v.name)}の発注金額"${v.key ? "" : " disabled"}><span class="small">${v.edited ? `手で直した金額（自動は ${yenFull(v.autoAmt)}。空にすると自動に戻ります）` : "税込・ポータルから自動。違っていたら直せます"}</span>${v.key ? `<span class="vend-add"><span class="small">＋ 現場で出た追加</span><input type="number" name="af_add" data-key="${esc(v.key)}" value="${esc(v.addAmt || "")}" inputmode="numeric" placeholder="追加の金額（税込）" aria-label="${esc(v.name)}の追加金額"><input type="text" name="af_addn" value="${esc(v.addNote || "")}" placeholder="追加の内容（例：床の張替え追加）" aria-label="${esc(v.name)}の追加の内容"></span>` : ""}</div>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
         <div id="vend-ed">${extra.map(vrow).join("")}</div><p class="small" style="margin:0 0 8px">工種を選ぶと、収支のその列（1 材料屋 2 表装 3 クリーニング 4 リペア 5 設備 6 電気）に入ります。「その他」は7列目から。</p><button type="button" class="btn sub" data-act="add-vend">＋ 発注業者を追加</button></section>
       <label class="field"><span>備考</span><textarea name="note" rows="2">${esc(r.note)}</textarea></label>
       <div class="row between"><button class="btn">保存する</button>${!auto && r.id ? `<button type="button" class="btn sub danger-text" data-act="money-del" data-id="${esc(r.id)}">この行を削除</button>` : ""}</div>
@@ -8328,7 +8330,9 @@ const FORMS = {
     const prevRow = (await api().listLedger()).find(x => x.id === (jobId || id)) || {};
     // ポータルから自動で入った金額を直したもの：自動と違う金額だけ覚える（空にしたら自動に戻す）
     const autoFix = {}; form.querySelectorAll("[name=af_amt]").forEach(i => { const k = i.dataset.key, v = i.value.trim(); if(k && v !== "" && Number(v) !== Number(i.dataset.auto)) autoFix[k] = Math.round(Number(v) || 0); });
-    if(jobId) row = {...prevRow, id:jobId, jobId, ...base, extraVendors:vend, autoFix};
+    // 現場で出た追加：業者ごとに、追加の金額と内容を覚える
+    const autoAdd = {}; form.querySelectorAll("[name=af_add]").forEach(i => { const k = i.dataset.key, v = Math.round(Number(i.value) || 0), n = i.parentNode.querySelector("[name=af_addn]")?.value.trim() || ""; if(k && v) autoAdd[k] = {amt:v, note:n}; });
+    if(jobId) row = {...prevRow, id:jobId, jobId, ...base, extraVendors:vend, autoFix, autoAdd};
     else {
       const old = prevRow.id ? prevRow : null;
       if(old && Number(old.contract) === base.contract){ ["netOv", "staffFeeOv", "staff2FeeOv"].forEach(k => { if(old[k] !== undefined) base[k] = old[k]; }); }
