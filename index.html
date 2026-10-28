@@ -748,6 +748,7 @@ body{font-size:17px}
 .er .e-cost{grid-column:3/-1;font-size:12px;color:var(--sub);margin-top:-2px}
 .er .e-cost:empty{display:none}
 .er .er-tools{display:flex;gap:2px;justify-content:flex-end;align-items:center}
+.tpl-panel label.btn{cursor:pointer}.tpl-help p{margin:6px 0;line-height:1.8}
 .tu-card{border:1px solid var(--line);border-left:4px solid #C77700;border-radius:8px;padding:10px 12px;margin:0 0 10px;background:var(--surface)}.tu-card.done{border-left-color:#2E7D4F;opacity:.85}
 .tu-list{margin:8px 0;padding-left:0;list-style:none}.tu-list li{margin:0 0 8px}.tu-ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.tu-ph img{width:110px;height:82px;object-fit:cover;border-radius:4px;border:1px solid var(--line)}
 .tu-row{border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 8px}.tu-row .two{gap:8px}.tu-file{display:block;margin:6px 0}.er .e-st{width:auto;padding:2px 4px;font-size:12px}.er .e-st.on{background:#FBEFF3;color:#B0285A;font-weight:700}
@@ -2184,6 +2185,9 @@ class DemoBackend {
   async deleteBill(id){ S.ldCache = null; delete (this.sd().bills || {})[id]; this.save(); }
   async getBilling(){ if(tenant()) return clone(this.sd().billing || {}); return clone(this.data.billing || {bank:"（デモ）サンプル銀行 本店（普通）0000000 名義；カ）リフォア", invoiceNumber:"T0000000000000"}); }
   async saveBilling(d){ this.sd().billing = clone(d); this.save(); }
+  async getDocTpl(t){ return clone((this.sd().doctpl || {})[t] || null); }
+  async saveDocTpl(t, d){ (this.sd().doctpl ||= {})[t] = clone(d); this.save(); }
+  async deleteDocTpl(t){ delete (this.sd().doctpl || {})[t]; this.save(); }
   async listLedger(){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone(Object.values(this.sd().ledger || {})); }
   async getLedgerRow(id){ if(myRole() !== "admin") throw new Error("permission-denied"); return clone((this.sd().ledger || {})[id] || null); }
   async saveLedger(r){ S.ldCache = null; (this.sd().ledger ||= {})[r.id] = clone(r); this.save(); }
@@ -2622,6 +2626,10 @@ class FirebaseBackend {
   async saveBill(b){ S.ldCache = null; await this.scol("bills").doc(b.id).set(b); }
   async deleteBill(id){ S.ldCache = null; await this.scol("bills").doc(id).delete(); }
   async saveBilling(d){ await this.smaster("billing").set(d); await this._bump("billing"); }
+  // 自社書式（エクセルの雛形）：書類ごとに1つ。tpl_index に名前だけ、tpl_<種類> に中身（base64）
+  async getDocTpl(t){ const s = await this.smaster("tpl_" + t).get().catch(() => null); return s?.exists ? s.data() : null; }
+  async saveDocTpl(t, d){ await this.smaster("tpl_" + t).set(d); }
+  async deleteDocTpl(t){ await this.smaster("tpl_" + t).delete(); }
   // 収支（ledger/{案件ID か l_…}。管理者だけ）と、その設定（master/ledger）
   async listLedger(){
     const key = this._pkey("ledgerRows"), ver = await this._ver(), c = ver ? await LOCAL_DB.get(key) : null;
@@ -3174,6 +3182,104 @@ async function estExcelXlsx(e){
     "ABCDEFGHIJKLMNOP".split("").forEach(c => { const cell = ws.getCell(`${c}${n}`); cell.style = clone(st[c]); cell.value = v[c] ?? null; }); });
   return new Blob([await wb.xlsx.writeBuffer()], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
 }
+/* ---------- 自社書式：工務店のエクセルに {物件名} などの印を入れて読み込ませると、その書式で書類を作る ---------- */
+const TPL_TYPES = {est:"見積書", ukesho:"工事請書", invoice:"御請求書", order:"発注書（業者・材料屋あて）"};
+const TPL_FIELDS = [["宛先", "管理会社・業者の名前"], ["敬称", "御中・様"], ["先方担当", "先方のご担当者"], ["物件名", ""], ["号室", ""], ["工事種類", "退去工事など"], ["住所", "物件の住所"],
+  ["工事番号", ""], ["発行日", ""], ["有効期限", "見積だけ"], ["支払条件", ""], ["工期", "請書・発注書"], ["工事担当", "自社の担当者"], ["担当電話", ""], ["小計", "税抜"], ["消費税", ""], ["合計", "税込"],
+  ["会社名", "自社"], ["会社住所", ""], ["会社電話", ""], ["会社FAX", ""], ["インボイス番号", ""], ["振込先", "請求書"], ["備考", "発注書"]];
+const TPL_ITEMS = [["明細.No", "番号"], ["明細.箇所", ""], ["明細.内容", "工事の内容"], ["明細.仕様", "品番など"], ["明細.数量", ""], ["明細.単位", ""], ["明細.単価", ""], ["明細.金額", "中止・保留はその文字"]];
+const tplB64 = buf => { let s = "", b = new Uint8Array(buf); for(let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
+const tplBuf = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+async function tplExcelJS(){ if(!window.ExcelJS) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"); return window.ExcelJS; }
+const tplText = v => v == null ? "" : typeof v === "string" ? v : v.richText ? v.richText.map(r => r.text).join("") : v.formula || v.sharedFormula ? null : typeof v === "object" ? null : String(v);
+// 1つのセルの印を置きかえる（印だけのセルで数字なら数字のまま入れる）
+function tplCell(cell, get){
+  const t = tplText(cell.value); if(t == null || t.indexOf("{") < 0) return;
+  const one = t.match(/^\s*\{([^{}]+)\}\s*$/);
+  if(one){ const v = get(one[1].trim()); if(v !== undefined){ cell.value = v === "" ? null : v; return; } }
+  cell.value = t.replace(/\{([^{}]+)\}/g, (m, k) => { const v = get(k.trim()); return v === undefined ? m : v == null ? "" : String(v); });
+}
+async function tplFill(b64, data){
+  const X = await tplExcelJS(), wb = new X.Workbook(); await wb.xlsx.load(tplBuf(b64));
+  const head = k => Object.prototype.hasOwnProperty.call(data.fields, k) ? data.fields[k] : undefined;
+  wb.worksheets.forEach(ws => {
+    // 明細の行：「{明細.」が入っている最初の行を、行の数だけ下に増やす（下の空いている行を先に使う）
+    let R = 0; ws.eachRow({includeEmpty:false}, (row, n) => { if(R) return; row.eachCell({includeEmpty:false}, c => { if(!R && (tplText(c.value) || "").includes("{明細.")) R = n; }); });
+    if(R){
+      const tr = ws.getRow(R), cols = []; tr.eachCell({includeEmpty:true}, (c, col) => cols.push({col, value:c.value, style:clone(c.style || {})}));
+      const blank = n => { let e = true; ws.getRow(n).eachCell({includeEmpty:false}, c => { if(tplText(c.value) !== "" || c.value != null && typeof c.value === "object") e = false; }); return e; };
+      let cap = 0; while(cap < 300 && R + cap + 1 <= Math.max(ws.rowCount, R + 300) && blank(R + cap + 1) && R + cap + 1 <= ws.rowCount) cap++;
+      const items = data.items || [], need = Math.max(1, items.length);
+      if(need > 1 + cap) ws.duplicateRow(R, need - 1 - cap, true);
+      for(let k = 0; k < Math.max(need, 1 + cap); k++){
+        const row = ws.getRow(R + k), it = items[k];
+        if(tr.height) row.height = tr.height;
+        cols.forEach(x => { const c = row.getCell(x.col); c.style = clone(x.style); c.value = it ? x.value : (typeof x.value === "string" && x.value.includes("{明細.") ? null : k === 0 ? x.value : null);
+          if(it) tplCell(c, key => key.startsWith("明細.") ? (Object.prototype.hasOwnProperty.call(it, key.slice(3)) ? it[key.slice(3)] : undefined) : head(key)); });
+        row.commit?.();
+      }
+    }
+    ws.eachRow({includeEmpty:false}, row => row.eachCell({includeEmpty:false}, c => tplCell(c, head)));
+  });
+  return new Blob([await wb.xlsx.writeBuffer()], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+function tplCompany(billing = {}){ const c = coInfo(); return {会社名:c.name || "", 会社住所:[c.zip ? "〒" + c.zip : "", c.address || "", c.address2 || ""].filter(Boolean).join(" "), 会社電話:c.tel || "", 会社FAX:c.fax || "", インボイス番号:billing.invoiceNumber || "", 振込先:billing.bank || ""}; }
+function tplEstData(e, type, billing = {}){
+  let x = e; if(type === "est" && e.estRows?.length) x = {...e, rows:e.estRows}; if(type === "invoice" && e.status === "tachiai" && e.billRows?.length) x = {...e, rows:e.billRows};
+  const t = estTotals(x); let no = 0;
+  const items = (x.rows || []).filter(r => r.name).map(r => r.noteRow ? {No:"", 箇所:"", 内容:r.name, 仕様:"", 数量:"", 単位:"", 単価:"", 金額:""}
+    : {No:++no, 箇所:r.loc || "", 内容:r.name, 仕様:r.spec || "", 数量:r.qty === "" || r.qty == null ? "" : Number(r.qty), 単位:r.unit || "", 単価:r.st || r.price === "" || r.price == null ? "" : Number(r.price), 金額:r.st ? r.st : estAmt(r)});
+  return {fields:{宛先:estToName(x), 敬称:x.honor || "御中", 先方担当:x.person || "", 物件名:x.building || "", 号室:x.room || "", 工事種類:x.kind || "", 住所:x.address || "", 工事番号:x.no || "",
+    発行日:x.issuedAt ? fmtDate(type === "ukesho" && x.ukeIssuedAt ? x.ukeIssuedAt : x.issuedAt) : "", 有効期限:x.validity || BILLING_DEFAULT.validity, 支払条件:x.terms || billing.terms || BILLING_DEFAULT.terms,
+    工期:x.periodStart ? `${fmtDate(x.periodStart)}${x.periodEnd && x.periodEnd !== x.periodStart ? ` 〜 ${fmtDate(x.periodEnd)}` : ""}` : "", 工事担当:x.staff?.name || "", 担当電話:x.staff?.phone || "",
+    小計:t.sub, 消費税:t.tax, 合計:t.total, 備考:"", ...tplCompany(billing)}, items};
+}
+function tplOrderData(o, job = {}, priv = {}, billing = {}){
+  const items = (o.items || []).filter(i => i.name).map((i, k) => { const q = Number(i.qty) || 0, u = i.unitPrice === "" || i.unitPrice == null ? "" : Number(i.unitPrice);
+    return {No:k + 1, 箇所:i.loc || "", 内容:i.name, 仕様:[i.maker, i.code, i.spec].filter(Boolean).join(" "), 数量:q, 単位:i.unit || "", 単価:u, 金額:u === "" ? "" : Math.round(q * u)}; });
+  const sub = items.reduce((a, i) => a + (Number(i.金額) || 0), 0), tax = Math.floor(sub * TAX_RATE);
+  return {fields:{宛先:o.supplierName || "", 敬称:o.honor || "御中", 先方担当:"", 物件名:priv.building || job.site?.building || job.title || "", 号室:priv.room || job.site?.room || "", 工事種類:"", 住所:priv.address || job.site?.address || "",
+    工事番号:job.jobNo || "", 発行日:o.issuedAt ? fmtDate(o.issuedAt) : "", 有効期限:"", 支払条件:o.terms || "", 工期:o.workDate || "", 工事担当:job.staff?.name || "", 担当電話:job.staff?.phone || "",
+    小計:sub, 消費税:tax, 合計:sub + tax, 備考:[o.delivery ? `納品先：${o.delivery}` : "", o.note || ""].filter(Boolean).join("　"), ...tplCompany(billing)}, items};
+}
+// 見本の雛形：印の入れ方がわかるように、いちばん簡単な見積書を作って渡す
+async function tplSample(type){
+  const X = await tplExcelJS(), wb = new X.Workbook(), ws = wb.addWorksheet(TPL_TYPES[type].replace(/（.*）/, ""));
+  ws.columns = [{width:6}, {width:14}, {width:30}, {width:18}, {width:8}, {width:7}, {width:12}, {width:14}];
+  ws.mergeCells("A1:H1"); ws.getCell("A1").value = TPL_TYPES[type].replace(/（.*）/, ""); ws.getCell("A1").font = {size:18, bold:true}; ws.getCell("A1").alignment = {horizontal:"center"};
+  const put = (a, v, b) => { ws.getCell(a).value = v; if(b) ws.getCell(a).font = {bold:true}; };
+  put("A3", "{宛先}　{敬称}", true); put("A4", "ご担当：{先方担当}　様"); put("F3", "発行日"); put("G3", "{発行日}"); put("F4", "工事番号"); put("G4", "{工事番号}");
+  put("A6", "物件名"); put("B6", "{物件名}　{号室}　{工事種類}"); put("A7", "住所"); put("B7", "{住所}"); put("A8", type === "est" ? "有効期限" : "工期"); put("B8", type === "est" ? "{有効期限}" : "{工期}");
+  put("F6", "{会社名}", true); put("F7", "{会社住所}"); put("F8", "TEL {会社電話}　担当 {工事担当}");
+  const h = ws.getRow(10); ["No", "箇所", "内容", "仕様", "数量", "単位", "単価", "金額"].forEach((v, i) => { const c = h.getCell(i + 1); c.value = v; c.font = {bold:true}; c.fill = {type:"pattern", pattern:"solid", fgColor:{argb:"FFEEF2FA"}}; });
+  const r = ws.getRow(11); ["{明細.No}", "{明細.箇所}", "{明細.内容}", "{明細.仕様}", "{明細.数量}", "{明細.単位}", "{明細.単価}", "{明細.金額}"].forEach((v, i) => { r.getCell(i + 1).value = v; });
+  r.getCell(7).numFmt = "#,##0"; r.getCell(8).numFmt = "#,##0";
+  put("G13", "小計"); put("H13", "{小計}"); put("G14", "消費税"); put("H14", "{消費税}"); put("G15", "合計", true); put("H15", "{合計}"); ["H13", "H14", "H15"].forEach(a => { ws.getCell(a).numFmt = "#,##0"; });
+  put("A17", type === "invoice" ? "振込先：{振込先}" : type === "order" ? "備考：{備考}" : "支払条件：{支払条件}");
+  return new Blob([await wb.xlsx.writeBuffer()], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+async function tplIndex(){ const ix = {}; await Promise.all(Object.keys(TPL_TYPES).map(async t => { const d = await api().getDocTpl(t).catch(() => null); if(d?.b64) ix[t] = {name:d.name, at:d.at}; })); S.tplHave = ix; return ix; }
+function tplPanel(){
+  const ix = S.tplHave || {};
+  return `<section class="panel tpl-panel"><h2>自社の書式（エクセル） <small>いつもの書式の見積書・請書・請求書・発注書を、そのまま作れます</small></h2>
+    <p class="small" style="margin:0 0 10px">いつも使っているエクセルの書式に、<b>{物件名}</b> や <b>{明細.内容}</b> のような印を入れて読み込ませると、ポータルがその書式に中身を入れたエクセルを作ります。明細の印を入れた行は、工事の数だけ下に増えます。わからないときは「見本」をダウンロードして、その形をまねしてください。</p>
+    ${Object.entries(TPL_TYPES).map(([t, l]) => `<div class="doc-row"><span class="row-main"><b>${esc(l)}</b><span class="small">${ix[t] ? `登録済み：${esc(ix[t].name || "")}（${fmtDate(ix[t].at)}）` : "まだ登録していません（いつもの書式で作ります）"}</span></span>
+      <span class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn sub sm" data-act="tpl-sample" data-type="${t}">見本</button><label class="btn sm">${ix[t] ? "読み込み直す" : "エクセルを読み込む"}<input type="file" accept=".xlsx" data-tpl-up="${t}" hidden></label>${ix[t] ? `<button type="button" class="btn sub sm" data-act="tpl-get" data-type="${t}">今の雛形</button><button type="button" class="textlink danger-text" data-act="tpl-del" data-type="${t}">消す</button>` : ""}</span></div>`).join("")}
+    <details style="margin-top:10px"><summary class="textlink">使える印の一覧</summary><div class="tpl-help"><p class="small"><b>書類の中のどこにでも：</b>${TPL_FIELDS.map(([k, d]) => `{${esc(k)}}${d ? `（${esc(d)}）` : ""}`).join("　")}</p>
+      <p class="small"><b>明細の行に（1行だけ）：</b>${TPL_ITEMS.map(([k, d]) => `{${esc(k)}}${d ? `（${esc(d)}）` : ""}`).join("　")}</p><p class="small">印は半角の { } で囲みます。小計・消費税・合計・数量・単価・金額は、印だけのセルにすると数字で入ります（エクセルの計算式もそのまま使えます）。</p></div></details></section>`;
+}
+document.addEventListener("change", async e => {
+  const inp = e.target.closest?.("[data-tpl-up]"); if(!inp || !inp.files?.[0]) return;
+  const t = inp.dataset.tplUp, f = inp.files[0];
+  try {
+    if(f.size > 700000) throw new Error("エクセルが大きすぎます（700KBまで）。画像を減らすか、シートを1つにしてください");
+    const buf = await f.arrayBuffer(), X = await tplExcelJS(), wb = new X.Workbook(); await wb.xlsx.load(buf);
+    let marks = 0, item = false; wb.worksheets.forEach(ws => ws.eachRow({includeEmpty:false}, r => r.eachCell({includeEmpty:false}, c => { const x = tplText(c.value) || ""; if(/\{[^{}]+\}/.test(x)) marks++; if(x.includes("{明細.")) item = true; })));
+    if(!marks) throw new Error("このエクセルには {物件名} のような印がありません。「見本」を見て、印を入れてから読み込んでください");
+    await api().saveDocTpl(t, {name:f.name, at:Date.now(), b64:tplB64(buf)});
+    toast(`${TPL_TYPES[t]}の書式を読み込みました（印 ${marks}か所${item ? "" : "・明細の行なし"}）`); route();
+  } catch(err) { toast(err.message || String(err)); } finally { inp.value = ""; }
+});
 function estExcelCsv(e){
   const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [["種類", "摘要名", "原価：数量", "単位", "原価：単価", "金額・取り込まない", "備考"],
@@ -3256,6 +3362,7 @@ function readEst(form){
     staff:staffName ? {name:staffName, phone:sp?.phone || S.est?.staff?.phone || ""} : null, periodStart:g("periodStart"), periodEnd:g("periodEnd"), status:g("status") || "draft", note:g("note"), rows};
 }
 async function viewEstEdit(id){
+  await tplIndex().catch(() => {});
   [S.props, S.prices, S.staff, S.billing] = await Promise.all([api().getProperties().catch(() => []), api().getPrices().catch(() => defPrices()), api().getStaff().catch(() => []), api().getBilling().catch(() => ({}))]);
   const billing = {...BILLING_DEFAULT, ...S.billing};
   let e = id === "new" ? null : await api().getEstimate(id);
@@ -3282,7 +3389,7 @@ async function viewEstEdit(id){
     <div class="page-head"><div><h1>${["ordered", "won"].includes(e.status) ? "工事請書" : e.id ? "見積を編集" : "新しい見積"} ${e.id ? `<span class="pill est-${esc(e.status)}">${EST_STATUS[e.status] || "下書き"}</span>` : ""}</h1></div>
       <div class="row"><button class="btn sub" form="est-form">保存</button>
         ${canSubmit ? `<button class="btn" data-act="est-submit">${e.rev ? `訂正${e.rev}を提出済みにする` : "見積を提出済みにする"}</button>` : ""}
-        <button class="btn sub" data-act="est-pdf" data-type="${docType}">${docLabel}PDF</button>
+        <button class="btn sub" data-act="est-pdf" data-type="${docType}">${docLabel}PDF</button>${S.tplHave?.[docType] ? `<button class="btn sub" data-act="tpl-out" data-type="${docType}">自社書式（エクセル）</button>` : ""}
         ${e.id ? `<a class="btn" href="#/admin/memo/${esc(e.id)}">工事メモで開く</a>` : ""}${e.jobId ? `<a class="btn sub" href="#/admin/job/${esc(e.jobId)}">案件を開く</a>` : ""}${e.ledgerId && !e.jobId ? `<a class="btn sub" href="#/admin/money/edit/${esc(e.ledgerId)}">収支を開く</a>` : ""}</div></div>
     <details class="panel est-help"${e.id ? "" : " open"}><summary><b>使い方</b>（4ステップ）</summary><ol>
       <li><b>物件を選ぶ</b>：物件名を入れると物件マスタから候補が出ます。選ぶと住所・管理会社（宛先）・工事番号が入ります。</li>
@@ -3358,7 +3465,7 @@ function estResultHtml(e){
     <div class="est-btns"><button type="button" class="btn sub" data-act="est-pdf" data-type="ukesho">工事請書PDF</button><button type="button" class="btn" data-act="est-publish">この請書で業者に公開</button><button type="button" class="btn sub" data-act="est-job">直してから公開</button><button type="button" class="btn sub" data-act="est-self">自社施工で完了</button><button type="button" class="textlink" data-act="est-unorder">受注待ちに戻す</button></div>
     <ul class="small est-btn-help"><li><b>この請書で業者に公開</b>：請書の工事を実行単価で案件にして、「既存業者のみ」か「全体」を選んで公開します。${tenant() ? `全体に公開した案件は、普通の案件と同じく、発注するときに工事代金と運営手数料（${Math.round(opFee() * 100)}%）をReforeへ先払いします（既存業者のみは手数料なし）。` : ""}</li><li><b>直してから公開</b>：案件を下書きで作り、編集画面を開きます。</li><li><b>自社施工で完了</b>：業者には公開せず、自分たちで施工して完了にします（修繕など）。請書の金額が売上になり、管理会社への請求に入ります。材料費などは収支の✎で入れられます。</li></ul>`;
   if(e.status === "self") return `<p style="margin:0">${stageTag("done")} 自社施工で完了しました（完了日 ${fmtDate(e.selfDoneAt ? isoOf(e.selfDoneAt) : "")}）。請書の金額 <b>${yenFull(estTotals(e).sub)}</b>（税抜）で、管理会社への請求に入ります。</p>
-    <div class="est-btns" style="margin-top:10px"><button type="button" class="btn sub" data-act="est-pdf" data-type="ukesho">工事請書PDF</button><button type="button" class="btn sub" data-act="est-pdf" data-type="invoice">御請求書PDF</button>${e.ledgerId ? `<a class="btn sub" href="#/admin/money/edit/${esc(e.ledgerId)}">材料費などを入れる（収支）</a>` : ""}<button type="button" class="textlink" data-act="est-unself">受注（請書）に戻す</button></div>`;
+    <div class="est-btns" style="margin-top:10px"><button type="button" class="btn sub" data-act="est-pdf" data-type="ukesho">工事請書PDF</button><button type="button" class="btn sub" data-act="est-pdf" data-type="invoice">御請求書PDF</button>${["ukesho", "invoice"].filter(t => S.tplHave?.[t]).map(t => `<button type="button" class="btn sub" data-act="tpl-out" data-type="${t}">${t === "ukesho" ? "請書" : "請求書"}（自社書式）</button>`).join("")}${e.ledgerId ? `<a class="btn sub" href="#/admin/money/edit/${esc(e.ledgerId)}">材料費などを入れる（収支）</a>` : ""}<button type="button" class="textlink" data-act="est-unself">受注（請書）に戻す</button></div>`;
   if(e.status === "tachiai") return `<p style="margin:0">${stageTag("tachiai")} 工事はなく、立会費 ${yenFull(itemsTotal((e.billRows || []).map(r => ({qty:r.qty, unitPrice:r.price}))))}（税抜）で完了にしました。御請求書は立会費だけで出ます。</p>
     <p style="margin:10px 0 0"><button type="button" class="textlink" data-act="est-reopen">返事の前に戻す</button></p>`;
   if(e.status === "lost") return `<p style="margin:0">${stageTag("lost")} 失注にしました。</p><p style="margin:10px 0 0"><button type="button" class="textlink" data-act="est-reopen">返事の前に戻す</button></p>`;
@@ -4977,6 +5084,7 @@ async function viewJobEdit(id){
     </form>`;
 }
 async function viewAdminJob(id){
+  await tplIndex().catch(() => {});
   const job = await api().getJob(id);
   if(!job) return `${back("#/admin", "案件")}<div class="empty">案件が見つかりません。</div>`;
   const [apps, priv, reports, order, payment, threads] = await Promise.all([api().listApplications({jobId:id}), api().getJobPrivate(id), api().listReports({jobId:id}), api().getDocument(`${id}_order`), api().getDocument(`${id}_payment`), api().listThreads({jobId:id})]);
@@ -5061,7 +5169,7 @@ async function viewAdminJob(id){
     ${kids.map((k, n) => line(who(k.assignedTo), `分離発注：${esc(k.title.replace(job.title, "").replace(/^（|）$/g, "") || k.title)}　${yenFull(k.price)}（税抜）　<span class="pill ${pillClass(k)}">${esc(statusLabel(k))}</span>`,
       kidOrders[n] ? `data-act="pv-order" data-id="${esc(kidOrders[n].id)}"` : "", `${kidOrders[n] ? dl(kidOrders[n].id) + `<a class="btn sub" href="#/admin/job/${esc(k.id)}/doc/${esc(kidOrders[n].id)}">手で直す</a>` : ""}<a class="btn sub" href="#/admin/job/${esc(k.id)}">開く</a>`)).join("")}
     ${matOrders.map(o => { const t = moTotals(o); return line(o.supplierName, `${o.kind === "work" ? "工事の発注書" : "材料発注書"}　${(o.items || []).length}件　${t.base ? `${yenFull(t.total)}（税込）` : "見積依頼"}　${o.status === "sent" ? `送信済み ${fmtTime(o.sentAt)}` : "未送信"}`,
-      `data-act="mo-view" data-job="${esc(id)}" data-id="${esc(o.id)}"`, `<button class="btn sub" data-act="mo-pdf" data-job="${esc(id)}" data-id="${esc(o.id)}">ダウンロード</button><a class="btn sub" href="#/admin/job/${esc(id)}/mat/${esc(o.id)}">編集</a><button class="btn sub" data-act="mo-mail" data-job="${esc(id)}" data-id="${esc(o.id)}">メール</button>`); }).join("")}
+      `data-act="mo-view" data-job="${esc(id)}" data-id="${esc(o.id)}"`, `<button class="btn sub" data-act="mo-pdf" data-job="${esc(id)}" data-id="${esc(o.id)}">ダウンロード</button>${S.tplHave?.order ? `<button class="btn sub" data-act="tpl-mo" data-job="${esc(id)}" data-id="${esc(o.id)}">自社書式</button>` : ""}<a class="btn sub" href="#/admin/job/${esc(id)}/mat/${esc(o.id)}">編集</a><button class="btn sub" data-act="mo-mail" data-job="${esc(id)}" data-id="${esc(o.id)}">メール</button>`); }).join("")}
     ${!job.assignedTo && !kids.length && !matOrders.length ? `<p class="small" style="margin:0 0 6px">まだ手配した業者はありません。業者に発注すると、ここに業者名と発注書が並びます。</p>` : ""}
     ${!job.assignedTo && ["open", "draft"].includes(job.status) ? `<div class="send-other"><div><b>応募がないときは</b><span class="small">宛名を変えた発注書をPDFにして、LINEなどでほかの業者に送れます（ポータルの募集はそのまま）</span></div><button type="button" class="btn sub" data-act="send-other" data-job="${esc(id)}">宛名を変えてPDF</button></div>` : ""}
     <p style="margin:10px 0 0"><a class="btn sub" href="#/admin/job/${esc(id)}/mat/new">＋ 材料・外部発注を作る</a></p>
@@ -5651,6 +5759,7 @@ function propCoMerge(list){
 // --- 設定：物件マスタ画面 ---
 async function viewSettings(tab){
   if(!["props","prices","suppliers","materials","docs","people","data"].includes(tab)) tab = "props";
+  if(tab === "docs") await tplIndex().catch(() => {});
   if(tab === "prices"){
     const {rows: lr, cfg: lc, names: ln} = await ledgerData().catch(() => ({rows:[], cfg:{}, names:new Map()}));
     const used = [...ln.entries()].filter(([k]) => lr.some(r => r.coKey === k) || Object.keys(lc.fees || {}).some(c => coKey(c) === k)).map(([, v]) => v);
@@ -5717,7 +5826,7 @@ async function viewSettings(tab){
         ${sp.id ? `<button type="button" class="btn sub sm" data-act="add-mat" style="margin-top:8px">＋ ${esc(sp.name)}の材料を追加</button>` : ""}</section>`; }).join("")}
       <div class="row end"><button class="btn">単価表を保存する</button></div></form>`
       : `<section class="panel"><p style="margin:0">先に<a href="#/admin/settings/suppliers">「材料屋」</a>で、材料屋さんを登録してください。</p></section>`) : ""}
-    ${tab === "docs" ? `${tenant() ? coInfoPanel() : ""}    <section class="panel"><h2>見積・請求書 <small>見積書・御請求書に入る内容（${esc(meName())}だけが見られる場所に保存）</small></h2>
+    ${tab === "docs" ? `${tplPanel()}${tenant() ? coInfoPanel() : ""}    <section class="panel"><h2>見積・請求書 <small>見積書・御請求書に入る内容（${esc(meName())}だけが見られる場所に保存）</small></h2>
       <form data-form="billing" class="stack">
         <div class="two"><label class="field"><span>インボイス登録番号</span><input type="text" name="invoiceNumber" value="${esc(S.billingCfg?.invoiceNumber || "")}" placeholder="例：T1234567890123"></label>
           <label class="field"><span>振込先（御請求書の下に入ります）</span><input type="text" name="bank" value="${esc(S.billingCfg?.bank || "")}" placeholder="例：○○銀行 ○○支店（普通）1234567 名義；カ）リフォア"></label></div>
@@ -7839,6 +7948,22 @@ const ACTIONS = {
     const html = estDocHtml(saved, type, S.estSeal, billing);
     previewDoc(`${label}　${estTitle(saved)}`, html, () => downloadPdf(html, `${todayIso().replace(/-/g, "")}・${label}・${fileSafe(estTitle(saved))}.pdf`));
   },
+  async "tpl-out"(el){
+    const type = el.dataset.type, e = estNow(); if(!(e.rows || []).some(r => r.name)) throw new Error("工事の内容を入れてください");
+    const saved = $("#est-form") ? await saveEst(e, true) : e, tpl = await api().getDocTpl(type); if(!tpl?.b64) throw new Error("設定 →「会社・書類」で、この書類の書式を読み込んでください");
+    toast("自社の書式で作っています…");
+    const billing = {...BILLING_DEFAULT, ...(S.billing || await api().getBilling().catch(() => ({})))};
+    saveBlob(await tplFill(tpl.b64, tplEstData(saved, type, billing)), `${todayIso().replace(/-/g, "")}・${TPL_TYPES[type]}・${fileSafe(estTitle(saved))}.xlsx`);
+  },
+  async "tpl-mo"(el){
+    const tpl = await api().getDocTpl("order"); if(!tpl?.b64) throw new Error("設定 →「会社・書類」で、発注書の書式を読み込んでください");
+    const d = await moDoc(el.dataset.job, el.dataset.id), billing = {...BILLING_DEFAULT, ...(await api().getBilling().catch(() => ({})))};
+    toast("自社の書式で作っています…");
+    saveBlob(await tplFill(tpl.b64, tplOrderData(d.o, d.job || {}, d.priv || {}, billing)), d.fname.replace(/\.pdf$/, ".xlsx"));
+  },
+  async "tpl-sample"(el){ const t = el.dataset.type; saveBlob(await tplSample(t), `見本・${TPL_TYPES[t].replace(/（.*）/, "")}の書式.xlsx`); },
+  async "tpl-get"(el){ const t = el.dataset.type, d = await api().getDocTpl(t); if(!d?.b64) return; saveBlob(new Blob([tplBuf(d.b64)]), d.name || `${TPL_TYPES[t]}.xlsx`); },
+  async "tpl-del"(el){ const t = el.dataset.type; if(!await ask({title:`${TPL_TYPES[t]}の書式を消しますか？`, body:"消すと、いつものポータルの書式で作ります。", ok:"消す", danger:true})) return; await api().deleteDocTpl(t); toast("消しました"); route(); },
   async "est-excel"(){ const e = estNow(); if(!(e.rows || []).some(r => !r.noteRow && r.name)) throw new Error("工事の内容を入れてください");
     saveBlob(await estExcelXlsx(e), `${todayIso().replace(/-/g, "")}・見積・${fileSafe(estTitle(e))}.xlsx`); },
   async "est-job"(){
