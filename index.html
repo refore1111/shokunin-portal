@@ -747,7 +747,10 @@ body{font-size:17px}
 .er .e-amt{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
 .er .e-cost{grid-column:3/-1;font-size:12px;color:var(--sub);margin-top:-2px}
 .er .e-cost:empty{display:none}
-.er .er-tools{display:flex;gap:2px;justify-content:flex-end;align-items:center}.er .e-st{width:auto;padding:2px 4px;font-size:12px}.er .e-st.on{background:#FBEFF3;color:#B0285A;font-weight:700}
+.er .er-tools{display:flex;gap:2px;justify-content:flex-end;align-items:center}
+.tu-card{border:1px solid var(--line);border-left:4px solid #C77700;border-radius:8px;padding:10px 12px;margin:0 0 10px;background:var(--surface)}.tu-card.done{border-left-color:#2E7D4F;opacity:.85}
+.tu-list{margin:8px 0;padding-left:0;list-style:none}.tu-list li{margin:0 0 8px}.tu-ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.tu-ph img{width:110px;height:82px;object-fit:cover;border-radius:4px;border:1px solid var(--line)}
+.tu-row{border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 8px}.tu-row .two{gap:8px}.tu-file{display:block;margin:6px 0}.er .e-st{width:auto;padding:2px 4px;font-size:12px}.er .e-st.on{background:#FBEFF3;color:#B0285A;font-weight:700}
 .memo-row.is-st{opacity:.7}.memo-row.is-st [name=m_name]{text-decoration:line-through}.memo-price .mp-st select{width:auto}
 .es-st{font-weight:700}
 
@@ -4664,9 +4667,72 @@ async function viewWorkDetail(id){
     <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${t?.lastAt ? "やりとりを開く" : `${esc(coNameOf(job))}とチャットする`}</button></section>`;
   const showSite = job.acceptedAt && !job.declinedAt && !["completed", "paid"].includes(job.status);
   return `${back("#/work", "受注した案件")}${coJobBanner(job)}<div class="cols">
-    <div class="stack">${lateTop}${orderChangeHtml(order)}${showSite ? siteCard(job, priv, id) : ""}${step}${dates}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
+    <div class="stack">${lateTop}${orderChangeHtml(order)}${showSite ? siteCard(job, priv, id) : ""}${step}${dates}${contact}${touchupPanel(job, false)}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${craftJobBlock(job, priv, {full:true, showPrice:!(job.status === "assigned" && !job.acceptedAt && !job.declinedAt), itemsHtml:order?.manual && order.job?.items?.length ? itemsTable({items:order.job.items, taxMode:job.taxMode}) : itemsPanelBody(job, priv), itemsLabel:order?.manual && order.job?.items?.length ? `${order.job.items.length}件・発注書のとおり` : priv.items?.length ? `${itemsWithId(priv.items).length}件` : "", itemsOpen:true})}</div></div>`;
 }
+/* ---------- 手直し書：完了確認などで見つけた直しを、写真つきで発注した業者さんに頼む（無償の手直し。お金のかかる是正は「是正・追加の発注」） ---------- */
+// 案件の touchups に入れる：{id, at, by, due, note, items:[{loc, text, photos:[dataURL]}], doneAt}
+const tuOpen = j => (j.touchups || []).filter(t => !t.doneAt);
+function touchupCard(t, k, admin, jid){
+  const it = (t.items || []).map((x, i) => `<li><b>${i + 1}. ${esc(x.loc ? x.loc + "　" : "")}${esc(x.text)}</b>${(x.photos || []).length ? `<div class="tu-ph">${x.photos.map(u => `<img src="${esc(u)}" alt="${esc(x.loc || "")}の写真">`).join("")}</div>` : ""}</li>`).join("");
+  return `<div class="tu-card${t.doneAt ? " done" : ""}"><div class="row between" style="flex-wrap:wrap;gap:6px"><b>手直し書 ${k + 1}　<span class="small">${fmtDate(t.at)}${t.due ? `　期限 ${fmtDay(t.due)}` : ""}</span></b>
+    <span class="pill ${t.doneAt ? "approved" : "pending"}">${t.doneAt ? `直りました（${fmtDate(t.doneAt)}）` : "手直し中"}</span></div>
+    ${t.note ? `<p class="small" style="margin:6px 0 0;white-space:pre-line">${esc(t.note)}</p>` : ""}<ol class="tu-list">${it}</ol>
+    <div class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn sub sm" data-act="tu-pdf" data-job="${esc(jid)}" data-k="${k}">手直し書PDF</button>${admin && !t.doneAt ? `<button type="button" class="btn sub sm" data-act="tu-done" data-job="${esc(jid)}" data-k="${k}">直った（完了にする）</button>` : ""}${admin ? `<button type="button" class="textlink danger-text" data-act="tu-del" data-job="${esc(jid)}" data-k="${k}">消す</button>` : ""}</div></div>`;
+}
+function touchupPanel(job, admin){
+  const list = job.touchups || [];
+  if(!admin && !list.length) return "";
+  return `<section class="panel tu-panel"><h2>手直し${tuOpen(job).length ? ` <span class="pill pending">${tuOpen(job).length}件 手直し中</span>` : ""}</h2>
+    ${admin ? `<p class="small" style="margin:0 0 10px">完了確認などで見つけた直しを、写真つきで${job.assignedTo ? "この業者さん" : "発注した業者さん"}に頼みます（お金はかかりません）。作ると、業者さんの画面とチャットに届きます。</p>` : `<p class="small" style="margin:0 0 10px">直してほしいところです。直したら「完了報告」の「写真を追加で送る」で、直したあとの写真を送ってください。</p>`}
+    ${list.map((t, k) => touchupCard(t, k, admin, job.id)).reverse().join("") || `<p class="small" style="margin:0 0 8px">まだ手直し書はありません。</p>`}
+    ${admin && job.assignedTo ? `<button type="button" class="btn" data-act="tu-new" data-job="${esc(job.id)}">＋ 手直し書を作る</button>` : ""}</section>`;
+}
+function touchupDocHtml(job, t, c, priv = {}){
+  const co = isRefJob(job) ? COMPANY : coInfo(), st = job.staff;
+  return `<div class="pdfdoc tu-doc"><h1 class="tu-h">手 直 し 指 示 書</h1>
+    <div class="tu-top"><div><div class="tu-to">${esc(c?.tradeName || c?.name || "")}　様</div><p>下記の箇所の手直しをお願いいたします。</p></div>
+      <div class="tu-me">発行日　${fmtDate(t.at)}<br>工事番号　${esc(job.jobNo || "")}<br><b>${esc(co.name || "")}</b><br>${esc(co.address || "")}<br>TEL ${esc(co.tel || "")}${st?.name ? `<br>担当　${esc(st.name)}${st.phone ? `（${esc(st.phone)}）` : ""}` : ""}</div></div>
+    <table class="tu-info"><tr><th>物件名</th><td>${esc([priv.building || job.site?.building || job.title, priv.room || job.site?.room].filter(Boolean).join("　"))}</td></tr><tr><th>現場住所</th><td>${esc(priv.address || job.site?.address || [job.pref, job.city].join(""))}</td></tr>
+      <tr><th>期限</th><td>${t.due ? esc(fmtDate(t.due)) + "まで" : "ご相談ください"}</td></tr>${t.note ? `<tr><th>連絡事項</th><td style="white-space:pre-line">${esc(t.note)}</td></tr>` : ""}</table>
+    <table class="tu-items"><thead><tr><th class="n">No</th><th>箇所</th><th>手直しの内容</th><th>写真</th></tr></thead><tbody>
+    ${(t.items || []).map((x, i) => `<tr><td class="n">${i + 1}</td><td>${esc(x.loc || "")}</td><td>${esc(x.text)}</td><td>${(x.photos || []).map(u => `<img src="${esc(u)}" alt="">`).join("")}</td></tr>`).join("")}</tbody></table>
+    <p class="tu-foot">直したあとの写真を、ポータルの「完了報告」（写真を追加で送る）かチャットで送ってください。</p></div>`;
+}
+const TU_CSS = `.tu-doc{font-size:11.5px}.tu-h{text-align:center;font-size:20px;letter-spacing:.3em;color:#142A5E;border-bottom:3px double #142A5E;margin:0 0 14px;padding-bottom:6px}
+.tu-top{display:flex;justify-content:space-between;gap:16px}.tu-to{font-size:15px;font-weight:700;border-bottom:1px solid #111;padding-bottom:2px;min-width:260px}.tu-me{text-align:right;line-height:1.6;font-size:10.5px}
+.tu-info,.tu-items{width:100%;border-collapse:collapse;margin-top:12px}.tu-info th,.tu-info td,.tu-items th,.tu-items td{border:1px solid #9aa3b5;padding:5px 7px;vertical-align:top;text-align:left}
+.tu-info th{width:90px;background:#EEF2FA;color:#142A5E}.tu-items thead th{background:#EEF2FA;color:#142A5E}.tu-items .n{width:28px;text-align:center}.tu-items tr{break-inside:avoid}
+.tu-items img{width:150px;height:112px;object-fit:cover;margin:0 4px 4px 0;border:1px solid #ccd}.tu-foot{margin-top:12px;font-size:10.5px;color:#444}`;
+// 手直し書を作る窓：箇所・内容・写真（1件に3枚まで）を何件でも。期限とひとこと
+function touchupForm(){
+  return new Promise(res => {
+    const bg = document.createElement("div"); bg.className = "modal-bg";
+    const row = () => `<div class="tu-row"><div class="two"><input type="text" name="t_loc" placeholder="箇所（例：2F洋室 北の壁）"><input type="text" name="t_text" placeholder="手直しの内容（例：クロスのつなぎ目が浮いている）"></div>
+      <label class="small tu-file">写真（3枚まで）<input type="file" name="t_ph" accept="image/*" multiple></label><button type="button" class="textlink danger-text tu-rm">この行を消す</button></div>`;
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="tu-title" style="max-width:640px"><h2 id="tu-title">手直し書を作る</h2>
+      <div id="tu-rows">${row()}</div><button type="button" class="btn sub sm" id="tu-add" style="margin:4px 0 12px">＋ 行を足す</button>
+      <div class="two"><label class="field"><span>期限</span><input type="date" id="tu-due"></label><label class="field"><span>ひとこと（任意）</span><input type="text" id="tu-note" placeholder="例：11/5の完了確認までにお願いします"></label></div>
+      <div class="row end"><button type="button" class="btn sub m-no">キャンセル</button><button type="button" class="btn m-ok">作って業者さんに送る</button></div></div>`;
+    document.body.appendChild(bg);
+    const close = v => { bg.remove(); res(v); };
+    bg.querySelector("#tu-add").onclick = () => bg.querySelector("#tu-rows").insertAdjacentHTML("beforeend", row());
+    bg.addEventListener("click", e => { if(e.target.classList.contains("tu-rm") && bg.querySelectorAll(".tu-row").length > 1) e.target.closest(".tu-row").remove(); });
+    bg.querySelector(".m-no").onclick = () => close(null);
+    bg.querySelector(".m-ok").onclick = async () => {
+      const b = bg.querySelector(".m-ok"); b.disabled = true; b.textContent = "写真を小さくしています…";
+      try {
+        const items = [];
+        for(const r of bg.querySelectorAll(".tu-row")){ const loc = r.querySelector("[name=t_loc]").value.trim(), text = r.querySelector("[name=t_text]").value.trim(); if(!text) continue;
+          const photos = []; for(const f of [...r.querySelector("[name=t_ph]").files].slice(0, 3)) photos.push(await blobToDataURL(await resizeImage(f, 900, 0.6)));
+          items.push({loc, text, photos}); }
+        if(!items.length){ toast("手直しの内容を1つ以上入れてください"); b.disabled = false; b.textContent = "作って業者さんに送る"; return; }
+        close({items, due:bg.querySelector("#tu-due").value, note:bg.querySelector("#tu-note").value.trim()});
+      } catch(err) { toast(err.message || String(err)); b.disabled = false; b.textContent = "作って業者さんに送る"; }
+    };
+  });
+}
+
 /* ---------- メール通知：自動メールはやめた（2026-10-14）。呼び出しは残して何もしない ---------- */
 async function notifyMail(){}
 
@@ -4997,6 +5063,7 @@ async function viewAdminJob(id){
         ${chatPanel(threads, id, job.assignedTo)}
         ${docs}
         ${job.assignedTo && (rs.length || ["working", "finished", "completed", "paid"].includes(job.status)) ? reportsBlock(rs, true) : ""}
+        ${job.assignedTo && ["working", "finished", "completed", "paid"].includes(job.status) || (job.touchups || []).length ? touchupPanel(job, true) : ""}
         ${job.assignedTo && apps.length ? `<section class="panel"><details><summary class="textlink">応募者（${apps.filter(a => a.status !== "withdrawn").length}件）を見る</summary>${apps.map(applicantHtml).join("")}</details></section>`
         : `<section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
           ${apps.length ? apps.map(applicantHtml).join("") : `<p class="small" style="margin:0">${job.status === "draft" ? "公開すると、協力業者からの応募がここに届きます。" : "まだ応募はありません。"}</p>`}
@@ -8128,6 +8195,37 @@ const ACTIONS = {
     await api().submitReport({jobId:id, jobTitle:job?.title || "", craftsmanId:S.user.uid, craftsmanName:S.profile.name, method:"email"});
     notifyMail(id, "完了報告が届きました（メール）", `写真と報告内容は ${REPORT_EMAIL} にメールで送られています。`);
     toast("報告済みにしました"); route();
+  },
+  async "tu-new"(el){
+    const jid = el.dataset.job, job = await api().getJob(jid); if(!job?.assignedTo) return toast("発注した業者さんがいません");
+    const v = await touchupForm(); if(!v) return;
+    const t = {id:"tu_" + newId(), at:Date.now(), by:S.profile?.name || "", ...v};
+    const list = [...(job.touchups || []), t];
+    if(JSON.stringify(list).length > 800000) return toast("写真が多くて保存できません。写真を減らしてください");
+    await api().saveJob(jid, {touchups:list});
+    // 業者さんのチャットにも知らせる
+    const uid = job.assignedTo, c = S.crafts?.get(uid) || await api().getProfile(uid).catch(() => null), tid = `${jid}_${uid}`;
+    try { await api().ensureThread({id:tid, jobId:jid, craftsmanId:uid, craftsmanName:c?.name || "", jobTitle:job.title || "", createdAt:Date.now(), lastAt:0, lastText:"", lastFrom:"", adminReadAt:0, craftsmanReadAt:0});
+      await api().sendMessage(tid, {from:"admin", uid:S.user.uid, name:tenant() ? `${S.company?.name || ""}　${S.profile.name || ""}`.trim() : "Refore", text:`手直しのお願いがあります（${t.items.length}か所${t.due ? `・期限 ${fmtDay(t.due)}` : ""}）。\n${t.items.map((x, i) => `${i + 1}. ${x.loc ? x.loc + " " : ""}${x.text}`).join("\n")}\n写真と手直し書は、受注の案件の画面で見られます。`, createdAt:Date.now()}); } catch(e) { console.warn(e); }
+    toast("手直し書を作って、業者さんに送りました"); route();
+  },
+  async "tu-pdf"(el){
+    const jid = el.dataset.job, job = await api().getJob(jid), t = (job?.touchups || [])[Number(el.dataset.k)]; if(!t) return;
+    const admin = myRole() === "admin", c = admin ? (S.crafts?.get(job.assignedTo) || await api().getProfile(job.assignedTo).catch(() => null)) : S.profile;
+    const priv = await api().getJobPrivate(jid).catch(() => ({}));
+    toast("PDFを作っています…");
+    const blob = await pdfBlob(`<style>${TU_CSS}</style>${touchupDocHtml(job, t, c, priv || {})}`);
+    saveBlob(blob, `${todayIso().replace(/-/g, "")}・手直し書・${fileSafe(job.title || "")}.pdf`);
+  },
+  async "tu-done"(el){
+    const jid = el.dataset.job, job = await api().getJob(jid), k = Number(el.dataset.k), list = clone(job?.touchups || []); if(!list[k]) return;
+    if(!await ask({title:"直ったことにしますか？", body:"直したあとの写真を確かめてから押してください。", ok:"直った"})) return;
+    list[k].doneAt = Date.now(); await api().saveJob(jid, {touchups:list}); toast("直ったことにしました"); route();
+  },
+  async "tu-del"(el){
+    const jid = el.dataset.job, job = await api().getJob(jid), k = Number(el.dataset.k), list = clone(job?.touchups || []); if(!list[k]) return;
+    if(!await ask({title:"この手直し書を消しますか？", body:"業者さんの画面からも消えます。", ok:"消す", danger:true})) return;
+    list.splice(k, 1); await api().saveJob(jid, {touchups:list}); toast("消しました"); route();
   },
   async "chat-open"(el){
     const jid = el.dataset.job, admin = myRole() === "admin", uid = admin ? el.dataset.uid : S.user.uid;
