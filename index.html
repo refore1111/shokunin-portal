@@ -9101,7 +9101,8 @@ const STRIPE = {
 const SUBSCRIPTION_ON = true;    // サブスク（プラン・月額のカード決済・投稿数の上限・オプション）を使うときは true に
 // 無料期間（工務店が30社くらいになるまで）：月額・プラン・件数の上限・オプションなしで全部使える。全体公開の先払い（カード）はそのまま。有料にするときは false に
 const FREE_NOW = true;
-const subPaid = () => SUBSCRIPTION_ON && !FREE_NOW;
+// 運営の「設定」の「有料プランを始める」ボタンで切り替える（paidOn）。押していなければ FREE_NOW のとおり
+const subPaid = () => SUBSCRIPTION_ON && (S.opCfg?.paidOn != null ? !!S.opCfg.paidOn : !FREE_NOW);
 // プラン（税込）。incl = 追加料金なしで使えるオプション（staff は従業員追加が無制限）
 const OP_DEFAULT = {
   plans:{free:{name:"無料プラン", price:0, limit:1, incl:[]}, beginner:{name:"ビギナープラン", price:980, limit:3, incl:[]},
@@ -9116,7 +9117,12 @@ const opFee = () => Number(opCfg().fee) || 0.1;
 // お試しプラン：運営が招待するときに選ぶ。期間中は月額が無料（全体公開の案件の運営手数料はかかる）。終わると新しい案件を公開できない
 const isTrial = c => subPaid() && c?.plan === "trial";
 const trialIncl = () => Array.isArray(opCfg().trial.incl) ? opCfg().trial.incl.filter(k => OPT_KEYS.includes(k)) : OP_DEFAULT.trial.incl;
-const planOf = c => isTrial(c) ? {...opCfg().trial, price:0, trial:true, incl:trialIncl()} : opCfg().plans[c?.plan] || opCfg().plans.free;
+const planOf = c => isTrial(c) ? {...opCfg().trial, ...(c?.trialNoLimit ? {limit:0} : {}), price:0, trial:true, incl:trialIncl()} : opCfg().plans[c?.plan] || opCfg().plans.free;
+// お試し：日数0・期限なしの会社は「無期限」、公開件数0・trialNoLimit の会社は「無制限」
+const TRIAL_FOREVER = 100 * 365 * 86400000;
+const trialForever = c => !!c?.trialEnds && c.trialEnds - Date.now() > 50 * 365 * 86400000;
+const trialEndOf = (days = opCfg().trial.days) => Date.now() + (Number(days) ? Number(days) * 86400000 : TRIAL_FOREVER);
+const trialDesc = () => { const t = opCfg().trial; return `${Number(t.days) ? `${t.days}日間無料` : "無期限で無料"}・全体公開 ${Number(t.limit) ? `月${t.limit}件まで` : "無制限"}`; };
 const PLAN_KEYS = ["free", "beginner", "pro", "master"];
 const DAY_MS = 86400000;
 // 次回の請求日（カード決済の日）。プラン・オプションを下げる手続きは、この日の前日まで今の内容で使える
@@ -9190,6 +9196,7 @@ async function applyScheduled(force = false){
 // 今月の公開数（プランの上限＋追加枠）。使い切ったら追加枠・プラン変更へ案内する
 async function coQuotaBox(){
   const c = S.company; if(!subPaid() || !tenant() || !c) return "";
+  if(!Number(planOf(c).limit)) return `<div class="quota"><div class="qh"><span>${esc(planOf(c).name)}　全体公開 <b>無制限</b></span><span class="small">${esc(trialNote(c))}</span></div></div>`;
   const ym = curMonth(), used = await api().countPosted(S.cid, ym), p = planOf(c), ex = Number((c.extra || {})[ym] || 0), cap = p.limit + ex, left = Math.max(0, cap - used);
   const pct = Math.min(100, used / Math.max(1, cap) * 100), cls = left === 0 ? " full" : left <= Math.max(1, Math.round(cap * 0.1)) ? " low" : "";
   return `<div class="quota${cls}"><div class="qh"><span>${esc(p.name)}　今月の全体公開 <small>（既存業者のみは数えません）</small></span><span><span class="qn num">${used}</span> / ${cap}件　<span class="small">残り${left}件${ex ? `（追加枠 ${ex}件を含む）` : ""}・${fmtDate(lastDayIso(ym))}まで</span></span></div>
@@ -9220,7 +9227,7 @@ function lockWrap(k, inner){
 const lockBtn = (k, label) => `<button type="button" class="btn btn-locked" data-act="opt-locked" data-k="${k}" aria-disabled="true">${LOCK_SVG}${label}</button>`;
 const billsTab = cur => hasOpt("docs") ? `<a href="#/admin/bills"${cur ? ' aria-current="true"' : ""}>管理会社への請求</a>` : `<button type="button" class="seg-locked" data-act="opt-locked" data-k="docs" aria-disabled="true">${LOCK_SVG}管理会社への請求</button>`;
 const trialLeft = c => isTrial(c) ? Math.ceil(((c.trialEnds || 0) - Date.now()) / 86400000) : null;
-const trialNote = c => { const d = trialLeft(c); return d === null ? "" : d > 0 ? `お試し中：あと${d}日（${fmtDate(c.trialEnds)}まで）` : `お試し期間は${fmtDate(c.trialEnds)}で終わりました`; };
+const trialNote = c => { const d = trialLeft(c); return d === null ? "" : trialForever(c) ? "お試し中（期限なし）" : d > 0 ? `お試し中：あと${d}日（${fmtDate(c.trialEnds)}まで）` : `お試し期間は${fmtDate(c.trialEnds)}で終わりました`; };
 const CLOSE_DAYS = [[10, "10日"], [15, "15日"], [20, "20日"], [25, "25日"], [0, "末日"]];
 const coCloseLabel = d => (CLOSE_DAYS.find(x => x[0] === Number(d || 0)) || CLOSE_DAYS[4])[1];
 const CO_STATUS = {active:"利用中", stopped:"利用停止"};
@@ -9266,7 +9273,9 @@ async function coPostGuard(id, x, status){
   if(cur?.countedYm || !subPaid()) return;
   if((status || x.status || cur?.status) !== "open" || (x.audience ?? cur?.audience ?? "all") !== "all") return;
   if(isTrial(S.company) && trialLeft(S.company) <= 0) throw new Error("お試し期間が終わりました。「契約・料金」でプランを選ぶと、続けて案件を公開できます");
-  const ym = curMonth(), c = S.company || {}, used = await api().countPosted(S.cid, ym), cap = planOf(c).limit + Number((c.extra || {})[ym] || 0);
+  const ym = curMonth(), c = S.company || {};
+  if(!Number(planOf(c).limit)){ x.countedYm = ym; return; }   // お試しの公開数無制限
+  const used = await api().countPosted(S.cid, ym), cap = planOf(c).limit + Number((c.extra || {})[ym] || 0);
   if(used >= cap) throw new Error(`今月の全体公開（${cap}件）を使い切りました。既存業者のみに公開すれば、件数に関係なく出せます。全体に公開するときは「契約・料金」で追加枠を買うか、プランを変えてください`);
   x.countedYm = ym;
 }
@@ -9285,7 +9294,7 @@ function coNavExtra(){
 }
 function coPostNote(){
   const c = S.company || {}, p = planOf(c);
-  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${isTrial(c) ? esc(trialNote(c)) + "。" : ""}${esc(p.name)}：全体公開は今月 ${p.limit}件まで${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。既存業者のみの案件は件数に数えず、先払い・運営手数料もありません。</p>`;
+  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${isTrial(c) ? esc(trialNote(c)) + "。" : ""}${esc(p.name)}：全体公開は${Number(p.limit) ? `今月 ${p.limit}件まで` : "無制限"}${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。既存業者のみの案件は件数に数えず、先払い・運営手数料もありません。</p>`;
 }
 // 職人さんが見る工務店の案件の帯（掲載元・代金・請求先）
 function coJobBanner(j){
@@ -9447,7 +9456,7 @@ async function viewCoPlan(){
       ${ends.map(k => `<div class="doc-row"><span class="row-main"><b>${k === "staff" ? `従業員追加を${Number(c.optEnd.staff)}人減らす（${staffSlots(c)}人 → ${staffSlots(c) - Number(c.optEnd.staff)}人）` : `${esc(OPTS[k].name)}をやめる`}</b><span class="small">${fmtDate(until)}まで使えます。データは残ります</span></span><button class="btn sub" data-act="co-undo" data-what="opt" data-k="${k}">取り消す</button></div>`).join("")}
       <p class="small" style="margin:8px 0 0"><button type="button" class="textlink" data-act="co-advance">（デモ）次回請求日まで進めて、変更を反映する</button></p></section>` : "";
   return `<h1>契約・料金</h1><p class="lead">プランで、公開できる案件の数と使える機能が変わります。月額はご登録のカードで毎月自動でお支払いいただきます（Stripe）。全体に公開した案件は、発注するときに工事代金の${Math.round(opFee() * 100)}%が運営手数料として上乗せされます（既存業者のみの案件はかかりません）。</p>
-    ${isTrial(c) ? `<div class="alert-box trial-box"><b>${esc(trialNote(c))}</b><p>お試し中は月額が無料です（全体公開は月${opCfg().trial.limit}件まで。使えるオプション：${trialIncl().length ? trialIncl().map(k => esc(OPTS[k].name)).join("・") : "なし"}）。${trialLeft(c) > 0 ? "続けて使うときは、下のプランから選んでください。" : "続けて案件を公開するには、下のプランから選んでください。"}</p></div>` : ""}
+    ${isTrial(c) ? `<div class="alert-box trial-box"><b>${esc(trialNote(c))}</b><p>お試し中は月額が無料です（全体公開は${Number(planOf(c).limit) ? `月${planOf(c).limit}件まで` : "無制限"}。使えるオプション：${trialIncl().length ? trialIncl().map(k => esc(OPTS[k].name)).join("・") : "なし"}）。${trialLeft(c) > 0 ? "続けて使うときは、下のプランから選んでください。" : "続けて案件を公開するには、下のプランから選んでください。"}</p></div>` : ""}
     ${sched}
     ${Object.keys(c.pendingPay || {}).length ? `<div class="note"><b>お支払いの確認待ち</b>：${Object.keys(c.pendingPay).map(k => esc(STRIPE_LABEL(k))).join("、")}<br><span class="small">Stripe でのお支払いを運営が確認すると切り替わります。</span></div>` : ""}
     ${await coQuotaBox()}
@@ -9559,6 +9568,10 @@ async function craftCoInvoices(jobs){
   if(!mine.length) return "";
   const uid = S.user.uid, invs = await api().listInvoices({craftsmanId:uid}).catch(() => []), byId = new Map(invs.map(v => [v.id, v]));
   const each = mine.filter(j => j.pay && !j.split).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  // 先払いの案件（Refore宛て）：まとめて発行した請求書に入っている案件も「発行済み」にする
+  const payBilled = new Map(); invs.filter(v => v.type === "job").forEach(v => (v.lines || []).forEach(l => payBilled.set(l.jobId, v)));
+  const payInv = j => byId.get(`${uid}_j_${j.id}`) || payBilled.get(j.id);
+  const eachBy = {}; each.forEach(j => (eachBy[j.companyId] ||= []).push(j));
   // 工務店宛て（既存業者として受けた案件）：発行済みの請求書に入っていない案件を、工務店ごとに並べる
   const coInvs = invs.filter(v => v.type === "co"), billedBy = new Map();
   coInvs.forEach(v => (v.lines || []).forEach(l => billedBy.set(l.jobId, v)));
@@ -9580,14 +9593,17 @@ async function craftCoInvoices(jobs){
         <span class="row">${st(v)}<button class="btn sub" data-act="inv-pdf" data-id="${esc(v.id)}">PDF</button></span></div>`).join("")}` : ""}</section>`;
   };
   return `<h2 class="day-head"><b>工務店の案件</b></h2>
-    ${each.length ? `<section class="panel"><h2>ポータル案件 <small>案件ごとに株式会社Refore宛て（代金は先払い済み）</small></h2>
-      ${each.map(j => { const v = byId.get(`${uid}_j_${j.id}`), a = calcAmount(j.price, taxModeOf(j)); return `<div class="doc-row"><span class="row-main"><b>${esc(j.title)}</b><span class="small">掲載元：${esc(coNameOf(j))}　完了確認 ${fmtDay(isoOf(j.completedAt || Date.now()))}　${yenFull(a.total)}（税込）</span></span>
-        <span class="row">${st(v)}${v ? `<button class="btn sub" data-act="inv-pdf" data-id="${esc(v.id)}">PDF</button>` : `<button class="btn" data-act="civ-job" data-job="${esc(j.id)}">請求書を発行</button>`}</span></div>`; }).join("")}</section>` : ""}
+    ${Object.entries(eachBy).map(([cid, js]) => { const open = js.filter(j => !payInv(j));
+      return `<section class="panel"><h2>ポータル案件（掲載元：${esc(coNameOf(js[0]))}） <small>株式会社Refore宛て（代金は先払い済み）</small></h2>
+      <form data-form="civpaybundle" data-co="${esc(cid)}">${open.length > 1 ? `<p class="small" style="margin:0 0 8px">案件ごとに発行するか、まとめたい案件にチェックを入れて1枚の請求書にできます。</p>` : ""}
+      ${js.map(j => { const v = payInv(j), a = calcAmount(j.price, taxModeOf(j)); return `<div class="doc-row">${!v && open.length > 1 ? `<input type="checkbox" name="pick" value="${esc(j.id)}" aria-label="${esc(j.title)}を選ぶ" style="margin-right:8px">` : ""}<span class="row-main"><b>${esc(j.title)}</b><span class="small">完了確認 ${fmtDay(isoOf(j.completedAt || Date.now()))}　${yenFull(a.total)}（税込）</span></span>
+        <span class="row">${st(v)}${v ? `<button type="button" class="btn sub" data-act="inv-pdf" data-id="${esc(v.id)}">PDF</button>` : `<button type="button" class="btn${open.length > 1 ? " sub" : ""}" data-act="civ-job" data-job="${esc(j.id)}">${open.length > 1 ? "この案件だけ発行" : "請求書を発行"}</button>`}</span></div>`; }).join("")}
+      ${open.length > 1 ? `<div class="row between" style="margin-top:10px"><span class="small civ-sum">選んだ案件：0件</span><button class="btn">選んだ案件をまとめて請求書を発行</button></div>` : ""}</form></section>`; }).join("")}
     ${Object.keys(byCo).length ? `<h3 style="margin:16px 0 8px;font-size:15px">既存業者として受けた案件 <span class="small">工務店宛て</span></h3>${Object.entries(byCo).map(coSec).join("")}` : ""}`;
 }
 document.addEventListener("change", e => {
   const t = e.target;
-  if(t.matches?.("form[data-form=civbundle] [name=pick]")){ const f = t.form, n = f.querySelectorAll("[name=pick]:checked").length, out = f.querySelector(".civ-sum"); if(out) out.textContent = `選んだ案件：${n}件`; }
+  if(t.matches?.("form[data-form=civbundle] [name=pick], form[data-form=civpaybundle] [name=pick]")){ const f = t.form, n = f.querySelectorAll("[name=pick]:checked").length, out = f.querySelector(".civ-sum"); if(out) out.textContent = `選んだ案件：${n}件`; }
 });
 async function issueCraftInvoice(id, extra, jobs, toName, label){
   const p = S.profile, uid = S.user.uid;
@@ -9714,8 +9730,9 @@ function viewOpCos(cos){
     <form class="panel" data-form="opcompany"><h2>工務店を招待する</h2>
       <label class="field"><span>会社名</span><input name="name" required placeholder="例：みどり建装株式会社"></label>
       <div class="two"><label class="field"><span>代表者の名前</span><input name="ownerName" required></label><label class="field"><span>代表者のメール</span><input name="ownerEmail" type="email" required></label></div>
-      <div class="two"><label class="field"><span>プラン</span><select name="plan"><option value="trial">${esc(opCfg().trial.name)}（${opCfg().trial.days}日間無料・全体公開 月${opCfg().trial.limit}件まで・${trialIncl().length ? trialIncl().map(k => OPTS[k].name).join("・") : "オプションなし"}）</option>${Object.entries(opCfg().plans).map(([k, x]) => `<option value="${k}" ${k === "free" ? "selected" : ""}>${esc(x.name)}（${x.price ? yenFull(x.price) : "0円"}）</option>`).join("")}</select></label>
+      <div class="two"><label class="field"><span>プラン</span><select name="plan"><option value="trial">${esc(opCfg().trial.name)}（${trialDesc()}・${trialIncl().length ? trialIncl().map(k => OPTS[k].name).join("・") : "オプションなし"}）</option>${Object.entries(opCfg().plans).map(([k, x]) => `<option value="${k}" ${k === "free" ? "selected" : ""}>${esc(x.name)}（${x.price ? yenFull(x.price) : "0円"}）</option>`).join("")}</select></label>
         <label class="field"><span>工事番号の頭 <small>英字2〜3文字</small></span><input name="prefix" maxlength="3" placeholder="例：MD" style="text-transform:uppercase"></label></div>
+      <div class="row" style="gap:16px;flex-wrap:wrap;margin:-4px 0 12px"><label class="toggle"><input type="checkbox" name="trialForever">お試しを期限なしにする</label><label class="toggle"><input type="checkbox" name="trialNoLimit">お試し中の全体公開を無制限にする</label><span class="small">（プランが「${esc(opCfg().trial.name)}」のときだけ）</span></div>
       <label class="field"><span>締め日 <small>既存業者からの請求</small></span><select name="closeDay">${CLOSE_DAYS.map(([d, l]) => `<option value="${d}" ${d === 0 ? "selected" : ""}>毎月${l}</option>`).join("")}</select></label>
       <button class="btn">招待する</button></form></div>`;
 }
@@ -9732,7 +9749,7 @@ async function viewOpCompany(cid){
         <span class="row"><button class="btn" data-act="op-pay-apply" data-id="${esc(c.id)}" data-k="${esc(k)}">入金を確認して反映</button><button class="btn sub" data-act="op-pay-drop" data-id="${esc(c.id)}" data-k="${esc(k)}">取り消す</button></span></div>`).join("")}
       ${scheduledUpd(c) ? `<div class="doc-row"><span class="row-main"><b>予約中の変更（次回請求日 ${fmtDate(isoOf(c.nextBill))}）</b><span class="small">${c.nextPlan ? `プラン → ${esc(opCfg().plans[c.nextPlan]?.name || c.nextPlan)}　` : ""}${Object.keys(c.optEnd || {}).filter(k => c.optEnd[k]).map(k => `${esc(OPTS[k]?.name || k)}をやめる`).join("・")}。Stripe 側の変更も済ませてから反映してください</span></span>
         <span class="row"><button class="btn" data-act="op-sched-apply" data-id="${esc(c.id)}">反映する</button></span></div>` : ""}</section>` : ""}
-    <section class="panel"><h2>契約</h2><dl class="kv"><dt>プラン</dt><dd>${esc(planOf(c).name)}${isTrial(c) ? `<br><span class="small">${esc(trialNote(c))}</span><div class="row" style="margin-top:6px"><button class="btn sub" data-act="op-trial" data-id="${esc(c.id)}" data-days="14">お試しを14日延ばす</button><button class="btn sub" data-act="op-trial" data-id="${esc(c.id)}" data-days="0">今日で終える</button></div>` : ""}</dd><dt>収支オプション</dt><dd>${c.money ? "使用中" : "—"}</dd><dt>今月の追加枠</dt><dd>${Number((c.extra || {})[curMonth()] || 0)}件</dd><dt>工事番号の頭</dt><dd>${esc(c.prefix || "—")}</dd><dt>お知らせメール</dt><dd>${esc(c.notifyEmail || c.ownerEmail || "")}</dd></dl></section></div>`;
+    <section class="panel"><h2>契約</h2><dl class="kv"><dt>プラン</dt><dd>${esc(planOf(c).name)}${isTrial(c) ? `<br><span class="small">${esc(trialNote(c))}</span><div class="row" style="margin-top:6px"><button class="btn sub" data-act="op-trial" data-id="${esc(c.id)}" data-days="14">お試しを14日延ばす</button><button class="btn sub" data-act="op-trial" data-id="${esc(c.id)}" data-days="0">今日で終える</button>${trialForever(c) ? "" : `<button class="btn sub" data-act="op-trial" data-id="${esc(c.id)}" data-days="forever">期限なしにする</button>`}<button class="btn sub" data-act="op-trial-nolimit" data-id="${esc(c.id)}" data-on="${c.trialNoLimit ? 0 : 1}">${c.trialNoLimit ? "公開数の上限を戻す" : "公開数を無制限にする"}</button></div>` : ""}</dd><dt>収支オプション</dt><dd>${c.money ? "使用中" : "—"}</dd><dt>今月の追加枠</dt><dd>${Number((c.extra || {})[curMonth()] || 0)}件</dd><dt>工事番号の頭</dt><dd>${esc(c.prefix || "—")}</dd><dt>お知らせメール</dt><dd>${esc(c.notifyEmail || c.ownerEmail || "")}</dd></dl></section></div>`;
 }
 function viewOpPays(pays){
   const g = s => pays.filter(p => s.includes(p.status)).sort((a, b) => b.createdAt - a.createdAt);
@@ -9796,13 +9813,16 @@ async function viewOpJobs(){
 }
 function viewOpSettings(){
   const o = opCfg();
-  return `<h1>設定</h1><form class="panel stack" data-form="opsettings"><h2>料金</h2>
+  return `<h1>設定</h1><section class="panel paid-switch"><h2>工務店の月額プラン</h2>
+    ${subPaid() ? `<p style="margin:0 0 10px"><b>有料プランを使っています。</b>工務店はプランの料金・全体公開の件数の上限・オプションのとおりに使います。</p><button type="button" class="btn sub" data-act="op-paid" data-on="0">無料に戻す（全部の機能を無料・件数の上限なし）</button>`
+      : `<p style="margin:0 0 10px"><b>今は無料です。</b>工務店は全部の機能を、件数の上限なしで使えます。有料にするときは、1か月以上前に工務店へ知らせてから押してください（料金ポリシーにそう書いてあります）。</p><button type="button" class="btn" data-act="op-paid" data-on="1">有料プランを始める</button>`}</section>
+  <form class="panel stack" data-form="opsettings"><h2>料金</h2>
     ${Object.entries(o.plans).map(([k, x]) => `<div class="two"><label class="field"><span>${esc(k)}　プラン名</span><input name="pn_${k}" value="${esc(x.name)}"></label><div class="two"><label class="field"><span>月額（税込）</span><input name="pp_${k}" type="number" min="0" value="${x.price}"></label><label class="field"><span>月の公開件数</span><input name="pl_${k}" type="number" min="1" value="${x.limit}"></label></div></div>`).join("")}
     <div class="two"><label class="field"><span>運営手数料（%）</span><input name="fee" type="number" min="0" max="50" step="0.1" value="${Math.round(o.fee * 1000) / 10}"></label><label class="field"><span>メンバー1人の月額</span><input name="memberFee" type="number" min="0" value="${o.memberFee}"></label></div>
     <div class="two"><label class="field"><span>収支オプションの月額</span><input name="moneyFee" type="number" min="0" value="${o.moneyFee}"></label><label class="field"><span>追加枠1件</span><input name="extraFee" type="number" min="0" value="${o.extraFee}"></label></div>
     <p class="small" style="margin:-6px 0 0">「収支オプションの月額」は、オプション（予定表・収支・工事メモ等）1つあたりの月額です。「メンバー1人の月額」は従業員追加の1人あたりの月額です（マスタープランは無料）。</p>
     <h2>お試しプラン <small>運営が招待するときに選べます。期間中は月額が無料です</small></h2>
-    <div class="two"><label class="field"><span>プラン名</span><input name="tn" value="${esc(o.trial.name)}"></label><div class="two"><label class="field"><span>日数</span><input name="td" type="number" min="1" value="${o.trial.days}"></label><label class="field"><span>月の公開件数</span><input name="tl" type="number" min="1" value="${o.trial.limit}"></label></div></div>
+    <div class="two"><label class="field"><span>プラン名</span><input name="tn" value="${esc(o.trial.name)}"></label><div class="two"><label class="field"><span>日数 <small>0＝無期限</small></span><input name="td" type="number" min="0" value="${o.trial.days}"></label><label class="field"><span>月の公開件数 <small>0＝無制限</small></span><input name="tl" type="number" min="0" value="${o.trial.limit}"></label></div></div>
     <fieldset class="field"><legend>お試し中に使えるオプション <small>チェックしたものだけ使えます。外したものは鍵つきで表示され、有料プランにすると使えます</small></legend><div class="checks">${OPT_KEYS.map(k => `<label class="toggle"><input type="checkbox" name="ti" value="${k}" ${trialIncl().includes(k) ? "checked" : ""}>${esc(OPTS[k].name)}${k === "staff" ? "（何人でも）" : ""}</label>`).join("")}</div></fieldset>
     <h2>Stripe <small>支払いリンクの URL を貼るだけでつながります（テスト用の URL でも試せます）</small></h2>
     ${SUBSCRIPTION_ON ? "" : `<p class="small warn" style="margin:0">今はサブスクを使っていない設定（SUBSCRIPTION_ON = false）なので、URL を入れても工務店の画面には出ません。</p>`}
@@ -9998,9 +10018,23 @@ Object.assign(ACTIONS, {
     toast("請求書を作りました"); route();
   },
   async "op-bill-paid"(el){ const b = (await api().listCoBills({})).find(x => x.id === el.dataset.id); if(!b || !await ask({title:`${b.coName}の入金を確認しましたか？`, ok:"入金済みにする"})) return; await api().saveCoBill({...b, status:"paid", paidAt:Date.now()}); toast("入金済みにしました"); route(); },
+  async "op-paid"(el){
+    const on = el.dataset.on === "1";
+    if(!await ask({title:on ? "有料プランを始めますか？" : "無料に戻しますか？", body:on ? "押すとすぐに、工務店の画面に「契約・料金」が出て、プランの全体公開の件数の上限・オプションの鍵がかかります。いまの工務店は「無料プラン」から始まります（お試しの会社はお試しのまま）。料金ポリシー・特定商取引法の表記も有料の内容に変わります。" : "工務店は全部の機能を、件数の上限なしで無料で使えるようになります。", ok:on ? "有料プランを始める" : "無料に戻す", danger:on})) return;
+    const cur = await api().getOpSettings().catch(() => ({}));
+    await api().saveOpSettings({...cur, paidOn:on}); S.opCfg = {...(S.opCfg || {}), paidOn:on};
+    toast(on ? "有料プランを始めました" : "無料に戻しました"); route();
+  },
+  async "op-trial-nolimit"(el){
+    const c = S.opCos.get(el.dataset.id), on = el.dataset.on === "1";
+    if(!await ask({title:on ? "お試し中の全体公開を無制限にしますか？" : "公開数の上限を戻しますか？", body:on ? "お試しのあいだ、全体公開を何件でも出せます。" : `お試しの上限（月${opCfg().trial.limit || "無制限"}件）に戻します。`, ok:on ? "無制限にする" : "戻す"})) return;
+    await api().updateCompany(c.id, {trialNoLimit:on}); toast(on ? "無制限にしました" : "上限を戻しました"); route();
+  },
   async "op-trial"(el){
-    const c = S.opCos.get(el.dataset.id), days = Number(el.dataset.days);
-    const end = days ? Math.max(c.trialEnds || 0, Date.now()) + days * 86400000 : Date.now();
+    const c = S.opCos.get(el.dataset.id);
+    if(el.dataset.days === "forever"){ if(!await ask({title:"お試しを期限なしにしますか？", body:"プランを変えるか「今日で終える」を押すまで、お試しのまま使えます。", ok:"期限なしにする"})) return; await api().updateCompany(c.id, {trialEnds:Date.now() + TRIAL_FOREVER}); toast("お試しを期限なしにしました"); return route(); }
+    const days = Number(el.dataset.days);
+    const end = days ? Math.max(trialForever(c) ? Date.now() : c.trialEnds || 0, Date.now()) + days * 86400000 : Date.now();
     if(!await ask({title:days ? `お試しを${days}日延ばしますか？` : "お試しを今日で終えますか？", body:days ? `${fmtDate(end)}までになります。` : "新しい案件を公開するには、工務店がプランを選ぶ必要があります。", ok:days ? "延ばす" : "終える", danger:!days})) return;
     await api().updateCompany(c.id, {trialEnds:end}); toast(days ? "お試しを延ばしました" : "お試しを終えました"); route();
   },
@@ -10051,6 +10085,17 @@ Object.assign(ACTIONS, {
   }
 });
 Object.assign(FORMS, {
+  async civpaybundle(form){
+    const ids = [...form.querySelectorAll("[name=pick]:checked")].map(x => x.value), cid = form.dataset.co;
+    if(ids.length < 2) throw new Error("まとめる案件を2件以上選んでください（1件だけなら「この案件だけ発行」）");
+    const jobs = (await api().listJobs({assignedTo:S.user.uid})).filter(j => ids.includes(j.id) && j.companyId === cid && j.pay);
+    if(!jobs.length) return;
+    const r = await issueCraftInvoice(`${S.user.uid}_jb_${cid}_${Date.now().toString(36)}`, {type:"job", companyId:cid, coName:jobs[0].coName || "", month:curMonth()}, jobs, "株式会社Refore", `${jobs.length}件をまとめて（掲載元：${coNameOf(jobs[0])}）`);
+    if(!r) return;
+    jobs.forEach(j => { if(j.payId) api().updatePayment(j.payId, {status:"billed", billedAt:Date.now()}).catch(e => console.warn(e)); });
+    notifyMail(jobs[0].id, "ポータル案件の請求書が届きました", `${S.profile.name || ""}さん　${r.lines.length}件　${yenFull(r.total)}（税込）`, {kind:"op"});
+    toast(`${r.lines.length}件をまとめてRefore宛ての請求書を発行しました`); route();
+  },
   async civbundle(form){
     const ids = [...form.querySelectorAll("[name=pick]:checked")].map(x => x.value), cid = form.dataset.co;
     if(!ids.length) throw new Error("まとめる案件にチェックを入れてください");
@@ -10130,7 +10175,7 @@ Object.assign(FORMS, {
   async opcompany(form){
     const g = k => String(form.elements[k]?.value || "").trim();
     const ownerEmail = g("ownerEmail").toLowerCase();
-    const cid = await api().createCompany({name:g("name"), status:"active", plan:g("plan") || "free", trialEnds:g("plan") === "trial" ? Date.now() + opCfg().trial.days * 86400000 : null, money:false, extra:{}, priority:[], closeDay:Number(g("closeDay")) || 0, prefix:g("prefix").toUpperCase(), ownerEmail, notifyEmail:ownerEmail, info:{}});
+    const cid = await api().createCompany({name:g("name"), status:"active", plan:g("plan") || "free", trialEnds:g("plan") === "trial" ? (form.elements.trialForever?.checked ? Date.now() + TRIAL_FOREVER : trialEndOf()) : null, ...(g("plan") === "trial" && form.elements.trialNoLimit?.checked ? {trialNoLimit:true} : {}), money:false, extra:{}, priority:[], closeDay:Number(g("closeDay")) || 0, prefix:g("prefix").toUpperCase(), ownerEmail, notifyEmail:ownerEmail, info:{}});
     const id = await api().createInvite({kind:"co", companyId:cid, companyName:g("name"), coRole:"管理者", owner:true, email:ownerEmail, name:g("ownerName"), invitedBy:S.user.uid});
     const sent = await sendInviteMail(id);
     await ask({title:"工務店を招待しました", body:`${sent ? "代表者に招待メールを送りました。" : "招待メールは送れていません。"}下のリンクを代表者に送ることもできます。\n${inviteUrl(id)}`, ok:"閉じる"});
@@ -10144,10 +10189,11 @@ Object.assign(FORMS, {
   async opsettings(form){
     const f = form.elements, o = opCfg(), plans = {};
     Object.keys(o.plans).forEach(k => { plans[k] = {name:f["pn_" + k].value.trim() || o.plans[k].name, price:Number(f["pp_" + k].value) || 0, limit:Number(f["pl_" + k].value) || 1}; });
-    const trial = {name:f.tn.value.trim() || o.trial.name, days:Number(f.td.value) || 30, limit:Number(f.tl.value) || 1, incl:[...form.querySelectorAll("[name=ti]:checked")].map(i => i.value)};
+    const trial = {name:f.tn.value.trim() || o.trial.name, days:f.td.value === "" ? 30 : Math.max(0, Math.round(Number(f.td.value) || 0)), limit:f.tl.value === "" ? 1 : Math.max(0, Math.round(Number(f.tl.value) || 0)), incl:[...form.querySelectorAll("[name=ti]:checked")].map(i => i.value)};
     const d = {plans, trial, fee:(Number(f.fee.value) || 0) / 100, memberFee:Number(f.memberFee.value) || 0, moneyFee:Number(f.moneyFee.value) || 0, extraFee:Number(f.extraFee.value) || 0, bank:f.bank.value.trim(), opName:f.opName.value.trim(), opInvoiceNumber:f.opInvoiceNumber.value.trim()};
     const surl = n => { const v = (f["sl_" + n]?.value || "").trim(); if(v && !/^https:\/\/(buy|billing|checkout)\.stripe\.com\//.test(v)) throw new Error("Stripe の URL（https://buy.stripe.com/… など）を入れてください：" + v); return v; };
     d.stripe = {links:Object.fromEntries(["beginner", "pro", "master", "calendar", "money", "docs", "staff", "extra"].map(k => [k, surl(k)])), prepay:surl("prepay"), portal:surl("portal"), api:(() => { const v = (f.sl_api?.value || "").trim().replace(/\/+$/, ""); if(v && !/^https:\/\//.test(v)) throw new Error("自動化サーバーの URL は https:// で始まるものを入れてください"); return v; })()};
+    if(o.paidOn != null) d.paidOn = o.paidOn;   // 有料・無料の切り替えはボタンで（ここでは変えない）
     await api().saveOpSettings(d); S.opCfg = {...d, connect:(S.opCfg || {}).connect || {}}; toast("保存しました"); route();
   }
 });
