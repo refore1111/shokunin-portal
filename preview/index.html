@@ -179,14 +179,14 @@ h2{font-size:16px;line-height:1.5;margin:0 0 12px}
 .photos .x{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;cursor:pointer;font-size:14px;line-height:26px;padding:0}
 
 /* フォーム */
-.field{display:grid;gap:6px;margin:0 0 16px}
+.field{display:grid;gap:6px;margin:0 0 16px;align-content:start}
 .field > span,.field > legend{font-size:14px;font-weight:700;padding:0}
 .field small{color:var(--sub);font-size:12px;font-weight:400;margin-left:4px}
 fieldset{border:0;padding:0;min-width:0}
 input[type=text],input[type=email],input[type=password],input[type=tel],input[type=number],input[type=date],input[type=file],select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:10px 12px;font-size:16px}
 input[type=file]{padding:8px}
 textarea{min-height:110px;resize:vertical}
-.two{display:grid;gap:0 12px}
+.two{display:grid;gap:0 12px;align-items:start}
 @media (min-width:560px){.two{grid-template-columns:1fr 1fr}}
 .checks{display:flex;flex-wrap:wrap;gap:8px}
 .checks label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:4px;padding:6px 10px;background:var(--surface);font-size:14px;cursor:pointer}
@@ -212,6 +212,8 @@ textarea{min-height:110px;resize:vertical}
 .toast[hidden]{display:none}
 .modal-bg{position:fixed;inset:0;background:rgba(8,12,18,.6);display:grid;place-items:center;padding:16px;z-index:50}
 .modal{background:var(--surface);border-radius:8px;padding:20px;width:100%;max-width:440px}
+/* 中身が長いとき（発注の確認で工事が多いときなど）は、窓の中だけ動かして、ボタンはいつも下に見えるように */
+.modal{max-height:calc(100dvh - 32px);overflow:auto}.modal>.row.end:last-child{position:sticky;bottom:-20px;background:var(--surface);margin:12px -20px -20px;padding:12px 20px;border-top:1px solid var(--line)}
 .modal p{margin:0 0 14px;font-size:14px}
 .modal textarea,.modal input{margin-bottom:14px}
 .lightbox img{max-height:86vh;max-width:100%;border-radius:4px}
@@ -745,7 +747,12 @@ body{font-size:17px}
 .er .e-amt{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
 .er .e-cost{grid-column:3/-1;font-size:12px;color:var(--sub);margin-top:-2px}
 .er .e-cost:empty{display:none}
-.er .er-tools{display:flex;gap:2px;justify-content:flex-end}
+.er .er-tools{display:flex;gap:2px;justify-content:flex-end;align-items:center}
+.tu-card{border:1px solid var(--line);border-left:4px solid #C77700;border-radius:8px;padding:10px 12px;margin:0 0 10px;background:var(--surface)}.tu-card.done{border-left-color:#2E7D4F;opacity:.85}
+.tu-list{margin:8px 0;padding-left:0;list-style:none}.tu-list li{margin:0 0 8px}.tu-ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.tu-ph img{width:110px;height:82px;object-fit:cover;border-radius:4px;border:1px solid var(--line)}
+.tu-row{border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 8px}.tu-row .two{gap:8px}.tu-file{display:block;margin:6px 0}.er .e-st{width:auto;padding:2px 4px;font-size:12px}.er .e-st.on{background:#FBEFF3;color:#B0285A;font-weight:700}
+.memo-row.is-st{opacity:.7}.memo-row.is-st [name=m_name]{text-decoration:line-through}.memo-price .mp-st select{width:auto}
+.es-st{font-weight:700}
 
 .er.note{grid-template-columns:24px auto minmax(0,1fr) 34px}
 .er-tag{font-size:12px;color:var(--sub);border:1px solid var(--line);border-radius:3px;padding:1px 6px}
@@ -869,6 +876,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .plan.free{background:var(--paper)}
 /* オプション：契約していない機能はボカシ＋鍵、ボタンは灰色 */
 .locked{position:relative;border-radius:6px;overflow:hidden;min-height:180px}
+/* 物件マスタで固定した入力欄（class="locked"）は、鍵つきの枠とは別：高さはふつうの入力欄のまま */
+input.locked,select.locked,textarea.locked{min-height:0;overflow:visible;background:#F1F3F6;color:var(--sub)}
 .locked .blur{filter:blur(6px);pointer-events:none;user-select:none}
 .lock-over{position:absolute;inset:0;display:grid;place-items:start center;padding:56px 16px 16px;border:0;background:rgba(238,241,244,.35);cursor:pointer;font:inherit;color:var(--ink)}
 .lock-chip{display:flex;align-items:center;gap:10px;background:var(--surface);border:2px solid var(--kon-text);border-radius:999px;padding:10px 18px;font-weight:700;font-size:14px;line-height:1.4;text-align:left;box-shadow:0 6px 18px rgba(0,0,0,.15)}
@@ -960,7 +969,7 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .price-sup .ps-w{color:var(--kon-text,#1B2A55);font-weight:700}.price-sup .ps-m{color:#8A5A00;font-weight:700}
 .mp-sup{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding-top:4px;border-top:1px dashed #E4DDC3}.mp-sup select{width:auto;max-width:180px;padding:5px 6px!important;font-size:13px!important}
 .mp-ws{color:var(--kon-text,#1B2A55);font-weight:700}.mp-ms{color:#8A5A00;font-weight:700}
-form.memo .mpaper{background:#FBF8EC;border:1px solid #E4DDC3;border-radius:8px;padding:10px 12px;margin:0 0 12px}
+form.memo .mpaper{background:var(--surface,#fff);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:0 0 12px}
 form.memo .mpaper>h2{font-size:15px;margin:0 0 8px;border-left:4px solid var(--kon-text,#1B2A55);padding-left:8px}form.memo .mpaper>h2 small{display:block;font-weight:400;font-size:11.5px;color:var(--sub);margin:2px 0 0}
 form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mck{display:grid;grid-template-columns:110px 1fr;gap:4px 8px;align-items:center;padding:5px 0;border-bottom:1px dashed #E4DDC3}.mck b{font-size:13px}
@@ -1063,7 +1072,7 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .md-long{display:none;align-items:center;gap:3px;font-size:12.5px;white-space:nowrap}.memo-dims.cf .md-long{display:inline-flex}
 .memo-dims.cf .md-ck,.memo-dims.cf .md-part,.memo-dims.cf .md-acc{display:none!important}
 .memo-dims,.memo-new{grid-column:1/-1;margin:2px 0 6px;padding:10px 12px;border-radius:8px;background:#F6F8FB;border:1px solid var(--line)}
-.memo-new{background:#FFF9EC;border-color:#F0D9A8}
+.memo-new{background:var(--surface,#fff);border-color:#F0D9A8}
 .md-head{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:8px;font-size:13px}
 .md-head span{font-size:12px;color:var(--sub)}
 .md-row{display:grid;grid-template-columns:minmax(0,78px) 14px minmax(0,78px) minmax(58px,auto) auto 30px;gap:6px;align-items:center;margin-bottom:6px;padding:2px 4px;border-radius:6px}
@@ -1081,14 +1090,20 @@ form.memo .mpaper .two{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .mn-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .est-form input[readonly],form.memo input[readonly],form.memo textarea[readonly],form.memo select:disabled{background:#EEF1F5;color:var(--sub);cursor:not-allowed}
 .memo-price{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:12px;color:var(--sub);margin:-2px 0 4px}
-.memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-spec{flex:1 1 100%;flex-wrap:wrap}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}.mp-pf{margin-left:10px;white-space:nowrap;color:var(--ok,#2E7D4F)}.mp-pf.danger-text{color:var(--danger,#C0392B)}
+.vend-auto{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0 0 8px}.vend-auto>span:first-child{min-width:8em;font-weight:700}.vend-auto input{width:140px}.vend-add{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex-basis:100%;padding-left:8em}.vend-add input[name=af_addn]{width:260px;max-width:100%}@media(max-width:600px){.vend-add{padding-left:0}}
+.memo-price label{display:flex;align-items:center;gap:4px}.memo-price .mp-why{flex:1 1 100%}.memo-price .mp-why input{flex:1;width:auto}.memo-price .mp-wsn input{width:220px}.memo-price label[hidden]{display:none}.memo-price .mp-spec{flex:1 1 100%;flex-wrap:wrap}.memo-price .mp-spec input{flex:1;width:auto}.memo-price input{width:96px;padding:6px!important;font-size:14px!important}.mp-amt{margin-left:auto;color:var(--ink,inherit)}.mp-pf{margin-left:10px;white-space:nowrap;color:var(--ok,#2E7D4F)}.mp-pf.danger-text{color:var(--danger,#C0392B)}
 .memo-sum{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px 18px;margin:6px 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 -2px 8px rgba(0,0,0,.06);font-size:13px}
 .memo-sum b{font-family:var(--num);font-size:16px;margin-left:4px}
 .mq-b{padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:inherit;font:inherit;font-size:13px;cursor:pointer;line-height:1.3}.mq-b:hover{border-color:var(--sub)}
 .mq-b.on{background:var(--kon-text,#1B2A55);border-color:var(--kon-text,#1B2A55);color:#fff;font-weight:700}.mq-b.on::before{content:"✓ "}
 /* 工事メモ：間隔を狭く */
 form.memo .field{margin:0 0 10px;gap:4px}form.memo .two{gap:10px}form.memo input,form.memo select{padding-top:8px;padding-bottom:8px}
-form.memo .memo-row{margin-bottom:4px}form.memo .memo-price{margin:-2px 0 2px}
+form.memo .memo-row{margin-bottom:4px}
+/* 工事メモの行：1行ずつ枠で囲み、左上に番号（境目がわかるように） */
+form.memo #memo-rows,form.memo #memo-cf{counter-reset:mrow}
+form.memo .memo-row{counter-increment:mrow;border:1px solid #C3CBD6;border-left:4px solid var(--kon-text,#1B2A55);border-radius:8px;padding:16px 10px 10px;margin:0 0 14px;background:var(--surface,#fff)}
+form.memo .memo-row::before{content:counter(mrow);position:absolute;top:-10px;left:10px;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;background:var(--kon-text,#1B2A55);color:#fff;font-size:11.5px;font-weight:700;padding:0 6px}
+form.memo .memo-row.is-st{border-left-color:#B0285A}form.memo .memo-price{margin:-2px 0 2px}
 .mn-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--sub)}
 .mn-grid small{font-size:11px}
 .mn-save{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;cursor:pointer}
@@ -1110,12 +1125,16 @@ form.memo .memo-row{margin-bottom:4px}form.memo .memo-price{margin:-2px 0 2px}
 .price-co p{margin:0}
 .price-head{display:grid;grid-template-columns:120px 1fr 64px 96px 96px 96px 130px 34px;gap:6px;font-size:11.5px;color:var(--sub);margin:2px 0 4px;line-height:1.3}
 .price-head b{color:#B4235A;font-weight:600}
+.price-find{display:flex;flex-direction:column;gap:8px;margin:4px 0 8px}.price-find input[type=search]{max-width:420px}
+.price-chips{display:flex;flex-wrap:wrap;gap:6px}.price-chips .chip{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer}.price-chips .chip.on{background:#1B2A55;color:#fff;border-color:#1B2A55}
+.price-cat-h{font-weight:700;color:#1B2A55;border-left:4px solid #1B2A55;padding:2px 0 2px 8px;margin:14px 0 4px}.price-cat-h:first-child{margin-top:4px}.price-cat-h small{font-weight:400;color:var(--sub)}
+.price-row[hidden],.price-cat-h[hidden]{display:none}
 .price-row input.co-set{background:#FDEBF1;color:#B4235A;font-weight:600}
 .price-sub{margin:22px 0 6px;font-size:15px}
 .price-sub small{display:block;font-weight:400;font-size:12px;color:var(--sub);margin-top:2px}
 @media (max-width:820px){ .price-head{display:none} }
 
-.send-other{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin:10px 0 0;padding:10px 12px;border:1px dashed #C99A1C;background:#FFFAEC;border-radius:8px}
+.send-other{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin:10px 0 0;padding:10px 12px;border:1px dashed #C99A1C;background:var(--surface,#fff);border-radius:8px}
 .send-other div{display:flex;flex-direction:column;gap:2px}
 .so-modal{max-width:760px;max-height:92vh;overflow:auto}
 .so-items{display:flex;flex-direction:column;gap:6px;margin:0 0 8px}
@@ -1131,7 +1150,7 @@ form.memo .memo-row{margin-bottom:4px}form.memo .memo-price{margin:-2px 0 2px}
 .lsearch input{flex:1;max-width:520px}
 .lsr td.nw{white-space:nowrap}
 .lsr mark{background:#FFF1B8;color:inherit}
-.fee-note{margin:-4px 0 10px;padding:6px 10px;background:#FFF7E6;border-left:3px solid #C99A1C;border-radius:4px}
+.fee-note{margin:-4px 0 10px;padding:6px 10px;background:var(--surface,#fff);border-left:3px solid #C99A1C;border-radius:4px}
 .fee-note span{color:var(--sub);margin-left:8px}
 
 /* スマホ：下のメニュー。バッジはアイコンの右上に重ねる（文字の長さでずれない） */
@@ -2035,7 +2054,7 @@ function seedDemo(){
     m1: {id:"m1", companyId:"midori", coName:"みどり建装株式会社", coEmail:"midori@demo.jp", coClose:20, status:"open", audience:"all", pay:true, priCrafts:[], countedYm:curMonth(),
       title:"2DK 退去後クリーニング", trades:["ハウスクリーニング"], pref:"東京都", city:"墨田区", startDate:iso(6), endDate:iso(6), price:28000, taxMode:"税別", priceNote:"",
       description:"2DK（約40㎡）の退去後クリーニング一式です。", photos:[], assignedTo:null, createdAt:now - 4*hour, publishedAt:now - 4*hour},
-    m2: {id:"m2", companyId:"midori", coName:"みどり建装株式会社", coEmail:"midori@demo.jp", coClose:20, status:"open", audience:"priority", pay:false, priCrafts:["c3"], countedYm:curMonth(),
+    m2: {id:"m2", companyId:"midori", coName:"みどり建装株式会社", coEmail:"midori@demo.jp", coClose:20, status:"open", audience:"priority", pay:false, priCrafts:["c3"], countedYm:"",
       title:"1LDK クロス張替え（壁のみ）", trades:["クロス張替え"], pref:"東京都", city:"墨田区", startDate:iso(8), endDate:iso(8), price:52000, taxMode:"税別", priceNote:"",
       description:"1LDKの壁のみ。量産品。", photos:[], assignedTo:null, createdAt:now - 2*hour, publishedAt:now - 2*hour},
     ...Object.fromEntries([["m3", "1K 退去後クリーニング", 18000, 9], ["m4", "2DK エアコンクリーニング 2台", 24000, 6], ["m5", "1R 退去後クリーニング（浴室カビ取り）", 20000, 3]].map(([id, title, price, d0]) => [id,
@@ -2124,13 +2143,13 @@ class DemoBackend {
   async getJob(id){ return clone(this.data.jobs[id] || null); }
   async saveJob(id, d){ S.ldCache = null;
     d = coJobPatch(d, !id);
-    if(d.status === "open") await coPostGuard(id, d);
+    if(d.status === "open" || d.audience === "all") await coPostGuard(id, d);
     if(!id){ id = "j_" + newId(); this.data.jobs[id] = {...d, id, companyId:coId(), assignedTo:null, createdAt:Date.now()}; }
     else Object.assign(this.data.jobs[id], d);
     this.data.jobs[id].updatedAt = Date.now(); this.save(); return id;
   }
   async setJobStatus(id, status){ S.ldCache = null; const x = {};
-    if(status === "open") await coPostGuard(id, x);
+    if(status === "open") await coPostGuard(id, x, "open");
     Object.assign(this.data.jobs[id], {status, ...stampFor(status), ...x, updatedAt:Date.now()}); this.save(); }
   async setWorkProgress(id, status, extra = {}){ Object.assign(this.data.jobs[id], {status, ...stampFor(status), ...extra, updatedAt:Date.now()}); this.save(); }
   async acceptOrder(id){ Object.assign(this.data.jobs[id], {acceptedAt:Date.now(), updatedAt:Date.now()}); this.save(); }
@@ -2358,13 +2377,15 @@ const READ_KEEP_UNTIL_CHANGE = new Set(["listLedger", "getLedgerRow", "getLedger
   "getPrices", "getStaff", "getProperties", "getSuppliers", "getMaterials", "getSeal", "getMatOrders"]);
 // 受信しているコレクションが変わったら、読み直すもの
 const READ_WATCH_DROP = {jobs:["listJobs", "getJob", "getJobPrivate", "getDocument", "getAdminInfo"], applications:["listApplications", "getJob"], reports:["listReports", "getJob"], invoices:[], threads:[]};
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 class FirebaseBackend {
   constructor(){
     this.mode = "firebase";
     firebase.initializeApp(FIREBASE_CONFIG);
     this.auth = firebase.auth(); this.db = firebase.firestore();
     try { this.db.settings({ignoreUndefinedProperties:true, merge:true}); } catch(e) { console.warn(e); }
-    this.db.enablePersistence({synchronizeTabs:true}).catch(e => console.warn("端末への保存は使いません：", e.code || e));
+    // iPhone・iPad は、PDFを開いて戻ると端末の保存場所（IndexedDB）が切れて、つながらなくなる（The client has already been terminated）ので使わない
+    if(!IS_IOS) this.db.enablePersistence({synchronizeTabs:true}).catch(e => console.warn("端末への保存は使いません：", e.code || e));
     this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.error(e));
     // 書き込み（save・set・assign…）をしたら、覚えている全案件を捨てる
     const proto = Object.getPrototypeOf(this);
@@ -2489,12 +2510,12 @@ class FirebaseBackend {
   }
   async saveJob(id, d){ S.ldCache = null;
     d = coJobPatch(d, !id);
-    if(d.status === "open") await coPostGuard(id, d);
+    if(d.status === "open" || d.audience === "all") await coPostGuard(id, d);
     if(!id){ const ref = this.col("jobs").doc(); await ref.set({...d, companyId:coId(), assignedTo:null, createdAt:Date.now(), updatedAt:Date.now()}); return ref.id; }
     await this.col("jobs").doc(id).update({...d, updatedAt:Date.now()}); return id;
   }
   async setJobStatus(id, status){ S.ldCache = null; const x = {};
-    if(status === "open") await coPostGuard(id, x);
+    if(status === "open") await coPostGuard(id, x, "open");
     await this.col("jobs").doc(id).update({status, ...stampFor(status), ...x, updatedAt:Date.now()}); }
   // 業者が自分で押す「作業開始」「作業完了」（ルールで許可された項目だけを更新）
   async setWorkProgress(id, status, extra = {}){ await this.col("jobs").doc(id).update({status, ...stampFor(status), ...extra, updatedAt:Date.now()}); }
@@ -2882,7 +2903,7 @@ function adminNav(){
     <a href="#/admin/calendar" ${location.hash.startsWith("#/admin/calendar") ? 'aria-current="page"' : ""}>予定表</a>
     <a href="#/admin/invoices" ${/^#\/admin\/(invoices|bills)/.test(location.hash) ? 'aria-current="page"' : ""}>請求書${badge("invoices")}</a>
     <a href="#/admin/chat" ${location.hash.startsWith("#/admin/chat") ? 'aria-current="page"' : ""}>チャット${chatBadge()}</a>
-    <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a>
+    <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者</a>
     ${tenant() ? coNavExtra() : ""}
     ${coAdmin() ? "" : "<!--"}<a href="#/admin/settings" ${location.hash.startsWith("#/admin/settings") ? 'aria-current="page"' : ""}>設定${S.empPending?.length ? `<span class="badge" aria-label="従業員の申し込み${S.empPending.length}件">${S.empPending.length}</span>` : ""}</a>${coAdmin() ? "" : "-->"}</nav>`;
 }
@@ -3023,10 +3044,12 @@ function estPrices(co = S.estCo){
   const have = new Set(base.map(p => p.name));
   return [...base, ...estExtra().filter(x => !have.has(x.name))].filter(p => p.name && !p.off && (!p.onlyCo || !co || coSame(p.onlyCo, co)));
 }
-const estAmt = r => r.noteRow ? 0 : Math.round((Number(r.qty) || 0) * (Number(r.price) || 0));
+// 中止・保留の行（st）は金額に入れない（見積書には「中止」「保留」と出す）
+const EST_ST = ["中止", "保留"];
+const estAmt = r => r.noteRow || r.st ? 0 : Math.round((Number(r.qty) || 0) * (Number(r.price) || 0));
 function estTotals(e){
   const rows = (e.rows || []).filter(r => !r.noteRow), sub = rows.reduce((a, r) => a + estAmt(r), 0), tax = Math.floor(sub * TAX_RATE);
-  const cost = rows.reduce((a, r) => a + Math.round((Number(r.qty) || 0) * (Number(r.cost) || 0)), 0);
+  const cost = rows.filter(r => !r.st).reduce((a, r) => a + Math.round((Number(r.qty) || 0) * (Number(r.cost) || 0)), 0);
   return {sub, tax, total:sub + tax, cost, profit:sub - cost, rate:sub ? (sub - cost) / sub : 0};
 }
 const estTitle = e => [e.building, e.room, e.kind].filter(Boolean).join(" ");
@@ -3052,8 +3075,10 @@ function estDocHtml0(e, type, seal, billing = {}){
   if(type === "invoice" && e.status === "tachiai" && e.billRows?.length) e = {...e, rows:e.billRows};
   if(type === "est" && e.estRows?.length) e = {...e, rows:e.estRows};   // 受注後も、見積書は出したときの内容
   if(type === "ukesho" && e.ukeIssuedAt) e = {...e, issuedAt:e.ukeIssuedAt};
-  const t = estTotals(e), c = coInfo(), rows = type === "est" ? estDiffRows(e) : (e.rows || []), n = Math.max(28, rows.length);
-  const diffOn = type === "est" && rows !== e.rows && rows.some(r => r._del || r._add || r._ch);
+  const t = estTotals(e), c = coInfo(), rows0 = type === "est" ? estDiffRows(e) : (e.rows || []);
+  // 見積書だけ：工事メモで入れた備考（なぜこの工事か）を、その工事のすぐ下に「※」で出す
+  const rows = type === "est" ? rows0.flatMap(r => r.why && !r.noteRow && !r._del ? [r, {noteRow:true, whyRow:true, name:"※" + r.why}] : [r]) : rows0, n = Math.max(28, rows.length);
+  const diffOn = type === "est" && rows0 !== e.rows && rows.some(r => r._del || r._add || r._ch);
   const staff = e.staff?.name ? `${esc(e.staff.name)}${e.staff.phone ? `（${esc(e.staff.phone)}）` : ""}` : "";
   // 宛先：会社名と敬称は1つのまとまり、担当と様ももう1つのまとまり。長い会社名は字を小さくし、入らなければ担当を次の行へ（重ならない）
   const toName = estToName(e), toLen = [...toName].length;
@@ -3068,21 +3093,26 @@ function estDocHtml0(e, type, seal, billing = {}){
     ? `<th>箇所</th><th>施 工 内 容</th><th>仕様</th><th>数 量</th><th>単価</th><th>金額</th>`
     : `<th class="no">No</th><th>箇所</th><th>施 工 内 容</th><th>仕様</th><th>数 量</th><th>単価</th><th>金額</th>`;
   const fq = r => r.qty !== "" && r.qty != null ? `${fmtQty(r.qty)}　${esc(r.unit)}` : esc(r.unit);
-  const fp = r => r.price !== "" && r.price != null ? yenFull(r.price) : "";
-  const fa = r => r.price !== "" && r.price != null && r.qty !== "" ? yenFull(estAmt(r)) : "";
+  const fp = r => r.st ? "" : r.price !== "" && r.price != null ? yenFull(r.price) : "";
+  const fa = r => r.st ? `<b class="es-st">${esc(r.st)}</b>` : r.price !== "" && r.price != null && r.qty !== "" ? yenFull(estAmt(r)) : "";
   // 変わったところは「訂正前（取消線）」→「訂正後」
   const was = (r, txt, keys) => r._ch && keys.some(k => r._ch.includes(k)) ? `<s class="es-old">${txt(r._old)}</s> ` : "";
   let no = 0;
-  const body = Array.from({length:n}, (_, k) => { const r = rows[k];
+  const bodyOf = (list, len) => Array.from({length:len}, (_, k) => { const r = list[k];
     const cells = !r ? `<td></td><td></td><td></td><td></td><td></td><td></td>`
       : r.noteRow ? `<td></td><td colspan="5" class="es-note">${r._del ? `<s class="es-del">${esc(r.name)}</s>` : esc(r.name)}</td>`
       : r._del ? `<td><s>${esc(r.loc)}</s></td><td><s>${esc(r.name)}</s> <span class="es-tag del">削除</span></td><td><s>${esc(r.spec)}</s></td><td class="c"><s>${fq(r)}</s></td><td class="r"><s>${fp(r)}</s></td><td class="r"><s>${fa(r)}</s></td>`
       : `<td>${was(r, o => esc(o.loc), ["loc"])}${esc(r.loc)}</td><td>${was(r, o => esc(o.name), ["name"])}${esc(r.name)}${r._add ? ` <span class="es-tag add">追加</span>` : r._ch ? ` <span class="es-tag chg">変更</span>` : ""}</td><td>${was(r, o => esc(o.spec), ["spec"])}${esc(r.spec)}</td><td class="c">${was(r, fq, ["qty", "unit"])}${fq(r)}</td><td class="r">${was(r, fp, ["price"])}${fp(r)}</td><td class="r">${was(r, fa, ["qty", "price"])}${fa(r)}</td>`;
-    const num = r && !r._del ? ++no : "";
-    return `<tr class="${r?._del ? "es-r-del" : r?._add ? "es-r-add" : r?._ch ? "es-r-chg" : ""}">${type === "invoice" ? "" : `<td class="no">${r ? num : k + 1}</td>`}${cells}</tr>`; }).join("");
-  const table = `<table class="es-items${type === "invoice" ? " gray" : ""}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody>
+    const num = r && !r._del && !r.whyRow ? ++no : "";
+    return `<tr class="${r?._del ? "es-r-del" : r?._add ? "es-r-add" : r?._ch ? "es-r-chg" : ""}">${type === "invoice" ? "" : `<td class="no">${r ? num : ++no}</td>`}${cells}</tr>`; }).join("");
+  // 行が多いときは、1枚目に30行、2枚目からは50行ずつ（合計と発注書の欄は最後のページ）
+  const P1 = 30, P2 = 50, paged = type !== "invoice" && rows.length > P1 + 6;
+  const chunks = paged ? [rows.slice(0, P1), ...Array.from({length:Math.ceil((rows.length - P1) / P2)}, (_, i) => rows.slice(P1 + i * P2, P1 + (i + 1) * P2))] : [rows];
+  const tableOf = (list, len, last) => `<table class="es-items${type === "invoice" ? " gray" : ""}"><thead><tr>${head}</tr></thead><tbody>${bodyOf(list, len)}</tbody>${last ? foot : ""}</table>${last ? "" : `<div class="es-next">次のページへつづきます</div>`}`;
+  const foot = `
     ${type === "invoice" ? `<tfoot><tr><td colspan="4"></td><th>小計</th><td class="r">${yenFull(t.sub)}</td></tr><tr><td colspan="4"></td><th>消費税(税率10%)</th><td class="r">${yenFull(t.tax)}</td></tr><tr><td colspan="4"></td><th>合計</th><td class="r">${yenFull(t.total)}</td></tr></tfoot>`
-      : `<tfoot><tr><td class="no"></td><td colspan="6" class="r">${yenFull(t.sub)}</td></tr></tfoot>`}</table>`;
+      : `<tfoot><tr><td class="no"></td><td colspan="6" class="r">${yenFull(t.sub)}</td></tr></tfoot>`}`;
+  const table = tableOf(chunks[0], paged ? chunks[0].length : n, !paged);
   if(type === "invoice") return `<div class="pdfdoc es inv">
     <div class="es-invhead">${to}<div class="es-invt"><b>御請求書</b><span>No.　${esc(e.no || "")}</span></div></div>
     <div class="es-mid"><div class="es-left">${prop}<p class="es-greet">下記のとおり御請求申し上げます。</p>
@@ -3090,7 +3120,12 @@ function estDocHtml0(e, type, seal, billing = {}){
     ${table}
     <div class="es-bank">${esc([billing.bank ? `振込先；${billing.bank}` : "", `支払条件；${e.terms || billing.terms || BILLING_DEFAULT.terms}`].filter(Boolean).join("　"))}</div></div>`;
   const bar = type === "ukesho" ? "発　注　請　書" : "見　　積　　書";
-  return `<div class="pdfdoc es">
+  const footer = type === "ukesho" ? `<div class="es-ukefoot"><div class="es-ukeleft"><div>工事概要：${esc(e.kind || "")}</div><div>支払条件：${esc(e.terms || BILLING_DEFAULT.terms)}</div><div>有効期限：発行後30日</div></div>${from(true)}</div>${staff ? `<div class="es-ukestaff">工事担当；　${staff}</div>` : ""}`
+      : `<div class="es-order"><div class="es-order-h"><b>【工事発注書】</b><span>令和　　年　　月　　日</span></div><p>上記工事内容、金額を了承し工事を発注致します。</p><div class="es-sign"><span>御社名　；</span><i></i><span>担当者　；</span><i class="s"></i></div></div>`;
+  const pages = chunks.length;
+  const more = chunks.slice(1).map((c, i) => { const last = i === pages - 2;
+    return `<div class="pdfdoc es es-cont"><div class="es-bar">${bar}</div><div class="es-sub"><span>NO：　　${esc(e.no || "")}${e.rev ? `　（訂正${e.rev}）` : ""}　${esc(estTitle(e))}</span><span>${i + 2} / ${pages}</span></div>${tableOf(c, c.length, last)}${last ? footer : ""}<div class="es-endline"></div></div>`; }).join("");
+  return `${more ? `<div class="pdfwrap">` : ""}<div class="pdfdoc es">
     <div class="es-bar">${bar}</div>
     <div class="es-sub"><span>NO：　　${esc(e.no || "")}${e.rev ? `　（訂正${e.rev}）` : ""}</span><span>発行日　${e.issuedAt ? fmtDate(e.issuedAt) : ""}</span></div>
     ${type === "ukesho" ? `${to}${prop}` : `<div class="es-mid"><div class="es-left">${to}<p class="es-greet">下記の通り、お見積もり申し上げます。</p>${prop}</div>${from()}</div>`}
@@ -3099,9 +3134,8 @@ function estDocHtml0(e, type, seal, billing = {}){
     ${type === "ukesho" ? `<div class="es-line2"><span>下記記載の内容にて工事を受注致します。</span><span>工事期間；　${e.periodStart ? fmtDate(e.periodStart) : ""}${e.periodEnd && e.periodEnd !== e.periodStart ? ` 〜 ${fmtDate(e.periodEnd)}` : ""}　まで</span></div>`
       : `<div class="es-line2 under"><span>見積有効期限　　${esc(e.validity || BILLING_DEFAULT.validity)}</span><span>お支払い条件　　${esc(e.terms || BILLING_DEFAULT.terms)}</span></div>`}
     ${table}
-    ${type === "ukesho" ? `<div class="es-ukefoot"><div class="es-ukeleft"><div>工事概要：${esc(e.kind || "")}</div><div>支払条件：${esc(e.terms || BILLING_DEFAULT.terms)}</div><div>有効期限：発行後30日</div></div>${from(true)}</div>${staff ? `<div class="es-ukestaff">工事担当；　${staff}</div>` : ""}`
-      : `<div class="es-order"><div class="es-order-h"><b>【工事発注書】</b><span>令和　　年　　月　　日</span></div><p>上記工事内容、金額を了承し工事を発注致します。</p><div class="es-sign"><span>御社名　；</span><i></i><span>担当者　；</span><i class="s"></i></div></div>`}
-    <div class="es-endline"></div></div>`;
+    ${paged ? `<div class="es-sub" style="justify-content:flex-end"><span>1 / ${pages}</span></div>` : footer}
+    <div class="es-endline"></div></div>${more}${more ? "</div>" : ""}`;
 }
 // 見積書の別紙「クロス張替え詳細」：寸法メモから、箇所ごと・天井/壁ごとに足した㎡と金額
 function clothDetailRows(rows){
@@ -3195,12 +3229,12 @@ function estRowHtml(r = {}){
     <input type="text" name="e_unit" list="est-units" value="${esc(r.unit || "")}" placeholder="単位" aria-label="単位">
     <input type="number" name="e_price" value="${esc(r.price ?? "")}" min="0" inputmode="numeric" placeholder="単価" aria-label="見積単価">
     <span class="e-amt">${yenFull(estAmt(r))}</span>
-    <span class="er-tools"><button type="button" class="i-x" data-act="er-rm" aria-label="この行を削除">×</button></span>
-    <span class="e-cost">${Number(r.cost) ? `原価 ${yenFull(r.cost)}／${esc(r.unit || "")}` : ""}</span></div>`;
+    <span class="er-tools"><select name="e_st" class="e-st${r.st ? " on" : ""}" aria-label="この工事をする・中止・保留"><option value="">する</option>${EST_ST.map(x => `<option${r.st === x ? " selected" : ""}>${x}</option>`).join("")}</select><button type="button" class="i-x" data-act="er-rm" aria-label="この行を削除">×</button></span>
+    <span class="e-cost">${Number(r.cost) ? `原価 ${yenFull(r.cost)}／${esc(r.unit || "")}` : ""}${r.why ? `${Number(r.cost) ? "　" : ""}備考：${esc(r.why)}（工事メモで直せます）` : ""}</span></div>`;
 }
 // 工事メモの寸法・アクセントを、見積や案件の行（画面の要素）に持たせておく
-const dimsOfEl = el => { let d = null, u = null; try { d = JSON.parse(el.dataset.dims || "null"); u = JSON.parse(el.dataset.sup || "null"); } catch(e) {} return {...(d?.length ? {dims:d} : {}), ...(el.dataset.acc ? {accent:true} : {}), ...(u ? {sup:u} : {})}; };
-const dimsAttr = i => `${i.dims?.length ? ` data-dims="${esc(JSON.stringify(i.dims))}"` : ""}${i.accent ? ` data-acc="1"` : ""}${i.sup ? ` data-sup="${esc(JSON.stringify(i.sup))}"` : ""}`;
+const dimsOfEl = el => { let d = null, u = null; try { d = JSON.parse(el.dataset.dims || "null"); u = JSON.parse(el.dataset.sup || "null"); } catch(e) {} return {...(d?.length ? {dims:d} : {}), ...(el.dataset.acc ? {accent:true} : {}), ...(u ? {sup:u} : {}), ...(el.dataset.why ? {why:el.dataset.why} : {})}; };
+const dimsAttr = i => `${i.dims?.length ? ` data-dims="${esc(JSON.stringify(i.dims))}"` : ""}${i.accent ? ` data-acc="1"` : ""}${i.sup ? ` data-sup="${esc(JSON.stringify(i.sup))}"` : ""}${i.why ? ` data-why="${esc(i.why)}"` : ""}`;
 // 見積の画面なら画面の内容、工事メモの画面（案件）なら保存した見積
 const estNow = () => $("#est-form") ? readEst($("#est-form")) : clone(S.hubEst || S.est || {});
 function readEst(form){
@@ -3212,7 +3246,7 @@ function readEst(form){
     const lc = lp?.querySelector(`[name=el_cost][data-rid="${CSS.escape(el.dataset.id)}"]`); if(lc) el.dataset.cost = lc.value;   // 業者ごとの欄で直した単価
     if(el.classList.contains("note")) return {id:el.dataset.id, noteRow:true, name:v("e_name")};
     return {id:el.dataset.id, loc:v("e_loc"), name:v("e_name"), spec:v("e_spec"), qty:v("e_qty") === "" ? "" : Number(v("e_qty")), unit:v("e_unit"),
-      price:v("e_price") === "" ? "" : Number(v("e_price")), cost:Number(el.dataset.cost) || 0, cat:el.dataset.cat || "", priceId:el.dataset.pid || "", ...dimsOfEl(el)};
+      price:v("e_price") === "" ? "" : Number(v("e_price")), cost:Number(el.dataset.cost) || 0, cat:el.dataset.cat || "", priceId:el.dataset.pid || "", ...dimsOfEl(el), ...(v("e_st") ? {st:v("e_st")} : {})};
   }).filter(r => r.name || r.loc || r.qty !== "" || r.price !== "");
   const lots = lp ? [...lp.querySelectorAll(".est-lot")].map(b => { const q = n => b.querySelector(`[name=${n}]`), st = q("el_start").value, en = q("el_end").value, amt = Math.max(0, Math.round(Number(q("el_pka").value) || 0));
     return {key:b.dataset.key, start:st, end:en && en >= st ? en : st, parking:q("el_pk").checked ? amt : 0, pkAmt:amt}; }) : null;
@@ -3292,7 +3326,7 @@ async function viewEstEdit(id){
     <aside class="est-pv" aria-label="書類のプレビュー"><div class="est-pv-bar"><b>プレビュー</b><span class="small">${docLabel}　このまま印刷・PDFになります</span></div><div class="est-pv-page"><style>${PDF_CSS}</style><div class="pv-zoom" id="est-pv">${estDocHtml(e, docType, seal, billing)}</div></div></aside></div>`;
 }
 // 受注したあと、業者に公開する前に：工種（業者）ごとの工期・駐車場代と、業者に出す単価（実行単価・税抜）を決める。0円の工事は業者に出さない
-const estLotRow = r => !r.noteRow && r.name && !["和室工事", "諸経費"].includes(r.cat) && !/^s:/.test(r.sup?.work || "") && r.sup?.work !== "self";
+const estLotRow = r => !r.noteRow && r.name && !["和室工事", "諸経費"].includes(r.cat) && !extWork(r.sup?.work) && r.sup?.work !== "self";
 const estLotSig = e => (e.rows || []).filter(estLotRow).map(r => `${r.id}:${lotKeyOf(r)}`).join("|");
 function estLotsInner(e){
   const rows = (e.rows || []).filter(estLotRow); if(!rows.length) return `<p class="small" style="margin:0">業者に出す工事がまだありません。</p>`;
@@ -3428,10 +3462,11 @@ async function matOrdersFromEst(e, jid){
   const [sups, mats] = await Promise.all([api().getSuppliers().catch(() => defSups()), api().getMaterials().catch(() => defMats())]);
   const taki = (sups.find(x => /タキザワ/.test(x.name || "")) || {}).id || "";
   const hy = r => r.cat === CF_CAT || isCloth(r.name);
-  const net = (e.rows || []).filter(r => !r.noteRow && r.name && Number(r.qty) > 0 && r.sup?.mat === "net");   // ネットで買うもの（どの工事でも）
-  const rows = (e.rows || []).filter(r => !r.noteRow && r.name && Number(r.qty) > 0 && hy(r) && r.sup?.mat !== "net" && (r.sup?.mat || (r.accent && taki)))
+  const net = (e.rows || []).filter(r => !r.noteRow && r.name && !r.st && Number(r.qty) > 0 && r.sup?.mat === "net");   // ネットで買うもの（どの工事でも）
+  const home = (e.rows || []).filter(r => !r.noteRow && r.name && !r.st && Number(r.qty) > 0 && r.sup?.mat === "home");   // ホームセンターで買うもの
+  const rows = (e.rows || []).filter(r => !r.noteRow && !r.st && r.name && Number(r.qty) > 0 && hy(r) && !buyMat(r.sup?.mat) && (r.sup?.mat || (r.accent && taki)))
     .map(r => r.sup?.mat ? r : {...r, sup:{...(r.sup || {}), mat:taki}});
-  if(!rows.length && !net.length) return 0;
+  if(!rows.length && !net.length && !home.length) return 0;
   const by = new Map(); rows.forEach(r => { if(!by.has(r.sup.mat)) by.set(r.sup.mat, []); by.get(r.sup.mat).push(r); });
   const old = await api().getMatOrders(jid).catch(() => []), add = [];
   by.forEach((list, sid) => {
@@ -3453,6 +3488,9 @@ async function matOrdersFromEst(e, jid){
   // ネット購入：発注書は使わず、買う物リスト（URLつき）。金額は材料費として収支に入る
   if(net.length) add.push({id:"mo_" + newId(), supplierId:"__net", supplierName:"ネット購入", kind:"material", net:true, terms:"", issuedAt:todayIso(), delivery:"現場", honor:"御中", showManager:false, parking:0, others:"", note:"買う物リスト",
     items:net.map(r => ({name:r.name, maker:"", code:r.spec || "", qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.sup.matPrice) || 0, date:"", loc:r.loc || "", url:r.sup.url || ""})), status:"draft", autoMemo:true, createdAt:Date.now(), updatedAt:Date.now()});
+  // ホームセンター：ネットと同じく買う物リスト。金額は材料費として収支に入る
+  if(home.length) add.push({id:"mo_" + newId(), supplierId:"__home", supplierName:"ホームセンター", kind:"material", net:true, terms:"", issuedAt:todayIso(), delivery:"現場", honor:"御中", showManager:false, parking:0, others:"", note:"買う物リスト",
+    items:home.map(r => ({name:r.name, maker:"", code:r.spec || "", qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.sup.matPrice) || 0, date:"", loc:r.loc || ""})), status:"draft", autoMemo:true, createdAt:Date.now(), updatedAt:Date.now()});
   await api().saveMatOrders(jid, [...old, ...add]);
   return add.length;
 }
@@ -3461,15 +3499,17 @@ async function matOrdersFromEst(e, jid){
 const rowToItem = r => ({iid:"i_" + newId(), rid:r.id, cat:r.cat || "その他", loc:r.loc || "", name:r.name, qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.cost) || 0, note:/^材工/.test(r.spec || "") ? r.spec.replace(/^材工[\s・]*/, "") : r.spec || "", zai:/^材工/.test(r.spec || ""),
   ...(r.dims?.length ? {dims:r.dims} : {}), ...(r.accent ? {accent:true} : {}), ...(r.sup ? {sup:r.sup} : {}), ...(r.priceId && !String(r.priceId).startsWith("x_") ? {priceId:r.priceId} : {})});
 // ポータルの業者に出す工事：実行単価があり、外部の業者（キツタカなど）・自社でやる、にしていないもの
-const rowForPortal = r => !r.noteRow && r.name && Number(r.cost) > 0 && !["和室工事", "諸経費"].includes(r.cat) && !/^s:/.test(r.sup?.work || "") && r.sup?.work !== "self";
+// 外部の業者：登録した外部の工事の会社（s:）と、手入力した業者名（n:名前。ポータルにいない協力業者）
+const extWork = w => /^[sn]:/.test(w || "");
+const rowForPortal = r => !r.noteRow && !r.st && r.name && Number(r.cost) > 0 && !["和室工事", "諸経費"].includes(r.cat) && !extWork(r.sup?.work) && r.sup?.work !== "self";
 const rowSelf = r => !r.noteRow && r.name && r.sup?.work === "self";
 // 外部の工事の発注先（キツタカなど、ポータルに登録しない業者）を選んだ工事：その会社ごとに工事の発注書の下書きを作る
 async function workOrdersFromEst(e, jid){
-  const rows = (e.rows || []).filter(r => !r.noteRow && r.name && /^s:/.test(r.sup?.work || "")); if(!rows.length) return 0;
+  const rows = (e.rows || []).filter(r => !r.noteRow && !r.st && r.name && extWork(r.sup?.work)); if(!rows.length) return 0;
   const sups = await api().getSuppliers().catch(() => defSups()), by = new Map();
-  rows.forEach(r => { const sid = r.sup.work.slice(2); if(!by.has(sid)) by.set(sid, []); by.get(sid).push(r); });
+  rows.forEach(r => { const sid = r.sup.work.startsWith("n:") ? r.sup.work : r.sup.work.slice(2); if(!by.has(sid)) by.set(sid, []); by.get(sid).push(r); });
   const old = await api().getMatOrders(jid).catch(() => []), add = [];
-  by.forEach((list, sid) => { const sup = sups.find(x => x.id === sid) || {id:sid, name:list[0].sup.workName || "外部の業者"};
+  by.forEach((list, sid) => { const sup = sups.find(x => x.id === sid) || {id:list[0].sup.work, name:list[0].sup.workName || "外部の業者"};
     add.push({id:"mo_" + newId(), supplierId:sup.id, supplierName:sup.name, kind:"work", terms:sup.terms || "", issuedAt:todayIso(), delivery:"現場", honor:"御中", showManager:true, workDate:"", parking:0, others:"", note:`工事メモ（${e.no || ""}）から`,
       items:list.map(r => ({loc:r.loc || "", name:r.name, spec:r.spec || "", qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.cost) || null})), status:"draft", autoMemo:true, createdAt:Date.now(), updatedAt:Date.now()}); });
   await api().saveMatOrders(jid, [...old, ...add]);
@@ -3690,17 +3730,21 @@ async function ledgerDataLoad(){
   const fixesOf = key => jobs.filter(j => j.fixOf && j.fixOf === key);   // 完了後の是正・追加の発注（元の案件・自社施工の行につながる）
   const fixVend = async key => { const fx = fixesOf(key); if(!fx.length) return null;
     const asg = fx.filter(x => x.assignedTo && !x.declinedAt), docs = await Promise.all(asg.map(x => orderDocCached(x.id))), mos = (await Promise.all(fx.map(x => jobAdminCached(x.id)))).flatMap(a => a[1] || []);
-    return {fv:asg.map((x, k) => ({name:craftName(x.assignedTo), amount:vendorAmount(x, docs[k]), auto:true, fix:true, col:vendorCol(docs[k]?.job?.items || x.items, S.crafts?.get(x.assignedTo)?.trades)})),
-      mv:mos.map(o => ({name:o.supplierName || "発注先", amount:o.net ? moTotals(o).base : moTotals(o).total, auto:true, fix:true, col:o.net || o.kind !== "work" ? 0 : vendorCol(o.items)}))}; };
+    return {fv:asg.map((x, k) => ({key:"j:" + x.id, name:craftName(x.assignedTo), amount:vendorAmount(x, docs[k]), auto:true, fix:true, col:vendorCol(docs[k]?.job?.items || x.items, S.crafts?.get(x.assignedTo)?.trades)})),
+      mv:mos.map(o => ({key:"m:" + o.id, name:o.supplierName || "発注先", amount:o.net ? moTotals(o).base : moTotals(o).total, auto:true, fix:true, col:o.net || o.kind !== "work" ? 0 : vendorCol(o.items)}))}; };
   const roots = jobs.filter(j => !j.parentId && !j.fixOf && !byJob.get(j.id)?.hidden && (["assigned", "working", "finished", "completed", "paid"].includes(j.status) || byJob.get(j.id)?.contract || byJob.get(j.id)?.ki));
   const auto = await Promise.all(roots.map(async j => {
     const L = byJob.get(j.id) || {};
     const [info, mos] = await jobAdminCached(j.id, jobOld(j));
     const fam = [j, ...jobs.filter(k => k.parentId === j.id)].filter(x => x.assignedTo && !x.declinedAt);
     const docs = await Promise.all(fam.map(x => orderDocCached(x.id, jobOld(x))));
-    const fv = fam.map((x, k) => ({name:craftName(x.assignedTo), amount:vendorAmount(x, docs[k]), auto:true, col:vendorCol(docs[k]?.job?.items || x.items, S.crafts?.get(x.assignedTo)?.trades)}));
-    const mv = mos.map(o => ({name:o.supplierName || "発注先", amount:o.net ? moTotals(o).base : moTotals(o).total, auto:true, col:o.net || o.kind !== "work" ? 0 : vendorCol(o.items)}));   // 業者・材料屋さんは税込（ネットで買った物は買った金額のまま）
+    const fv = fam.map((x, k) => ({key:"j:" + x.id, name:craftName(x.assignedTo), amount:vendorAmount(x, docs[k]), auto:true, col:vendorCol(docs[k]?.job?.items || x.items, S.crafts?.get(x.assignedTo)?.trades)}));
+    const mv = mos.map(o => ({key:"m:" + o.id, name:o.supplierName || "発注先", amount:o.net ? moTotals(o).base : moTotals(o).total, auto:true, col:o.net || o.kind !== "work" ? 0 : vendorCol(o.items)}));   // 業者・材料屋さんは税込（ネットで買った物は買った金額のまま）
     const fx = await fixVend(j.id); if(fx){ fv.push(...fx.fv); mv.push(...fx.mv); }
+    // 手で直した金額（autoFix）があれば、自動の金額の代わりに使う（autoAmt に自動の金額を残す）
+    const af = L.autoFix || {}; [fv, mv].forEach(list => list.forEach(v => { if(v.key && af[v.key] != null){ v.autoAmt = v.amount; v.amount = Number(af[v.key]) || 0; v.edited = true; } }));
+    // 現場で出た追加（autoAdd）：自動（または直した）金額はそのままで、追加分だけ足す
+    const ad = L.autoAdd || {}; [fv, mv].forEach(list => list.forEach(v => { v.base = v.amount; const a = v.key && ad[v.key]; if(a && Number(a.amt)){ v.addAmt = Number(a.amt); v.addNote = a.note || ""; v.amount += v.addAmt; } }));
     const vendors = [...fv, ...mv, ...(L.extraVendors || [])], vcols = vendorCols([...mv, ...fv], L.extraVendors || []);
     const doneAt = j.completedAt || j.finishedAt;
     return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), monthSet:!!L.month, jobNo:j.jobNo || "", name:j.title, company:L.company || info.manager || "",
@@ -3947,7 +3991,7 @@ async function viewMoneyEdit(id){
           ${tenant() ? `<input type="hidden" name="ki" value="${esc(r.ki || kiNow())}">` : `<label class="field" style="margin:0"><span>期 <small>未完了の行をどの期に出すか</small></span><input type="number" name="ki" value="${esc(r.ki || kiNow())}" min="1" style="max-width:120px"></label>`}</div>`}
 </section>
       <section class="panel"><h2>発注業者・発注金額</h2>
-        ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<p style="margin:0 0 6px">${esc(v.name)}　<b>${yenFull(v.amount)}</b> <span class="small">税込・ポータルから自動</span></p>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
+        ${auto ? `${(r.vendors || []).filter(v => v.auto).map(v => `<div class="vend-auto"><span>${esc(v.name)}</span><input type="number" name="af_amt" data-key="${esc(v.key || "")}" data-auto="${esc(v.edited ? v.autoAmt : v.base ?? v.amount)}" value="${esc(v.base ?? v.amount)}" inputmode="numeric" aria-label="${esc(v.name)}の発注金額"${v.key ? "" : " disabled"}><span class="small">${v.edited ? `手で直した金額（自動は ${yenFull(v.autoAmt)}。空にすると自動に戻ります）` : "税込・ポータルから自動。違っていたら直せます"}</span>${v.key ? `<span class="vend-add"><span class="small">＋ 現場で出た追加</span><input type="number" name="af_add" data-key="${esc(v.key)}" value="${esc(v.addAmt || "")}" inputmode="numeric" placeholder="追加の金額（税込）" aria-label="${esc(v.name)}の追加金額"><input type="text" name="af_addn" value="${esc(v.addNote || "")}" placeholder="追加の内容（例：床の張替え追加）" aria-label="${esc(v.name)}の追加の内容"></span>` : ""}</div>`).join("") || `<p class="small" style="margin:0 0 6px">ポータルでの発注はまだありません。</p>`}<p class="small" style="margin:10px 0 6px">ポータル以外で払った分（処分費・Amazonなど）があれば足してください。</p>` : ""}
         <div id="vend-ed">${extra.map(vrow).join("")}</div><p class="small" style="margin:0 0 8px">工種を選ぶと、収支のその列（1 材料屋 2 表装 3 クリーニング 4 リペア 5 設備 6 電気）に入ります。「その他」は7列目から。</p><button type="button" class="btn sub" data-act="add-vend">＋ 発注業者を追加</button></section>
       <label class="field"><span>備考</span><textarea name="note" rows="2">${esc(r.note)}</textarea></label>
       <div class="row between"><button class="btn">保存する</button>${!auto && r.id ? `<button type="button" class="btn sub danger-text" data-act="money-del" data-id="${esc(r.id)}">この行を削除</button>` : ""}</div>
@@ -4231,12 +4275,14 @@ function saveBlob(blob, name){ const a = document.createElement("a"); a.href = U
 
 // ===== 利用規約など（ログインしなくても #/terms で読める） =====
 // 内容を変えたら TERMS_VERSION を新しい日付にする。次にログインした人に、もう一度同意を求める
-const TERMS_VERSION = "2026-10-01";
+const TERMS_VERSION = "2026-10-28";
+const TERMS_ENACTED = "2026-10-01";   // 制定日（表示だけ）
 const LEGAL = {company:"株式会社Refore", service:"GENPUKU Pro 協力業者ポータル", rep:"金子セバスティアン",
   address:"請求があった場合には、遅滞なく開示いたします", phone:"03-6824-7282", email:"info@refore.co.jp", court:"東京地方裁判所"};
 const LEGAL_DOCS = [["terms", "利用規約"], ["pay", "料金・支払いポリシー"], ["privacy", "プライバシーポリシー"], ["law", "特定商取引法に基づく表記"]];
 const legalLinks = (sep = "・", blank = true) => LEGAL_DOCS.map(([k, l]) => `<a href="#/terms/${k}"${blank ? ' target="_blank" rel="noopener"' : ""}>${l}</a>`).join(sep);
-const legalFoot = () => `<footer class="legal-foot">${legalLinks("　", false)}<span>© ${LEGAL.company}</span></footer>`;
+const legalFoot = () => `<footer class="legal-foot">${legalLinks("　", false)}<span>© 2026 ${LEGAL.company} All rights reserved.</span></footer>`;
+const jpDate = d => d.replace(/-0?/g, (m, i) => i === 4 ? "年" : "月").replace(/$/, "日");
 const termsOk = p => !p || ["op", "admin"].includes(p.role) || p.termsVersion === TERMS_VERSION;
 const agreeBox = () => `<div class="agree-box"><p class="small" style="margin:0 0 4px">次の内容に同意のうえ登録してください（リンクを押すと別の画面で読めます）</p><ul class="legal-list">${LEGAL_DOCS.map(([k, l]) => `<li><a href="#/terms/${k}" target="_blank" rel="noopener">${l}</a></li>`).join("")}</ul><input type="hidden" name="agree" value="1"></div>`;
 const termsStamp = () => ({termsVersion:TERMS_VERSION, termsAt:Date.now()});
@@ -4248,22 +4294,22 @@ function legalTerms(){
   ${sec("第3条（アカウントの管理）", ["利用者は、自己の責任でメールアドレスとパスワードを管理し、第三者に利用させてはなりません。", "アカウントでの操作は、その利用者本人による操作とみなします。"])}
   ${sec("第4条（本サービスの内容）", ["本サービスは、案件の募集・応募・発注・連絡・書類の作成などを行うための場を提供するものです。", "工務店の案件の工事請負契約は、工務店と協力業者の間で成立し、運営者はその当事者になりません。運営者の案件の契約は、運営者と協力業者の間で成立します。", "工事の内容・品質・工期・安全管理などの責任は、その案件の発注者と受注した協力業者が負うものとします。"])}
   ${sec("第5条（料金・支払い）", ["本サービスの料金、案件の先払い、運営手数料、返金などは、別に定める「料金・支払いポリシー」によります。"])}
-  ${sec("第6条（禁止事項）", ["法令または公序良俗に反する行為", "虚偽の登録・申告、他人になりすます行為", "運営者・他の利用者・第三者の権利や信用を傷つける行為", "本サービスで知った他の利用者の情報を、案件の遂行以外の目的に使う行為", "運営者の手数料を免れることを目的として、本サービスで知り合った相手と本サービスを通さずに取引する行為", "本サービスの運営を妨げる行為、不正なアクセス、プログラムの改ざん", "その他、運営者が不適切と判断する行為"])}
-  ${sec("第7条（情報の取扱い）", ["案件の住所・鍵・入室方法などの現場情報は、発注が確定した協力業者だけが見られます。協力業者は、案件の遂行以外に使ってはなりません。", "個人情報の取扱いは、別に定める「プライバシーポリシー」によります。"])}
-  ${sec("第8条（利用停止・登録の取消し）", ["運営者は、利用者が本規約に違反したとき、登録内容に虚偽があったとき、料金の支払いが滞ったとき、その他運営者が必要と判断したときは、事前の通知なく、利用の停止または登録の取消しができるものとします。", "利用者は、運営者の定める方法で、いつでも退会を申し出ることができます。"])}
-  ${sec("第9条（免責）", ["運営者は、本サービスにより必ず案件の受注・発注ができることを保証しません。", "利用者どうしの取引・トラブルは当事者間で解決するものとし、運営者は、運営者に故意または重大な過失がある場合を除き、責任を負いません。", "通信障害・システムの不具合・外部サービス（決済・データ保存など）の停止により生じた損害について、運営者は、運営者に故意または重大な過失がある場合を除き、責任を負いません。"])}
-  ${sec("第10条（サービスの変更・停止）", ["運営者は、利用者に事前に通知のうえ、本サービスの内容を変更し、または提供を停止することができます。緊急の場合は、事後の通知とすることがあります。"])}
-  ${sec("第11条（規約の変更）", ["運営者は、必要に応じて本規約を変更できます。変更後の規約は、本サービス上に表示した時点から効力を生じます。重要な変更のときは、本サービス上で改めて同意をいただきます。"])}
-  ${sec("第12条（準拠法・管轄）", [`本規約は日本法に準拠します。本サービスに関して紛争が生じた場合は、${L.court}を第一審の専属的合意管轄裁判所とします。`])}`;
+  ${sec("第6条（禁止事項）", ["法令または公序良俗に反する行為", "虚偽の登録・申告、他人になりすます行為", "運営者・他の利用者・第三者の権利や信用を傷つける行為", "本サービスで知った他の利用者の情報を、案件の遂行以外の目的に使う行為", "運営者の手数料を免れることを目的として、本サービスで知り合った相手と本サービスを通さずに取引する行為", "本サービスの運営を妨げる行為、不正なアクセス、プログラムの改ざん", "本サービスのプログラム・画面・デザイン・文章・画像・マニュアルなどを、運営者の承諾なく複製・改変・転載・公開・配布・販売する行為（自社内での業務上の共有を除きます）", "本サービスのプログラムを解析する行為（リバースエンジニアリング、逆コンパイル、難読化の解除、ソースコードの抽出などを含みます）", "クローラー・スクレイピングツールなどの自動化された手段で本サービスの情報を集める行為、運営者が定めた方法以外で本サービスやそのデータにアクセスする行為", "本サービスと同じまたは似たサービスを開発・提供・調査する目的で本サービスを利用し、またはその目的で本サービスの画面・機能・仕様・料金体系などの情報を第三者に提供する行為", "その他、運営者が不適切と判断する行為"])}
+  ${sec("第7条（知的財産権）", ["本サービスに関するプログラム、画面の構成・デザイン、文章、画像、ロゴ、商標、マニュアル、機能の組み合わせ・仕組みなどに関する著作権その他の知的財産権は、運営者または正当な権利者に帰属します。", "運営者は利用者に対し、本規約に従って本サービスを利用する範囲に限り、譲渡・再許諾のできない非独占的な利用を認めます。本規約で明示する以外の権利を許諾するものではありません。", "利用者が本サービスに入力・登録した情報（案件の内容・写真・書類など）の権利は、利用者または正当な権利者に留保されます。運営者は、本サービスの提供・保守・改善に必要な範囲で、これらを無償で利用できるものとします。"])} ${sec("第8条（秘密保持）", ["利用者は、本サービスの利用を通じて知った、公開されていない機能・仕様・画面・料金条件・運営の方法など運営者の情報を、運営者の承諾なく第三者に開示・漏えいし、または本サービスの利用以外の目的に使ってはなりません。", "利用者は、自社の従業員・担当者にも本条の義務を守らせるものとします。"])} ${sec("第9条（情報の取扱い）", ["案件の住所・鍵・入室方法などの現場情報は、発注が確定した協力業者だけが見られます。協力業者は、案件の遂行以外に使ってはなりません。", "個人情報の取扱いは、別に定める「プライバシーポリシー」によります。"])}
+  ${sec("第10条（利用停止・登録の取消し）", ["運営者は、利用者が本規約に違反したとき、登録内容に虚偽があったとき、料金の支払いが滞ったとき、その他運営者が必要と判断したときは、事前の通知なく、利用の停止または登録の取消しができるものとします。", "利用者は、運営者の定める方法で、いつでも退会を申し出ることができます。", "利用者が本規約に違反して運営者に損害を与えたときは、その損害（合理的な範囲の弁護士費用を含みます）を賠償するものとします。", "退会・登録の取消し・利用の停止の後も、第6条（禁止事項）、第7条（知的財産権）、第8条（秘密保持）、第9条（情報の取扱い）、本項および前項、第11条（免責）、第14条（準拠法・管轄）の定めは効力を持ち続けます。"])}
+  ${sec("第11条（免責）", ["運営者は、本サービスにより必ず案件の受注・発注ができることを保証しません。", "利用者どうしの取引・トラブルは当事者間で解決するものとし、運営者は、運営者に故意または重大な過失がある場合を除き、責任を負いません。", "通信障害・システムの不具合・外部サービス（決済・データ保存など）の停止により生じた損害について、運営者は、運営者に故意または重大な過失がある場合を除き、責任を負いません。"])}
+  ${sec("第12条（サービスの変更・停止）", ["運営者は、利用者に事前に通知のうえ、本サービスの内容を変更し、または提供を停止することができます。緊急の場合は、事後の通知とすることがあります。"])}
+  ${sec("第13条（規約の変更）", ["運営者は、必要に応じて本規約を変更できます。変更後の規約は、本サービス上に表示した時点から効力を生じます。重要な変更のときは、本サービス上で改めて同意をいただきます。"])}
+  ${sec("第14条（準拠法・管轄）", [`本規約は日本法に準拠します。本サービスに関して紛争が生じた場合は、${L.court}を第一審の専属的合意管轄裁判所とします。`])}`;
 }
 function legalPay(){
   const o = opCfg(), L = LEGAL, pct = Math.round(opFee() * 100), plans = PLAN_KEYS.map(k => o.plans[k]).filter(x => x);
   const sec = (t, items) => `<h3>${t}</h3><ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`;
   return `<p>${L.service}（以下「本サービス」）の料金と支払い方法は、次のとおりです。金額はすべて税込です。</p>
-  ${SUBSCRIPTION_ON ? sec("1. 工務店の月額料金", [`プラン：${plans.map(x => `${esc(x.name)} ${x.price ? `月 ${yenFull(x.price)}` : "無料"}（案件の作成 月${x.limit}件まで）`).join("、")}`, `オプション：各 月 ${yenFull(o.moneyFee)}。案件の追加枠：1件 ${yenFull(o.extraFee)}。`, "月額料金は、クレジットカード（決済代行：Stripe）で申し込み日から1か月ごとに自動で請求します。", "解約・カードの変更は、本サービスの「プラン」画面から開くお支払い管理画面で、いつでもできます。解約は次の請求日の前日までに手続きしてください。", "すでに支払われた月額料金は、途中で解約した場合も日割りでの返金はいたしません。"]) : ""}
-  ${sec(`${SUBSCRIPTION_ON ? 2 : 1}. 全体公開の案件の先払い（工務店）`, [`工務店が協力業者全体に公開した案件を発注するときは、工事代金に運営手数料（工事代金の${pct}%）を加えた金額を、発注の前に先払いします。`, "先払いはクレジットカード（決済代行：Stripe）または運営者の指定口座への振込でお支払いいただけます。振込手数料は工務店の負担です。", "カード払いの場合、支払いと同時に、工事代金は受注した協力業者へ、運営手数料は運営者へ、Stripe により自動で分けて支払われ、発注が確定します。振込の場合は、運営者が入金を確認した時点で発注が確定します。", "発注の確定後に工事を取りやめる場合の工事代金の扱いは、工務店と協力業者で協議して決めるものとします。運営者は、合意の内容に従い返金の手続きを行います。運営手数料は、運営者の責めによる場合を除き、返金いたしません。"])}
-  ${sec(`${SUBSCRIPTION_ON ? 3 : 2}. 協力業者への支払い`, ["運営者の案件の工事代金は、協力業者が本サービスで発行する請求書に基づき、運営者が定める期日に、登録された口座へ振り込みます。", "工務店の案件の工事代金は、先払いの場合は Stripe から協力業者の Stripe アカウントへ支払われ、Stripe の入金スケジュールに従って協力業者の口座へ振り込まれます。それ以外の場合は、工務店と協力業者の取り決めによります。", "協力業者が Stripe で受け取りを登録する際は、Stripe の利用規約に同意するものとします。カード決済の手数料は運営者が負担し、協力業者の受取額からは差し引きません。"])}
-  ${sec(`${SUBSCRIPTION_ON ? 4 : 3}. 領収書・請求書`, ["運営手数料・月額料金の領収書は、本サービスの画面からダウンロードできます。", `ご不明な点は ${L.email} までお問い合わせください。`])}`;
+  ${!subPaid() ? sec("1. 工務店の月額料金", ["現在、工務店の月額料金は無料です。全体公開・既存業者への発注とも、件数の上限はありません。", "将来、有料プランを始めるときは、始める1か月以上前に本サービス上でお知らせします。お知らせの前に料金がかかることはありません。"]) : ""}${subPaid() ? sec("1. 工務店の月額料金", [`プラン：${plans.map(x => `${esc(x.name)} ${x.price ? `月 ${yenFull(x.price)}` : "無料"}（全体公開 月${x.limit}件まで。既存業者のみの案件は件数に含まない）`).join("、")}`, `オプション：各 月 ${yenFull(o.moneyFee)}。案件の追加枠：1件 ${yenFull(o.extraFee)}。`, "月額料金は、クレジットカード（決済代行：Stripe）で申し込み日から1か月ごとに自動で請求します。", "解約・カードの変更は、本サービスの「プラン」画面から開くお支払い管理画面で、いつでもできます。解約は次の請求日の前日までに手続きしてください。", "すでに支払われた月額料金は、途中で解約した場合も日割りでの返金はいたしません。"]) : ""}
+  ${sec(`2. 全体公開の案件の先払い（工務店）`, [`工務店が協力業者全体に公開した案件を発注するときは、工事代金に運営手数料（工事代金の${pct}%）を加えた金額を、発注の前に先払いします。`, "先払いはクレジットカード（決済代行：Stripe）または運営者の指定口座への振込でお支払いいただけます。振込手数料は工務店の負担です。", "カード払いの場合、支払いと同時に、工事代金は受注した協力業者へ、運営手数料は運営者へ、Stripe により自動で分けて支払われ、発注が確定します。振込の場合は、運営者が入金を確認した時点で発注が確定します。", "発注の確定後に工事を取りやめる場合の工事代金の扱いは、工務店と協力業者で協議して決めるものとします。運営者は、合意の内容に従い返金の手続きを行います。運営手数料は、運営者の責めによる場合を除き、返金いたしません。"])}
+  ${sec(`3. 協力業者への支払い`, ["運営者の案件の工事代金は、協力業者が本サービスで発行する請求書に基づき、運営者が定める期日に、登録された口座へ振り込みます。", "工務店の案件の工事代金は、先払いの場合は Stripe から協力業者の Stripe アカウントへ支払われ、Stripe の入金スケジュールに従って協力業者の口座へ振り込まれます。それ以外の場合は、工務店と協力業者の取り決めによります。", "協力業者が Stripe で受け取りを登録する際は、Stripe の利用規約に同意するものとします。カード決済の手数料は運営者が負担し、協力業者の受取額からは差し引きません。"])}
+  ${sec(`4. 領収書・請求書`, [`運営手数料${subPaid() ? "・月額料金" : ""}の領収書は、本サービスの画面からダウンロードできます。`, `ご不明な点は ${L.email} までお問い合わせください。`])}`;
 }
 function legalPrivacy(){
   const L = LEGAL, sec = (t, items) => `<h3>${t}</h3><ol>${items.map(x => `<li>${x}</li>`).join("")}</ol>`;
@@ -4279,10 +4325,10 @@ function legalPrivacy(){
 function legalLaw(){
   const o = opCfg(), L = LEGAL, pct = Math.round(opFee() * 100), plans = PLAN_KEYS.map(k => o.plans[k]).filter(x => x && x.price);
   const rows = [["販売事業者", L.company], ["運営責任者", L.rep], ["所在地", L.address], ["電話番号", `${L.phone}（受付：平日 9:00〜18:00）`], ["メールアドレス", L.email],
-    ["販売価格", `${SUBSCRIPTION_ON && plans.length ? `月額プラン：${plans.map(x => `${esc(x.name)} 月 ${yenFull(x.price)}`).join("、")}／オプション：各 月 ${yenFull(o.moneyFee)}／案件の追加枠：1件 ${yenFull(o.extraFee)}／` : ""}全体公開の案件の運営手数料：工事代金の${pct}%（すべて税込）`],
+    ["販売価格", `${subPaid() && plans.length ? `月額プラン：${plans.map(x => `${esc(x.name)} 月 ${yenFull(x.price)}`).join("、")}／オプション：各 月 ${yenFull(o.moneyFee)}／案件の追加枠：1件 ${yenFull(o.extraFee)}／` : ""}全体公開の案件の運営手数料：工事代金の${pct}%（すべて税込）`],
     ["商品代金以外の必要料金", "インターネットの通信費、銀行振込の場合の振込手数料"], ["支払方法", "クレジットカード（決済代行：Stripe）、銀行振込"],
-    ["支払時期", `${SUBSCRIPTION_ON ? "月額料金：申し込み時と、以後1か月ごとの自動更新時／" : ""}運営手数料：案件の発注前（先払い）`], ["サービスの提供時期", "決済の完了後、すぐにご利用いただけます"],
-    ["返品・キャンセル", `サービスの性質上、決済後の返金はいたしません。${SUBSCRIPTION_ON ? "月額プランはいつでも解約でき、次の更新日以降は請求されません。" : ""}詳しくは「料金・支払いポリシー」をご覧ください`],
+    ["支払時期", `${subPaid() ? "月額料金：申し込み時と、以後1か月ごとの自動更新時／" : ""}運営手数料：案件の発注前（先払い）`], ["サービスの提供時期", "決済の完了後、すぐにご利用いただけます"],
+    ["返品・キャンセル", `サービスの性質上、決済後の返金はいたしません。${subPaid() ? "月額プランはいつでも解約でき、次の更新日以降は請求されません。" : ""}詳しくは「料金・支払いポリシー」をご覧ください`],
     ["動作環境", "最新版の Google Chrome・Safari・Microsoft Edge など"]];
   return `<table class="legal-table"><tbody>${rows.map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join("")}</tbody></table>`;
 }
@@ -4291,7 +4337,7 @@ function viewTerms(key){
   const body = {terms:legalTerms, pay:legalPay, privacy:legalPrivacy, law:legalLaw}[cur]();
   return `<div class="auth-wrap legal-wrap"><div class="auth-brand"><span class="brand-mark gp" aria-hidden="true"></span><div><b>${LEGAL.service}</b><small>${LEGAL.company}</small></div></div>
     <nav class="chips legal-nav" aria-label="規約・ポリシー">${LEGAL_DOCS.map(([k, l]) => `<a href="#/terms/${k}" ${k === cur ? 'aria-current="true"' : ""}>${l}</a>`).join("")}</nav>
-    <article class="panel legal"><h1>${title}</h1>${body}<p class="small legal-date">${TERMS_VERSION.replace(/-0?/g, (m, i) => i === 4 ? "年" : "月").replace(/$/, "日")} 制定</p></article>
+    <article class="panel legal"><h1>${title}</h1>${body}<p class="small legal-date">${jpDate(TERMS_ENACTED)} 制定／${jpDate(TERMS_VERSION)} 改定</p></article>
     <p class="center"><a href="#/">ポータルに戻る</a></p></div>`;
 }
 // 規約に同意していない（または改定された）人：使う前に同意してもらう
@@ -4335,7 +4381,7 @@ const staffInvUrl = o => location.href.split("#")[0] + "#/signup/staff/" + staff
 function viewSignup(staff = false, inv = null, co = false){
   return `<div class="auth-wrap">${authHead()}
     <form class="panel" data-form="signup" data-staff="${staff ? "1" : ""}" data-co="${co ? "1" : ""}"${inv ? ` data-inv="${esc(JSON.stringify(inv))}"` : ""}>
-      <h2>${staff ? "従業員のアカウントを作る" : co ? "工務店（元請）のアカウントを作る" : "アカウントを作る"}</h2>${co ? `<p class="small" style="margin:0 0 10px">案件を作って協力業者に発注する会社の登録です。無料プラン（月1件まで公開）から始まり、あとからプランを変えられます。協力業者として案件を受ける方は<a href="#/signup">こちら</a>。</p>` : ""}${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
+      <h2>${staff ? "従業員のアカウントを作る" : co ? "工務店（元請）のアカウントを作る" : "アカウントを作る"}</h2>${co ? `<p class="small" style="margin:0 0 10px">案件を作って協力業者に発注する会社の登録です。${subPaid() ? "無料プラン（全体公開は月1件まで・既存業者への発注は無制限）から始まり、あとからプランを変えられます。" : "今は無料で、全部の機能を件数の上限なしで使えます（全体公開の案件だけ、工事代金と運営手数料の先払いがあります）。"}協力業者として案件を受ける方は<a href="#/signup">こちら</a>。</p>` : ""}${staff ? `<p class="small" style="margin:0 0 10px">${inv?.n ? `${esc(inv.n)}さん、` : ""}Reforeの従業員用です。会社が承認すると管理画面が使えるようになり、自分が担当の案件の通知が届きます。</p>` : ""}
       <label class="field"><span>メールアドレス</span><input type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off" value="${esc(inv?.e || "")}"></label>
       <label class="field"><span>パスワード <small>6文字以上</small></span><input type="password" name="password" required minlength="6" autocomplete="new-password"></label>
       <label class="field"><span>パスワード（確認）</span><input type="password" name="password2" required minlength="6" autocomplete="new-password"></label>
@@ -4348,7 +4394,7 @@ function viewSignup(staff = false, inv = null, co = false){
 function viewCoSignup(){
   return `<div class="auth-wrap">${authHead()}<form class="panel" data-form="cosignup">
     <h2>会社の情報</h2>
-    <p class="small" style="margin:0 0 10px">登録するとすぐに管理画面が使えます（無料プラン：月1件まで公開）。あとから「設定」で変えられます。</p>
+    <p class="small" style="margin:0 0 10px">登録するとすぐに管理画面が使えます${subPaid() ? "（無料プラン：全体公開は月1件まで・既存業者への発注は無制限）。あとから「設定」で変えられます。" : "（今は無料・件数の上限なし）。"}</p>
     <label class="field"><span>会社名</span><input name="name" required autocomplete="organization" placeholder="例：みどり建装株式会社"></label>
     <label class="field"><span>あなたのお名前（代表者・管理者）</span><input name="ownerName" required autocomplete="name"></label>
     <label class="field"><span>電話番号</span><input name="tel" type="tel" required autocomplete="tel"></label>
@@ -4623,9 +4669,72 @@ async function viewWorkDetail(id){
     <button class="btn sub block" data-act="chat-open" data-job="${esc(id)}">${t?.lastAt ? "やりとりを開く" : `${esc(coNameOf(job))}とチャットする`}</button></section>`;
   const showSite = job.acceptedAt && !job.declinedAt && !["completed", "paid"].includes(job.status);
   return `${back("#/work", "受注した案件")}${coJobBanner(job)}<div class="cols">
-    <div class="stack">${lateTop}${orderChangeHtml(order)}${showSite ? siteCard(job, priv, id) : ""}${step}${dates}${contact}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
+    <div class="stack">${lateTop}${orderChangeHtml(order)}${showSite ? siteCard(job, priv, id) : ""}${step}${dates}${contact}${touchupPanel(job, false)}${progressTrack(job, rs)}${docs}${reportsBlock(rs, false)}</div>
     <div class="stack">${craftJobBlock(job, priv, {full:true, showPrice:!(job.status === "assigned" && !job.acceptedAt && !job.declinedAt), itemsHtml:order?.manual && order.job?.items?.length ? itemsTable({items:order.job.items, taxMode:job.taxMode}) : itemsPanelBody(job, priv), itemsLabel:order?.manual && order.job?.items?.length ? `${order.job.items.length}件・発注書のとおり` : priv.items?.length ? `${itemsWithId(priv.items).length}件` : "", itemsOpen:true})}</div></div>`;
 }
+/* ---------- 手直し書：完了確認などで見つけた直しを、写真つきで発注した業者さんに頼む（無償の手直し。お金のかかる是正は「是正・追加の発注」） ---------- */
+// 案件の touchups に入れる：{id, at, by, due, note, items:[{loc, text, photos:[dataURL]}], doneAt}
+const tuOpen = j => (j.touchups || []).filter(t => !t.doneAt);
+function touchupCard(t, k, admin, jid){
+  const it = (t.items || []).map((x, i) => `<li><b>${i + 1}. ${esc(x.loc ? x.loc + "　" : "")}${esc(x.text)}</b>${(x.photos || []).length ? `<div class="tu-ph">${x.photos.map(u => `<img src="${esc(u)}" alt="${esc(x.loc || "")}の写真">`).join("")}</div>` : ""}</li>`).join("");
+  return `<div class="tu-card${t.doneAt ? " done" : ""}"><div class="row between" style="flex-wrap:wrap;gap:6px"><b>手直し書 ${k + 1}　<span class="small">${fmtDate(t.at)}${t.due ? `　期限 ${fmtDay(t.due)}` : ""}</span></b>
+    <span class="pill ${t.doneAt ? "approved" : "pending"}">${t.doneAt ? `直りました（${fmtDate(t.doneAt)}）` : "手直し中"}</span></div>
+    ${t.note ? `<p class="small" style="margin:6px 0 0;white-space:pre-line">${esc(t.note)}</p>` : ""}<ol class="tu-list">${it}</ol>
+    <div class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn sub sm" data-act="tu-pdf" data-job="${esc(jid)}" data-k="${k}">手直し書PDF</button>${admin && !t.doneAt ? `<button type="button" class="btn sub sm" data-act="tu-done" data-job="${esc(jid)}" data-k="${k}">直った（完了にする）</button>` : ""}${admin ? `<button type="button" class="textlink danger-text" data-act="tu-del" data-job="${esc(jid)}" data-k="${k}">消す</button>` : ""}</div></div>`;
+}
+function touchupPanel(job, admin){
+  const list = job.touchups || [];
+  if(!admin && !list.length) return "";
+  return `<section class="panel tu-panel"><h2>手直し${tuOpen(job).length ? ` <span class="pill pending">${tuOpen(job).length}件 手直し中</span>` : ""}</h2>
+    ${admin ? `<p class="small" style="margin:0 0 10px">完了確認などで見つけた直しを、写真つきで${job.assignedTo ? "この業者さん" : "発注した業者さん"}に頼みます（お金はかかりません）。作ると、業者さんの画面とチャットに届きます。</p>` : `<p class="small" style="margin:0 0 10px">直してほしいところです。直したら「完了報告」の「写真を追加で送る」で、直したあとの写真を送ってください。</p>`}
+    ${list.map((t, k) => touchupCard(t, k, admin, job.id)).reverse().join("") || `<p class="small" style="margin:0 0 8px">まだ手直し書はありません。</p>`}
+    ${admin && job.assignedTo ? `<button type="button" class="btn" data-act="tu-new" data-job="${esc(job.id)}">＋ 手直し書を作る</button>` : ""}</section>`;
+}
+function touchupDocHtml(job, t, c, priv = {}){
+  const co = isRefJob(job) ? COMPANY : coInfo(), st = job.staff;
+  return `<div class="pdfdoc tu-doc"><h1 class="tu-h">手 直 し 指 示 書</h1>
+    <div class="tu-top"><div><div class="tu-to">${esc(c?.tradeName || c?.name || "")}　様</div><p>下記の箇所の手直しをお願いいたします。</p></div>
+      <div class="tu-me">発行日　${fmtDate(t.at)}<br>工事番号　${esc(job.jobNo || "")}<br><b>${esc(co.name || "")}</b><br>${esc(co.address || "")}<br>TEL ${esc(co.tel || "")}${st?.name ? `<br>担当　${esc(st.name)}${st.phone ? `（${esc(st.phone)}）` : ""}` : ""}</div></div>
+    <table class="tu-info"><tr><th>物件名</th><td>${esc([priv.building || job.site?.building || job.title, priv.room || job.site?.room].filter(Boolean).join("　"))}</td></tr><tr><th>現場住所</th><td>${esc(priv.address || job.site?.address || [job.pref, job.city].join(""))}</td></tr>
+      <tr><th>期限</th><td>${t.due ? esc(fmtDate(t.due)) + "まで" : "ご相談ください"}</td></tr>${t.note ? `<tr><th>連絡事項</th><td style="white-space:pre-line">${esc(t.note)}</td></tr>` : ""}</table>
+    <table class="tu-items"><thead><tr><th class="n">No</th><th>箇所</th><th>手直しの内容</th><th>写真</th></tr></thead><tbody>
+    ${(t.items || []).map((x, i) => `<tr><td class="n">${i + 1}</td><td>${esc(x.loc || "")}</td><td>${esc(x.text)}</td><td>${(x.photos || []).map(u => `<img src="${esc(u)}" alt="">`).join("")}</td></tr>`).join("")}</tbody></table>
+    <p class="tu-foot">直したあとの写真を、ポータルの「完了報告」（写真を追加で送る）かチャットで送ってください。</p></div>`;
+}
+const TU_CSS = `.tu-doc{font-size:11.5px}.tu-h{text-align:center;font-size:20px;letter-spacing:.3em;color:#142A5E;border-bottom:3px double #142A5E;margin:0 0 14px;padding-bottom:6px}
+.tu-top{display:flex;justify-content:space-between;gap:16px}.tu-to{font-size:15px;font-weight:700;border-bottom:1px solid #111;padding-bottom:2px;min-width:260px}.tu-me{text-align:right;line-height:1.6;font-size:10.5px}
+.tu-info,.tu-items{width:100%;border-collapse:collapse;margin-top:12px}.tu-info th,.tu-info td,.tu-items th,.tu-items td{border:1px solid #9aa3b5;padding:5px 7px;vertical-align:top;text-align:left}
+.tu-info th{width:90px;background:#EEF2FA;color:#142A5E}.tu-items thead th{background:#EEF2FA;color:#142A5E}.tu-items .n{width:28px;text-align:center}.tu-items tr{break-inside:avoid}
+.tu-items img{width:150px;height:112px;object-fit:cover;margin:0 4px 4px 0;border:1px solid #ccd}.tu-foot{margin-top:12px;font-size:10.5px;color:#444}`;
+// 手直し書を作る窓：箇所・内容・写真（1件に3枚まで）を何件でも。期限とひとこと
+function touchupForm(){
+  return new Promise(res => {
+    const bg = document.createElement("div"); bg.className = "modal-bg";
+    const row = () => `<div class="tu-row"><div class="two"><input type="text" name="t_loc" placeholder="箇所（例：2F洋室 北の壁）"><input type="text" name="t_text" placeholder="手直しの内容（例：クロスのつなぎ目が浮いている）"></div>
+      <label class="small tu-file">写真（3枚まで）<input type="file" name="t_ph" accept="image/*" multiple></label><button type="button" class="textlink danger-text tu-rm">この行を消す</button></div>`;
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="tu-title" style="max-width:640px"><h2 id="tu-title">手直し書を作る</h2>
+      <div id="tu-rows">${row()}</div><button type="button" class="btn sub sm" id="tu-add" style="margin:4px 0 12px">＋ 行を足す</button>
+      <div class="two"><label class="field"><span>期限</span><input type="date" id="tu-due"></label><label class="field"><span>ひとこと（任意）</span><input type="text" id="tu-note" placeholder="例：11/5の完了確認までにお願いします"></label></div>
+      <div class="row end"><button type="button" class="btn sub m-no">キャンセル</button><button type="button" class="btn m-ok">作って業者さんに送る</button></div></div>`;
+    document.body.appendChild(bg);
+    const close = v => { bg.remove(); res(v); };
+    bg.querySelector("#tu-add").onclick = () => bg.querySelector("#tu-rows").insertAdjacentHTML("beforeend", row());
+    bg.addEventListener("click", e => { if(e.target.classList.contains("tu-rm") && bg.querySelectorAll(".tu-row").length > 1) e.target.closest(".tu-row").remove(); });
+    bg.querySelector(".m-no").onclick = () => close(null);
+    bg.querySelector(".m-ok").onclick = async () => {
+      const b = bg.querySelector(".m-ok"); b.disabled = true; b.textContent = "写真を小さくしています…";
+      try {
+        const items = [];
+        for(const r of bg.querySelectorAll(".tu-row")){ const loc = r.querySelector("[name=t_loc]").value.trim(), text = r.querySelector("[name=t_text]").value.trim(); if(!text) continue;
+          const photos = []; for(const f of [...r.querySelector("[name=t_ph]").files].slice(0, 3)) photos.push(await blobToDataURL(await resizeImage(f, 900, 0.6)));
+          items.push({loc, text, photos}); }
+        if(!items.length){ toast("手直しの内容を1つ以上入れてください"); b.disabled = false; b.textContent = "作って業者さんに送る"; return; }
+        close({items, due:bg.querySelector("#tu-due").value, note:bg.querySelector("#tu-note").value.trim()});
+      } catch(err) { toast(err.message || String(err)); b.disabled = false; b.textContent = "作って業者さんに送る"; }
+    };
+  });
+}
+
 /* ---------- メール通知：自動メールはやめた（2026-10-14）。呼び出しは残して何もしない ---------- */
 async function notifyMail(){}
 
@@ -4956,6 +5065,7 @@ async function viewAdminJob(id){
         ${chatPanel(threads, id, job.assignedTo)}
         ${docs}
         ${job.assignedTo && (rs.length || ["working", "finished", "completed", "paid"].includes(job.status)) ? reportsBlock(rs, true) : ""}
+        ${job.assignedTo && ["working", "finished", "completed", "paid"].includes(job.status) || (job.touchups || []).length ? touchupPanel(job, true) : ""}
         ${job.assignedTo && apps.length ? `<section class="panel"><details><summary class="textlink">応募者（${apps.filter(a => a.status !== "withdrawn").length}件）を見る</summary>${apps.map(applicantHtml).join("")}</details></section>`
         : `<section class="panel"><h2>応募者（${apps.filter(a => a.status !== "withdrawn").length}件）</h2>
           ${apps.length ? apps.map(applicantHtml).join("") : `<p class="small" style="margin:0">${job.status === "draft" ? "公開すると、協力業者からの応募がここに届きます。" : "まだ応募はありません。"}</p>`}
@@ -5416,6 +5526,24 @@ function staffRowHtml(p = {}){
     <input type="tel" name="s_phone" value="${esc(p.phone)}" placeholder="電話番号（任意・書類に載ります）" aria-label="電話番号">
     <button type="button" class="i-x" data-act="rm-staff" aria-label="この担当者を削除">×</button></div>`;
 }
+// 単価表を工種（分類）ごとにまとめて、見出しを付けて並べる
+function priceGroupsHtml(list){
+  const cats = [...new Set([...PRICE_CATS, ...list.map(p => p.cat || "未分類")])];
+  return cats.map(c => { const g = list.filter(p => (p.cat || "未分類") === c); return g.length ? `<div class="price-cat-h" data-cat="${esc(c)}">${esc(c)} <small>${g.length}件</small></div>${g.map(priceRowHtml).join("")}` : ""; }).join("");
+}
+// 単価表の検索：工事名・備考・分類に言葉が入っている行と、選んだ工種の行だけ出す
+const kanaFold = t => String(t || "").toLowerCase().replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)).replace(/\s+/g, "");
+function priceFilter(form){
+  if(!form) return;
+  const q = kanaFold(form.querySelector("[data-price-q]")?.value), cat = form.querySelector(".price-chips .chip.on")?.dataset.cat || "";
+  let shown = 0;
+  form.querySelectorAll("#price-ed .price-row").forEach(r => { const rc = r.querySelector("[name=p_cat]").value.trim() || "未分類";
+    const hit = (!cat || rc === cat) && (!q || kanaFold(r.querySelector("[name=p_name]").value + " " + r.querySelector("[name=p_note]").value + " " + rc).includes(q));
+    r.hidden = !hit; if(hit) shown++; });
+  form.querySelectorAll("#price-ed .price-cat-h").forEach(h => { let n = h.nextElementSibling, any = false; while(n && !n.classList.contains("price-cat-h")){ if(!n.hidden) any = true; n = n.nextElementSibling; } h.hidden = !any; });
+  form.querySelector(".price-none").hidden = !!shown;
+}
+document.addEventListener("input", e => { if(e.target.matches?.("[data-price-q]")) priceFilter(e.target.closest("form")); });
 function priceRowHtml(p = {unit:"式"}){
   const co = S.priceCo || "", std = p.sellPrice ?? defSell(p.name) ?? "", by = p.sellBy || {};
   return `<div class="price-row${p.estOnly ? " est-only" : ""}${p.onlyCo ? " only-co" : ""}" data-id="${esc(p.id || "")}"${p.estOnly ? ' data-est="1"' : ""} data-only="${esc(p.onlyCo || "")}" title="${p.onlyCo ? esc(p.onlyCo) + "だけの項目" : ""}" data-sell="${esc(std)}" data-sellby="${esc(JSON.stringify(by))}">
@@ -5531,8 +5659,11 @@ async function viewSettings(tab){
       <form data-form="prices" class="stack">
         <div class="price-co"><label><span>見積単価を見る・変える管理会社</span><select data-price-co><option value="">標準（全部の管理会社）</option>${(S.priceCos || []).map(c => `<option ${c === S.priceCo ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
           <p class="small">管理会社を選ぶと、見積単価の列がその管理会社だけの単価になります。空のままの作業は標準の見積単価を使います。見積と工事メモで、宛先の管理会社に合わせた単価が入ります。</p></div>
+        <div class="price-find"><input type="search" data-price-q placeholder="工事名で探す（例：クロス、エアコン）" aria-label="工事名で探す">
+          <div class="price-chips" role="group" aria-label="工種でしぼる"><button type="button" class="chip on" data-act="price-cat" data-cat="">すべて</button>${[...new Set([...PRICE_CATS, ...[...S.prices.filter(p => !p.estOnly), ...estOnlyRows()].map(p => p.cat || "未分類")])].map(c => `<button type="button" class="chip" data-act="price-cat" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}</div>
+          <p class="small price-none" hidden>見つかりませんでした。</p></div>
         <div class="price-head" aria-hidden="true"><span>分類</span><span>作業名</span><span>単位</span><span id="ph-sell">見積単価${S.priceCo ? `<br><b>${esc(S.priceCo)}</b>` : ""}</span><span>業者単価</span><span>手間のみ単価</span><span>備考・品番</span><span></span></div>
-        <div class="items-ed" id="price-ed">${[...S.prices.filter(p => !p.estOnly), ...estOnlyRows()].map(priceRowHtml).join("")}</div>
+        <div class="items-ed" id="price-ed">${priceGroupsHtml([...S.prices.filter(p => !p.estOnly), ...estOnlyRows()])}</div>
         <div class="row between" style="flex-wrap:wrap"><span class="row" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button>${tenant() ? "" : `<button type="button" class="btn sub" data-act="add-default-prices">標準の単価を追加</button>`}<button type="button" class="btn sub" data-act="price-co-import" title="管理会社の単価表から作ったファイルを読み込み、その管理会社の見積単価に入れます">管理会社の見積単価を取り込む</button></span><button class="btn">単価表を保存</button></div>
       </form>
       <datalist id="cat-list-p">${[...new Set([...PRICE_CATS, ...S.prices.map(p => p.cat)].filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
@@ -5909,7 +6040,6 @@ async function viewHome(){
   jobs.filter(j => jobMine(j) && j.declinedAt && j.status === "assigned").forEach(j => add(j.title, "発注が断られました。対応してください", `#/admin/job/${j.id}`, "danger", j.staff?.name || "", jst(j), rootOf(j.id)));
   reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j) && !["completed", "paid"].includes(j.status)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn", j.staff?.name || "", jst(j), rootOf(j.id)); });
   [...(S.threads?.values() || [])].filter(isUnread).filter(t => !mineOnly || !t.jobId || jobMine(jobs.find(j => j.id === t.jobId))).forEach(t => add(t.jobTitle || "チャット", `${peerName(t)}から新しいチャット`, chatHref(t), "", t.jobId ? jobs.find(j => j.id === t.jobId)?.staff?.name || "" : undefined, jst(t.jobId && jobs.find(j => j.id === t.jobId)), rootOf(t.jobId)));
-  if(S.pending && !mineOnly) add("協力業者の登録", `審査待ちが${S.pending}件あります`, "#/admin/craftsmen");
   return `<div class="page-head"><div><h1>ホーム</h1><p class="lead">今やることです。押すとその画面に移ります。</p></div>${hasOpt("docs") ? `<a class="btn" href="#/admin/memo">＋ 工事メモ・見積を作る</a>` : lockBtn("docs", "＋ 工事メモ・見積を作る")}</div>
     <div><section class="panel"><h2>やること <small>${todo.length}件</small></h2>
       ${me ? `<p class="small home-scope">${mineOnly ? `担当が<b>${esc(staffCanon(me) || me)}</b>の案件だけ出しています。` : "全員の案件を出しています。"}<button type="button" class="textlink" data-act="home-scope">${mineOnly ? "全部を見る" : "自分の担当だけにする"}</button></p>` : ""}
@@ -5922,7 +6052,7 @@ async function viewHome(){
 function memoWorkSupOpts(){
   const cr = [...(S.crafts?.values() || [])].filter(c => c.status === "approved").sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0) || String(a.tradeName || a.name).localeCompare(String(b.tradeName || b.name), "ja"));
   const ws = (S.suppliers || []).filter(x => x.kind === "work");
-  return `<option value="">未定（募集する）</option>${cr.length ? `<optgroup label="協力業者">${cr.map(c => `<option value="c:${esc(c.uid)}">${esc(c.tradeName || c.name)}</option>`).join("")}</optgroup>` : ""}${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}">${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self">自社でやる</option>`;
+  return `<option value="">未定（募集する）</option>${cr.length ? `<optgroup label="協力業者">${cr.map(c => `<option value="c:${esc(c.uid)}">${esc(c.tradeName || c.name)}</option>`).join("")}</optgroup>` : ""}${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}">${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self">自社でやる</option><option value="__typed">ポータルにいない業者（名前を入れる）</option>`;
 }
 // 長い一覧（協力業者・材料マスタ）のプルダウンは、押したときに中身を入れる（行ごとに全員分を入れると画面がとても重くなるため）
 const LAZY_OPTS = {ws:() => memoWorkSupOpts(), pws:() => priceWsOpts(), pmat:() => priceMatOpts()};
@@ -5936,11 +6066,12 @@ function lazyFill(sel){
 const lazyOne = (v, label, empty) => `<option value="">${empty}</option>${v ? `<option value="${esc(v)}" selected>${esc(label || v)}</option>` : ""}`;
 ["focusin", "pointerdown", "touchstart"].forEach(ev => document.addEventListener(ev, e => { const t = e.target.closest?.("select[data-lazy]"); if(t) lazyFill(t); }, {passive:true, capture:true}));
 function memoMatSupOpts(){
-  return `<option value="">なし（業者の材工）</option>${(S.suppliers || []).filter(x => x.kind !== "work").map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}<option value="net">ネットで買う（URL）</option>`;
+  return `<option value="">なし（業者の材工）</option>${(S.suppliers || []).filter(x => x.kind !== "work").map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}<option value="net">ネットで買う（URL）</option><option value="home">ホームセンターで買う</option>`;
 }
-const memoSupOf = (ws, ms, mp, ds = {}, url = "") => ws || ms || mp !== "" ? {...(ws ? {work:ws, workName:supNameOf(ws)} : {}), ...(ms ? {mat:ms, matName:ms === "net" ? "ネット購入" : supNameOf(ms)} : {}), ...(mp !== "" && mp != null ? {matPrice:Number(mp) || 0} : {}),
-  ...(ms && ms !== "net" && ds.matId ? {matId:ds.matId} : {}), ...(ms && ms !== "net" && Number(ds.matRate) > 0 ? {matRate:Number(ds.matRate)} : {}), ...(ms === "net" && url ? {url} : {})} : null;
-const supNameOf = v => !v ? "" : v === "self" ? "自社でやる" : v.startsWith("c:") ? (S.crafts?.get(v.slice(2))?.tradeName || S.crafts?.get(v.slice(2))?.name || "") : ((S.suppliers || []).find(x => x.id === v.replace(/^s:/, ""))?.name || "");
+const buyMat = ms => ms === "net" || ms === "home";   // 発注書を作らずに買う材料（ネット・ホームセンター）
+const memoSupOf = (ws, ms, mp, ds = {}, url = "") => ws || ms || mp !== "" ? {...(ws ? {work:ws, workName:supNameOf(ws)} : {}), ...(ms ? {mat:ms, matName:ms === "net" ? "ネット購入" : ms === "home" ? "ホームセンター" : supNameOf(ms)} : {}), ...(mp !== "" && mp != null ? {matPrice:Number(mp) || 0} : {}),
+  ...(ms && !buyMat(ms) && ds.matId ? {matId:ds.matId} : {}), ...(ms && !buyMat(ms) && Number(ds.matRate) > 0 ? {matRate:Number(ds.matRate)} : {}), ...(ms === "net" && url ? {url} : {})} : null;
+const supNameOf = v => !v ? "" : v === "self" ? "自社でやる" : v.startsWith("n:") ? v.slice(2) : v.startsWith("c:") ? (S.crafts?.get(v.slice(2))?.tradeName || S.crafts?.get(v.slice(2))?.name || "") : ((S.suppliers || []).find(x => x.id === v.replace(/^s:/, ""))?.name || "");
 function memoRowHtml(){
   return `<div class="memo-row"><input type="text" name="m_loc" list="memo-locs" placeholder="箇所" aria-label="箇所" autocomplete="off">
     <div class="memo-wq"><input type="text" name="m_name" data-memo-w placeholder="工事内容（文字で探す）" aria-label="工事内容" autocomplete="off"><input type="hidden" name="m_pid"><ul class="memo-wac" hidden></ul></div>
@@ -5949,7 +6080,10 @@ function memoRowHtml(){
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
     <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="LB9519" hidden>LB9519</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span>
       <span class="mp-sup"><label class="mp-ws">業者の発注先<select name="m_ws" data-lazy="ws"><option value="">未定（募集する）</option></select></label>
-        <label class="mp-ms">材料の発注先<select name="m_ms">${memoMatSupOpts()}</select></label><label class="mp-mp">材料単価<input type="number" name="m_mp" min="0" inputmode="numeric" placeholder="円"></label><label class="mp-url" hidden>URL<input type="url" name="m_url" placeholder="https://（買うページ）"></label></span></div>
+        <label class="mp-ms">材料の発注先<select name="m_ms">${memoMatSupOpts()}</select></label><label class="mp-mp">材料単価<input type="number" name="m_mp" min="0" inputmode="numeric" placeholder="円"></label><label class="mp-url" hidden>URL<input type="url" name="m_url" placeholder="https://（買うページ）"></label></span>
+      <label class="mp-wsn" hidden>業者名<input type="text" name="m_wsName" placeholder="例：〇〇内装（ポータルにいない業者）" autocomplete="off"></label>
+      <label class="mp-st">この工事<select name="m_st"><option value="">する</option>${EST_ST.map(x => `<option>${x}</option>`).join("")}</select></label>
+      <label class="mp-why">備考<input type="text" name="m_why" placeholder="なぜこの工事をするか（見積書に載ります）例：ヘッドの接続部が割れて水漏れのため" autocomplete="off"></label></div>
     <div class="memo-dims" hidden>
       <div class="md-head"><b>寸法をメモ（m）</b><span class="md-note">入れた面積がそのまま数量に入ります</span></div>
       <div class="md-list">${memoDimHtml()}</div>
@@ -6030,6 +6164,8 @@ function memoCalc(){
     const v = n => Number(r.querySelector(`[name=${n}]`)?.value) || 0, name = r.querySelector("[name=m_name]").value.trim();
     const acc = isCloth(name) ? up1(memoDims(r).filter(d => d.acc).reduce((a, d) => a + d.a, 0)) : 0, q = v("m_qty") + acc;
     const cfm = isCF(name) ? cfCuts(memoDims(r)).total : 0;   // クッションフロアの材料費は、切る長さ（m）× 1mの単価
+    const st = r.querySelector("[name=m_st]")?.value || ""; r.classList.toggle("is-st", !!st);
+    if(st){ r.querySelector(".mp-amt").innerHTML = name ? `<b>${esc(st)}</b>（見積には「${esc(st)}」と出て、金額・発注に入りません）` : ""; return; }
     const a = Math.round(q * v("m_sell")), b = Math.round(q * v("m_cost")), m = Math.round((cfm || q) * v("m_mp")); sell += a; cost += b; mat += m;
     const rn = Math.round(a * (1 - fee / 100)), rp = rn - b - m;   // この行の利益（手数料を引いたあと）
     r.querySelector(".mp-amt").innerHTML = name && q ? `見積 <b>${yenFull(a)}</b>　業者 ${yenFull(b)}${m ? `　材料 ${yenFull(m)}` : ""}<span class="mp-pf${rp < 0 ? " danger-text" : ""}">利益 <b>${yenFull(rp)}</b>（${rn ? (rp / rn * 100).toFixed(1) : "0.0"}%）</span>` : "";
@@ -6123,7 +6259,7 @@ function memoSupFill(row, p){
 }
 // 材料の発注先だけ決まっているとき：その材料屋さんの材料マスタから、工事の名前に合う材料（クッションフロア・クロスなど）を選んで材料単価を入れる
 function memoMatAuto(row){
-  const ms = row.querySelector("[name=m_ms]")?.value || "", mp = row.querySelector("[name=m_mp]"); if(!ms || ms === "net" || !mp) return;
+  const ms = row.querySelector("[name=m_ms]")?.value || "", mp = row.querySelector("[name=m_mp]"); if(!ms || buyMat(ms) || !mp) return;
   const name = row.querySelector("[name=m_name]").value, cur = row.dataset.matId && (S.materials || []).find(x => x.id === row.dataset.matId && x.sup === ms);
   const m = cur || (S.materials || []).filter(x => x.sup === ms && x.name && normKey(name).includes(normKey(x.name))).sort((a, b) => b.name.length - a.name.length || (/量産/.test(b.note || "") ? 1 : 0) - (/量産/.test(a.note || "") ? 1 : 0))[0];
   if(!m) return;
@@ -6131,9 +6267,11 @@ function memoMatAuto(row){
   row.dataset.matId = m.id; row.dataset.matRate = rate; if(m.unitPrice) mp.value = Math.round(m.unitPrice * rate);
 }
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("[name=p_mat]")) t.closest(".price-sup").querySelector(".ps-net").hidden = t.value !== "net"; });   // 単価表：ネットで買うときは金額とURLを入れる
+document.addEventListener("change", e => { const t = e.target; if(!t.matches?.("form[data-form=memo] [name=m_ws]")) return;   // ポータルにいない業者：名前を入れる
+  const b = t.closest(".memo-row").querySelector(".mp-wsn"); b.hidden = t.value !== "__typed"; if(!b.hidden) b.querySelector("input").focus(); });
 document.addEventListener("change", e => { const t = e.target; if(!t.matches?.("form[data-form=memo] [name=m_ms]")) return; const row = t.closest(".memo-row");
   row.querySelector(".mp-url").hidden = t.value !== "net";   // ネットで買うときはURLを入れる
-  row.dataset.matId = ""; if(t.value && t.value !== "net") memoMatAuto(row); else if(!t.value) row.querySelector("[name=m_mp]").value = ""; memoCalc(); });
+  row.dataset.matId = ""; if(t.value && !buyMat(t.value)) memoMatAuto(row); else if(!t.value) row.querySelector("[name=m_mp]").value = ""; memoCalc(); });
 function memoPreset(row, k, area = 0){
   const all = estPrices().filter(p => !p.noteRow && p.name), nk = normKey(k), cl = all.filter(p => p.cat === CK_CAT);
   const ps = row.dataset.chk && cl.some(p => normKey(p.name).includes(nk)) ? cl : all;   // チェックの工事は、クリーニングの工事から選ぶ
@@ -6276,7 +6414,7 @@ function startPreview(e){
   const g = new Map(), add = (k, r) => { if(!g.has(k)) g.set(k, []); g.get(k).push(`${r.loc ? r.loc + " " : ""}${r.name}`); };
   (e.rows || []).filter(r => !r.noteRow && r.name).forEach(r => { const w = r.sup?.work || "";
     if(rowForPortal(r)) add(w.startsWith("c:") ? `${supNameOf(w) || "協力業者"}さんに直接発注` : "募集に出す（業者未定）", r);
-    else if(w === "self") add("自社でやる", r); else if(/^s:/.test(w)) add(`${supNameOf(w) || "外部の業者"}（発注書の下書き）`, r); });
+    else if(w === "self") add("自社でやる", r); else if(extWork(w)) add(`${supNameOf(w) || "外部の業者"}（発注書の下書き）`, r); });
   const pk = e.checks?.park?.v === "有" ? "駐車場代：なし（敷地内駐車 有）" : `駐車場代：業者ごとに ${yenFull(PARKING_FEE)}（税抜）を発注書に入れます`;
   return [...g].map(([k, l]) => `■ ${k}\n${l.map(x => "・" + x).join("\n")}`).join("\n\n") + "\n\n" + pk;
 }
@@ -6373,7 +6511,7 @@ function memoFillFromEst(f, e){
   const box = f.querySelector("#memo-rows"); box.innerHTML = "";
   (e.rows || []).filter(r => !r.noteRow && r.name).forEach(r => { box.insertAdjacentHTML("beforeend", memoRowHtml()); const row = box.lastElementChild, v = (n, x) => { const el = row.querySelector(`[name=${n}]`); if(el && x != null) el.value = x; };
     row.dataset.rid = r.id;   // 見積の行の目印（業者の案件の工事とつなぐ）
-    v("m_loc", r.loc); v("m_name", r.name); v("m_pid", r.priceId || ""); v("m_qty", r.qty); v("m_unit", r.unit); v("m_spec", r.spec); v("m_sell", r.price); v("m_cost", r.cost);
+    v("m_loc", r.loc); v("m_name", r.name); v("m_pid", r.priceId || ""); v("m_qty", r.qty); v("m_unit", r.unit); v("m_spec", r.spec); v("m_sell", r.price); v("m_cost", r.cost); v("m_why", r.why); v("m_st", r.st || "");
     if(r.dims?.length) row.dataset.dims = JSON.stringify(r.dims); if(r.accent) row.dataset.acc = "1";
     if(r.sup?.work){ const ws = row.querySelector("[name=m_ws]"); ws.insertAdjacentHTML("beforeend", `<option value="${esc(r.sup.work)}">${esc(r.sup.workName || supNameOf(r.sup.work))}</option>`); ws.value = r.sup.work; }
     if(r.sup?.mat){ v("m_ms", r.sup.mat); v("m_mp", r.sup.matPrice ?? ""); if(r.sup.url){ v("m_url", r.sup.url); row.querySelector(".mp-url").hidden = false; } if(r.sup.matId) row.dataset.matId = r.sup.matId; if(r.sup.matRate) row.dataset.matRate = r.sup.matRate; }
@@ -6411,6 +6549,12 @@ async function caseStep(el){
   }
   S.ldCache = null; route();
 }
+// 業者の発注先：「ポータルにいない業者」を選んだら、入れた名前（n:名前）
+function memoWsOf(row, name){
+  const ws = row.querySelector("[name=m_ws]")?.value || ""; if(ws !== "__typed") return ws;
+  const n = (row.querySelector("[name=m_wsName]")?.value || "").trim(); if(!n) throw new Error(`「${name || "工事"}」の業者名を入れてください`);
+  return "n:" + n;
+}
 // 工事メモの画面の中身を集める（単価表に新しい工事を足し、物件マスタも更新する）
 async function memoCollect(form){
     const f = form.elements, g = k => (f[k]?.value || "").trim();
@@ -6423,7 +6567,7 @@ async function memoCollect(form){
       const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
       const dims0 = isCloth(name) || isCF(name) ? memoDims(r) : [], dims = dims0.length ? dims0 : (dimsOfEl(r).dims || []).filter(d => !d.acc), acc = up1(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
-        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", ccat:r.dataset.chk ? CK_CAT : "", sup:memoSupOf(v("m_ws"), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {}, v("m_url")), keep:dimsOfEl(r), rid:r.dataset.rid || (r.dataset.rid = "r_" + newId())}; })
+        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", ccat:r.dataset.chk ? CK_CAT : "", sup:memoSupOf(memoWsOf(r, name), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {}, v("m_url")), why:v("m_why"), st:v("m_st"), keep:dimsOfEl(r), rid:r.dataset.rid || (r.dataset.rid = "r_" + newId())}; })
       .filter(x => x.p.name && !(x.fixed && (x.qty === "" || !x.qty) && !x.dims.length));   // クロス・床で数量のない行は入れない
     // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
     const adds = rows.filter(x => x.save && x.p.cost > 0);
@@ -6459,7 +6603,7 @@ async function memoCollect(form){
       const list = found ? props0.map(p => p.id === found.id ? master : p) : [...props0, master];
       await api().saveProperties(list); S.props = list;
     }
-    const estRows = rows.flatMap(x => { const one = (spec, qty, more = {}) => ({id:x.rid + (more.accent && x.acc ? "_a" : ""), loc:x.loc, name:x.label || x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.ccat || x.p.cat || "", priceId:x.p.id || "", ...(x.sup ? {sup:x.sup} : {}), ...more});
+    const estRows = rows.flatMap(x => { const one = (spec, qty, more = {}) => ({id:x.rid + (more.accent && x.acc ? "_a" : ""), loc:x.loc, name:x.label || x.p.name, spec, qty, unit:x.unit || x.p.unit, price:x.free ? x.p.sell : x.p.sell || 0, cost:x.p.cost || 0, cat:x.ccat || x.p.cat || "", priceId:x.p.id || "", ...(x.sup ? {sup:x.sup} : {}), ...(x.why && !more.accent ? {why:x.why} : {}), ...(x.st ? {st:x.st} : {}), ...more});
         const dm = x.dims.filter(d => !d.acc), da = x.dims.filter(d => d.acc), dd = ds => ds.length ? {dims:ds.map(({h, l, a, acc, loc, part, long}) => ({h, l, a, ...(acc ? {acc:true} : {}), ...(loc ? {loc} : {}), ...(part ? {part} : {}), ...(long ? {long:true} : {})}))} : {};
         if(x.keep.accent && !da.length) return [one(x.spec, x.qty, {...dd(x.keep.dims || []), accent:true})];   // 前に保存したアクセントの行
         if(!x.acc) return [one(x.spec, x.qty, dd(dm))];
@@ -6855,6 +6999,8 @@ const PDF_CSS = `
 .es .es-line2{display:flex;justify-content:space-between;font-size:10px;margin:8px 4px 10px;padding-bottom:3px}
 .es .es-line2.under{border-bottom:1px solid #222}
 .es .es-items{width:100%;font-size:10px;border:1px solid #c9ced6}
+.es-next{text-align:right;font-size:9.5px;color:#555;margin:4px 0 0}
+.est-pv-page .pdfdoc+.pdfdoc,.pv-page .pdfdoc+.pdfdoc{border-top:12px solid #E3E6EB}
 .es .es-items thead th{background:#3B7EA6;color:#fff;font-weight:700;padding:4px;border:1px solid #c9ced6;white-space:nowrap}
 .es .es-items td{border:1px solid #d3d7de;padding:2px 5px;height:19px}
 .es .es-items tbody tr:nth-child(even) td{background:#E8ECF1}
@@ -7153,7 +7299,7 @@ async function route(){
       else if(a === "settings"){ html = await viewSettings(b); after = () => { renderPropList(); renderDelList(); return null; }; }
       else if(a === "craftsman") html = await viewCraftsman(b);
       else if(a === "members" && tenant()) html = await viewCoMembers();
-      else if(a === "plan" && tenant() && SUBSCRIPTION_ON){
+      else if(a === "plan" && tenant() && subPaid()){
         if(b === "paid"){ S.company = await api().getCompany(S.cid) || S.company; toast("お支払いありがとうございます。反映まで数秒かかることがあります"); location.replace("#/admin/plan"); return; }
         html = b === "down" ? await viewCoDown(c, parts[4]) : await viewCoPlan();
       }
@@ -7177,6 +7323,8 @@ async function route(){
     done(html);
   } catch(err) {
     console.error(err);
+    // つながりが切れていたら、自動で開き直す（続けて何度も開き直さないよう、30秒に1回まで）
+    if(/terminated/i.test(err?.message || "")){ let last = 0; try { last = Number(sessionStorage.getItem("gp_reload_at")) || 0; } catch(e) {} if(Date.now() - last > 30000){ try { sessionStorage.setItem("gp_reload_at", String(Date.now())); } catch(e) {} location.reload(); return; } }
     done(`<div class="empty">読み込めませんでした（${esc(err.message || err)}）<br><br><button class="btn sub" data-act="reload">もう一度読み込む</button></div>`);
   }
 }
@@ -7341,8 +7489,14 @@ const ACTIONS = {
     ed.querySelector(".staff-row:last-child [name=s_name]").focus();
   },
   async "rm-staff"(el){ el.closest(".staff-row").remove(); },
+  async "price-cat"(el){
+    el.parentNode.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === el)); priceFilter(el.closest("form"));
+  },
   async "add-price"(el){
-    const ed = el.closest("form").querySelector("#price-ed");
+    const form = el.closest("form"), ed = form.querySelector("#price-ed"), cat = form.querySelector(".price-chips .chip.on")?.dataset.cat || "";
+    // 工種でしぼっているときは、その工種の最後に足す（分類も入れておく）
+    const hs = [...ed.querySelectorAll(".price-cat-h")].find(h => h.dataset.cat === cat);
+    if(cat && hs){ let n = hs.nextElementSibling, last = hs; while(n && !n.classList.contains("price-cat-h")){ last = n; n = n.nextElementSibling; } last.insertAdjacentHTML("afterend", priceRowHtml({unit:"式", cat:cat === "未分類" ? "" : cat})); ed.querySelectorAll("[name=p_name]").forEach(i => { if(!i.value && i.closest(".price-row").querySelector("[name=p_cat]").value === (cat === "未分類" ? "" : cat)) i.focus(); }); return; }
     ed.insertAdjacentHTML("beforeend", priceRowHtml());
     ed.querySelector(".price-row:last-child [name=p_name]").focus();
   },
@@ -8044,6 +8198,37 @@ const ACTIONS = {
     notifyMail(id, "完了報告が届きました（メール）", `写真と報告内容は ${REPORT_EMAIL} にメールで送られています。`);
     toast("報告済みにしました"); route();
   },
+  async "tu-new"(el){
+    const jid = el.dataset.job, job = await api().getJob(jid); if(!job?.assignedTo) return toast("発注した業者さんがいません");
+    const v = await touchupForm(); if(!v) return;
+    const t = {id:"tu_" + newId(), at:Date.now(), by:S.profile?.name || "", ...v};
+    const list = [...(job.touchups || []), t];
+    if(JSON.stringify(list).length > 800000) return toast("写真が多くて保存できません。写真を減らしてください");
+    await api().saveJob(jid, {touchups:list});
+    // 業者さんのチャットにも知らせる
+    const uid = job.assignedTo, c = S.crafts?.get(uid) || await api().getProfile(uid).catch(() => null), tid = `${jid}_${uid}`;
+    try { await api().ensureThread({id:tid, jobId:jid, craftsmanId:uid, craftsmanName:c?.name || "", jobTitle:job.title || "", createdAt:Date.now(), lastAt:0, lastText:"", lastFrom:"", adminReadAt:0, craftsmanReadAt:0});
+      await api().sendMessage(tid, {from:"admin", uid:S.user.uid, name:tenant() ? `${S.company?.name || ""}　${S.profile.name || ""}`.trim() : "Refore", text:`手直しのお願いがあります（${t.items.length}か所${t.due ? `・期限 ${fmtDay(t.due)}` : ""}）。\n${t.items.map((x, i) => `${i + 1}. ${x.loc ? x.loc + " " : ""}${x.text}`).join("\n")}\n写真と手直し書は、受注の案件の画面で見られます。`, createdAt:Date.now()}); } catch(e) { console.warn(e); }
+    toast("手直し書を作って、業者さんに送りました"); route();
+  },
+  async "tu-pdf"(el){
+    const jid = el.dataset.job, job = await api().getJob(jid), t = (job?.touchups || [])[Number(el.dataset.k)]; if(!t) return;
+    const admin = myRole() === "admin", c = admin ? (S.crafts?.get(job.assignedTo) || await api().getProfile(job.assignedTo).catch(() => null)) : S.profile;
+    const priv = await api().getJobPrivate(jid).catch(() => ({}));
+    toast("PDFを作っています…");
+    const blob = await pdfBlob(`<style>${TU_CSS}</style>${touchupDocHtml(job, t, c, priv || {})}`);
+    saveBlob(blob, `${todayIso().replace(/-/g, "")}・手直し書・${fileSafe(job.title || "")}.pdf`);
+  },
+  async "tu-done"(el){
+    const jid = el.dataset.job, job = await api().getJob(jid), k = Number(el.dataset.k), list = clone(job?.touchups || []); if(!list[k]) return;
+    if(!await ask({title:"直ったことにしますか？", body:"直したあとの写真を確かめてから押してください。", ok:"直った"})) return;
+    list[k].doneAt = Date.now(); await api().saveJob(jid, {touchups:list}); toast("直ったことにしました"); route();
+  },
+  async "tu-del"(el){
+    const jid = el.dataset.job, job = await api().getJob(jid), k = Number(el.dataset.k), list = clone(job?.touchups || []); if(!list[k]) return;
+    if(!await ask({title:"この手直し書を消しますか？", body:"業者さんの画面からも消えます。", ok:"消す", danger:true})) return;
+    list.splice(k, 1); await api().saveJob(jid, {touchups:list}); toast("消しました"); route();
+  },
   async "chat-open"(el){
     const jid = el.dataset.job, admin = myRole() === "admin", uid = admin ? el.dataset.uid : S.user.uid;
     const job = await api().getJob(jid);
@@ -8304,7 +8489,11 @@ const FORMS = {
     const base = {...(f.doneCheck ? {doneCheck:f.doneCheck.value} : {}), company:f.company.value.trim(), contract:exTax(f.contract.value), contractTaxIn:Number(f.contract.value) || 0, month:f.month.value || "", kind:f.kind.value.trim(), staff:f.staff.value, staff2:f.staff2.value, note:f.note.value.trim(), updatedAt:Date.now()};
     let row;
     const prevRow = (await api().listLedger()).find(x => x.id === (jobId || id)) || {};
-    if(jobId) row = {...prevRow, id:jobId, jobId, ...base, extraVendors:vend};
+    // ポータルから自動で入った金額を直したもの：自動と違う金額だけ覚える（空にしたら自動に戻す）
+    const autoFix = {}; form.querySelectorAll("[name=af_amt]").forEach(i => { const k = i.dataset.key, v = i.value.trim(); if(k && v !== "" && Number(v) !== Number(i.dataset.auto)) autoFix[k] = Math.round(Number(v) || 0); });
+    // 現場で出た追加：業者ごとに、追加の金額と内容を覚える
+    const autoAdd = {}; form.querySelectorAll("[name=af_add]").forEach(i => { const k = i.dataset.key, v = Math.round(Number(i.value) || 0), n = i.parentNode.querySelector("[name=af_addn]")?.value.trim() || ""; if(k && v) autoAdd[k] = {amt:v, note:n}; });
+    if(jobId) row = {...prevRow, id:jobId, jobId, ...base, extraVendors:vend, autoFix, autoAdd};
     else {
       const old = prevRow.id ? prevRow : null;
       if(old && Number(old.contract) === base.contract){ ["netOv", "staffFeeOv", "staff2FeeOv"].forEach(k => { if(old[k] !== undefined) base[k] = old[k]; }); }
@@ -8843,6 +9032,9 @@ const STRIPE = {
   api:"https://genpuku-stripe.calm-shadow-1050.workers.dev",   // 自動化サーバー（Cloudflare Workers）の URL。stripe-worker フォルダの README を見て作る
 };
 const SUBSCRIPTION_ON = true;   // 試験用ページ：サブスク・Stripe を使う   // サブスク（プラン・月額のカード決済・投稿数の上限・オプション）を使うときは true に
+// 無料期間（工務店が30社くらいになるまで）：月額・プラン・件数の上限・オプションなしで全部使える。全体公開の先払い（カード）はそのまま。有料にするときは false に
+const FREE_NOW = true;
+const subPaid = () => SUBSCRIPTION_ON && !FREE_NOW;
 // プラン（税込）。incl = 追加料金なしで使えるオプション（staff は従業員追加が無制限）
 const OP_DEFAULT = {
   plans:{free:{name:"無料プラン", price:0, limit:1, incl:[]}, beginner:{name:"ビギナープラン", price:980, limit:3, incl:[]},
@@ -8855,7 +9047,7 @@ const OP_DEFAULT = {
 const opCfg = () => ({...OP_DEFAULT, ...(S.opCfg || {}), plans:Object.fromEntries(Object.entries(OP_DEFAULT.plans).map(([k, p]) => [k, {...p, ...(((S.opCfg || {}).plans || {})[k] || {}), incl:p.incl}])), trial:{...OP_DEFAULT.trial, ...((S.opCfg || {}).trial || {})}, stripe:{...OP_DEFAULT.stripe, ...((S.opCfg || {}).stripe || {}), links:{...(((S.opCfg || {}).stripe || {}).links || {})}}});
 const opFee = () => Number(opCfg().fee) || 0.1;
 // お試しプラン：運営が招待するときに選ぶ。期間中は月額が無料（全体公開の案件の運営手数料はかかる）。終わると新しい案件を公開できない
-const isTrial = c => SUBSCRIPTION_ON && c?.plan === "trial";
+const isTrial = c => subPaid() && c?.plan === "trial";
 const planOf = c => isTrial(c) ? {...opCfg().trial, price:0, trial:true, incl:["calendar", "money", "docs", "staff"]} : opCfg().plans[c?.plan] || opCfg().plans.free;
 const PLAN_KEYS = ["free", "beginner", "pro", "master"];
 const DAY_MS = 86400000;
@@ -8923,18 +9115,18 @@ function scheduledUpd(c, force = false){
   return upd;
 }
 async function applyScheduled(force = false){
-  const c = S.company; if(!SUBSCRIPTION_ON || stripeLive() || !tenant() || !c) return false;
+  const c = S.company; if(!subPaid() || stripeLive() || !tenant() || !c) return false;
   const upd = scheduledUpd(c, force); if(!upd) return false;
   await api().updateCompany(S.cid, upd); Object.assign(S.company, upd); return true;
 }
 // 今月の公開数（プランの上限＋追加枠）。使い切ったら追加枠・プラン変更へ案内する
 async function coQuotaBox(){
-  const c = S.company; if(!SUBSCRIPTION_ON || !tenant() || !c) return "";
+  const c = S.company; if(!subPaid() || !tenant() || !c) return "";
   const ym = curMonth(), used = await api().countPosted(S.cid, ym), p = planOf(c), ex = Number((c.extra || {})[ym] || 0), cap = p.limit + ex, left = Math.max(0, cap - used);
   const pct = Math.min(100, used / Math.max(1, cap) * 100), cls = left === 0 ? " full" : left <= Math.max(1, Math.round(cap * 0.1)) ? " low" : "";
-  return `<div class="quota${cls}"><div class="qh"><span>${esc(p.name)}　今月の公開</span><span><span class="qn num">${used}</span> / ${cap}件　<span class="small">残り${left}件${ex ? `（追加枠 ${ex}件を含む）` : ""}・${fmtDate(lastDayIso(ym))}まで</span></span></div>
+  return `<div class="quota${cls}"><div class="qh"><span>${esc(p.name)}　今月の全体公開 <small>（既存業者のみは数えません）</small></span><span><span class="qn num">${used}</span> / ${cap}件　<span class="small">残り${left}件${ex ? `（追加枠 ${ex}件を含む）` : ""}・${fmtDate(lastDayIso(ym))}まで</span></span></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
-    ${left === 0 ? `<span class="small warn">今月公開できる件数を使い切りました。追加枠を買うか、プランを上げるとすぐに公開できます。</span>
+    ${left === 0 ? `<span class="small warn">今月の全体公開を使い切りました。既存業者のみの公開は、このまま何件でもできます。全体に公開するときは、追加枠を買うか、プランを上げてください。</span>
       <div class="row"><button class="btn" data-act="co-extra">追加枠を買う（1件 ${yenFull(opCfg().extraFee)}）</button><a class="btn sub" href="#/admin/plan">プランを変更する</a></div>` : ""}</div>`;
 }
 // オプション（各 月1,000円・税込。有料プランの人だけ）。staff（従業員追加）は「メンバー」画面で人数を増やす
@@ -8946,7 +9138,7 @@ const optOwned = (c, k) => k === "money" ? !!c?.money : !!c?.opts?.[k];
 const staffSlots = c => Number(c?.opts?.staff) || 0;   // 買った従業員の枠（人数）
 // 工務店がそのオプションを使えるか（Reforeの管理画面はいつでも使える）
 function hasOpt(k, c = S.company){
-  if(!SUBSCRIPTION_ON) return true;   // サブスクを使わないあいだは、全部の機能を使える
+  if(!subPaid()) return true;   // サブスクを使わないあいだ・無料期間は、全部の機能を使える
   if(!tenant() && c === S.company) return true;
   const p = planOf(c);
   if((p.incl || []).includes(k)) return true;
@@ -8999,14 +9191,15 @@ function coInfo(){
 }
 const coTermsOf = j => j.pay ? "代金は工務店からReforeへ先払い済みです。完了確認のあと、株式会社Refore宛てに本件の請求書を発行してください。"
   : `締め日（毎月${coCloseLabel(S.company?.closeDay)}）でまとめて${S.company?.name || "工務店"}宛てにご請求ください（翌月末日払い）。`;
-// 今月の投稿数（プランの上限＋追加枠まで）。初めて公開するときに数える
-async function coPostGuard(id, x){
+// 今月の全体公開の数（プランの上限＋追加枠まで）。全体に公開したときに数える。既存業者のみの案件は数えない（何件でも無料）
+async function coPostGuard(id, x, status){
   if(!tenant()) return;
   const cur = id ? await api().getJob(id).catch(() => null) : null;
-  if(cur?.countedYm || !SUBSCRIPTION_ON) return;
+  if(cur?.countedYm || !subPaid()) return;
+  if((status || x.status || cur?.status) !== "open" || (x.audience ?? cur?.audience ?? "all") !== "all") return;
   if(isTrial(S.company) && trialLeft(S.company) <= 0) throw new Error("お試し期間が終わりました。「契約・料金」でプランを選ぶと、続けて案件を公開できます");
   const ym = curMonth(), c = S.company || {}, used = await api().countPosted(S.cid, ym), cap = planOf(c).limit + Number((c.extra || {})[ym] || 0);
-  if(used >= cap) throw new Error(`今月の投稿数（${cap}件）を使い切りました。「契約・料金」で追加枠を買うか、プランを変えてください`);
+  if(used >= cap) throw new Error(`今月の全体公開（${cap}件）を使い切りました。既存業者のみに公開すれば、件数に関係なく出せます。全体に公開するときは「契約・料金」で追加枠を買うか、プランを変えてください`);
   x.countedYm = ym;
 }
 // ログインした直後：工務店なら会社、職人のメンバーなら親方、運営の設定を読む
@@ -9020,11 +9213,11 @@ async function afterLogin(){
 function coStatusNote(){ return `<div class="alert-box"><b>この会社の利用は停止中です。</b><p>運営（Refore）にお問い合わせください。</p></div>`; }
 function coNavExtra(){
   const h = location.hash;
-  return coAdmin() ? `<a href="#/admin/members" ${h.startsWith("#/admin/members") ? 'aria-current="page"' : ""}>メンバー</a>${SUBSCRIPTION_ON ? `<a href="#/admin/plan" ${h.startsWith("#/admin/plan") ? 'aria-current="page"' : ""}>契約・料金</a>` : ""}` : "";
+  return coAdmin() ? `<a href="#/admin/members" ${h.startsWith("#/admin/members") ? 'aria-current="page"' : ""}>メンバー</a>${subPaid() ? `<a href="#/admin/plan" ${h.startsWith("#/admin/plan") ? 'aria-current="page"' : ""}>契約・料金</a>` : ""}` : "";
 }
 function coPostNote(){
   const c = S.company || {}, p = planOf(c);
-  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${isTrial(c) ? esc(trialNote(c)) + "。" : ""}${esc(p.name)}：今月 ${p.limit}件まで公開できます${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。既存業者のみの案件は先払い・運営手数料はありません。</p>`;
+  return `<p class="small" style="margin:6px 0 0;flex-basis:100%">${isTrial(c) ? esc(trialNote(c)) + "。" : ""}${esc(p.name)}：全体公開は今月 ${p.limit}件まで${(c.extra || {})[curMonth()] ? `（追加枠 ${c.extra[curMonth()]}件）` : ""}。既存業者のみの案件は件数に数えず、先払い・運営手数料もありません。</p>`;
 }
 // 職人さんが見る工務店の案件の帯（掲載元・代金・請求先）
 function coJobBanner(j){
@@ -9113,12 +9306,12 @@ function coInfoPanel(){
 async function viewCoMembers(){
   const [mem, inv] = await Promise.all([api().listMembers(S.cid), api().listInvites({companyId:S.cid}).catch(() => [])]);
   const c = S.company, active = mem.filter(m => m.status !== "suspended"), paid = active.filter(m => !m.owner).length;
-  const staffFree = (planOf(c).incl || []).includes("staff"), paidPlan = planOf(c).price > 0, slots = staffSlots(c), usedSlots = paid + inv.length, canAdd = !SUBSCRIPTION_ON || staffFree || usedSlots < slots;
-  return `<h1>メンバー</h1><p class="lead">管理画面にログインする人（従業員）を招待します。${!SUBSCRIPTION_ON ? "従業員は何人でも追加できます。" : !paidPlan && !staffFree ? "従業員の追加は有料プラン（ビギナー以上）のオプションです。" : staffFree ? `${esc(planOf(c).name)}は従業員を何人でも追加できます（追加料金なし）。` : `従業員追加オプションで買った人数まで招待できます（1人分 月額 ${yenFull(opCfg().memberFee)}・税込。最初の管理者は数えません）。今の枠：<b>${slots}人</b>（使用中 ${usedSlots}人・招待中を含む）`}</p>
+  const staffFree = (planOf(c).incl || []).includes("staff"), paidPlan = planOf(c).price > 0, slots = staffSlots(c), usedSlots = paid + inv.length, canAdd = !subPaid() || staffFree || usedSlots < slots;
+  return `<h1>メンバー</h1><p class="lead">管理画面にログインする人（従業員）を招待します。${!subPaid() ? "従業員は何人でも追加できます。" : !paidPlan && !staffFree ? "従業員の追加は有料プラン（ビギナー以上）のオプションです。" : staffFree ? `${esc(planOf(c).name)}は従業員を何人でも追加できます（追加料金なし）。` : `従業員追加オプションで買った人数まで招待できます（1人分 月額 ${yenFull(opCfg().memberFee)}・税込。最初の管理者は数えません）。今の枠：<b>${slots}人</b>（使用中 ${usedSlots}人・招待中を含む）`}</p>
     <div class="cols"><section class="panel"><h2>メンバー <small>${active.length}人</small></h2>
       ${active.map(m => `<div class="doc-row"><span class="row-main"><b>${esc(m.name || m.email)}${m.uid === S.user.uid ? "（あなた）" : ""}${m.owner ? `　<span class="small">代表</span>` : ""}</b><span class="small">${esc(m.email)}</span></span>
         <span class="row">${m.owner ? `<span class="pill approved">管理者</span>` : `<select data-memrole="${esc(m.uid)}" aria-label="役割">${["管理者", "担当者"].map(r => `<option ${r === m.coRole ? "selected" : ""}>${r}</option>`).join("")}</select>${m.uid !== S.user.uid ? `<button class="btn sub danger-text" data-act="mem-remove" data-uid="${esc(m.uid)}">外す</button>` : ""}`}</span></div>`).join("")}
-      <p class="small" style="margin:10px 0 0"><b>管理者</b>はすべての画面と契約を扱えます。<b>担当者</b>は見積・案件・予定表・チャット・請求書を扱えます（収支・設定・契約は見えません）。${SUBSCRIPTION_ON && !staffFree && slots ? `従業員追加の月額は今 ${slots}人分 × ${yenFull(opCfg().memberFee)} です。` : ""}</p></section>
+      <p class="small" style="margin:10px 0 0"><b>管理者</b>はすべての画面と契約を扱えます。<b>担当者</b>は見積・案件・予定表・チャット・請求書を扱えます（収支・設定・契約は見えません）。${subPaid() && !staffFree && slots ? `従業員追加の月額は今 ${slots}人分 × ${yenFull(opCfg().memberFee)} です。` : ""}</p></section>
     <div class="stack">${canAdd ? "" : !paidPlan ? `<section class="panel"><h2>招待する</h2>${lockWrap("staff", `<div style="height:220px"></div>`)}</section>`
       : `<section class="panel"><h2>招待する</h2><p class="small" style="margin:0 0 10px">${slots ? `従業員の枠（${slots}人）を使い切っています。` : "従業員の枠がまだありません。"}1人分（月${yenFull(opCfg().memberFee)}・税込）追加すると、すぐに招待できます。</p><button class="btn" data-act="co-opt" data-k="staff">従業員を1人分追加する</button></section>`}<form class="panel" data-form="coinvite" ${canAdd ? "" : "hidden"}><h2>招待する</h2>
       <label class="field"><span>名前</span><input name="name" required placeholder="例：佐々木"></label>
@@ -9168,7 +9361,7 @@ async function viewCoPlan(){
       : up ? `<button class="btn block" data-act="co-plan" data-id="${k}">このプランに変更</button>` : `<a class="btn sub block" href="#/admin/plan/down/p-${k}/1">このプランに変更</a>`;
     return `<div class="tier ${TIER[k]}${cur ? " cur" : ""}">${k === "pro" ? `<span class="rec">おすすめ</span>` : ""}${cur ? `<span class="curtag">ご利用中</span>` : ""}
       <b class="nm">${esc(x.name)}</b><span class="pr num">${x.price ? `月額 ${yenFull(x.price)}` : "0円"}</span><span class="tax">${x.price ? "税込" : "カード登録なし"}</span>
-      <ul><li><b>月${x.limit}件</b>まで公開</li>${feat(k)}</ul>${btn}</div>`; };
+      <ul><li>全体公開 <b>月${x.limit}件</b>まで</li><li class="inc">既存業者への発注は<b>無制限</b></li>${feat(k)}</ul>${btn}</div>`; };
   const optRow = k => {
     const inc = (p.incl || []).includes(k), on = optOwned(c, k), end = c.optEnd?.[k];
     let right;
@@ -9232,7 +9425,7 @@ async function viewCoDown(t, step){
     let rows;
     if(T.kind === "plan"){
       const after = k => { const v = st(N, k); return v === "オプションで使える" && optOwned(c, k) ? "使えない（オプションを契約し直す）" : v; };
-      rows = `<tr><th>公開できる案件</th><td>月${P.limit}件</td><td class="after">月${N.limit}件</td></tr>
+      rows = `<tr><th>全体公開できる案件</th><td>月${P.limit}件</td><td class="after">月${N.limit}件</td></tr>
         <tr><th>月額（税込）</th><td>${P.price ? yenFull(P.price) : "0円"}</td><td>${N.price ? yenFull(N.price) : "0円"}</td></tr>
         ${OPT_KEYS.map(k => { const a = st(P, k), b = after(k); return a === b ? "" : `<tr><th>${esc(OPTS[k].name)}</th><td>${esc(a)}</td><td class="after">${esc(b)}</td></tr>`; }).join("")}`;
     } else if(T.k === "staff"){ const n = staffSlots(c) - Number(c.optEnd?.staff || 0);
@@ -9619,8 +9812,8 @@ Object.assign(ACTIONS, {
   async "crew-remove"(el){ if(!await ask({title:"この従業員を外しますか？", ok:"外す", danger:true})) return; await api().removeMember(el.dataset.uid); toast("外しました"); route(); },
   async "co-plan"(el){
     const k = el.dataset.id, p = opCfg().plans[k], needCard = p.price > 0 && !S.company.card;
-    const body = p.price ? `月額 ${yenFull(p.price)}（税込）・月 ${p.limit}件まで公開。すぐに切り替わり、今月分は日割りで次回のカード決済に足します。${needCard ? "\n\n（デモ）本番では Stripe のカード登録画面が開きます。デモでは Visa ****4242 を登録します。" : ""}`
-      : "月1件まで公開になり、オプションと従業員の追加は使えなくなります。次回の請求日から切り替わります（デモではすぐに切り替えます）。";
+    const body = p.price ? `月額 ${yenFull(p.price)}（税込）・全体公開 月 ${p.limit}件まで（既存業者への発注は無制限）。すぐに切り替わり、今月分は日割りで次回のカード決済に足します。${needCard ? "\n\n（デモ）本番では Stripe のカード登録画面が開きます。デモでは Visa ****4242 を登録します。" : ""}`
+      : "全体公開が月1件までになり、オプションと従業員の追加は使えなくなります。次回の請求日から切り替わります（デモではすぐに切り替えます）。";
     if(!await ask({title:`${p.name}に変更しますか？`, body, ok:needCard ? "カードを登録して変更する" : "変更する"})) return;
     if(subAuto()) return subGo({op:"plan", key:k});
     if(p.price && await stripeGo(k)) return;
@@ -9659,7 +9852,7 @@ Object.assign(ACTIONS, {
     const ym = curMonth(), o = opCfg();
     const c0 = S.company, ex0 = Number((c0.extra || {})[ym] || 0), nx = PLAN_KEYS[PLAN_KEYS.indexOf(c0.plan) + 1], P0 = planOf(c0);
     const hint = nx && (ex0 + 1) * o.extraFee >= o.plans[nx].price - P0.price ? `\n\n今月の追加枠が${ex0 + 1}件（${yenFull((ex0 + 1) * o.extraFee)}）になります。${o.plans[nx].name}（月${o.plans[nx].limit}件・差額 月${yenFull(o.plans[nx].price - P0.price)}）に上げたほうがお得です。「契約・料金」から変更できます。` : "";
-    if(!await ask({title:"追加枠を1件買いますか？", body:`今月だけ公開できる件数が1件増えます。${yenFull(o.extraFee)}（税込）を${P0.price ? "次回のカード決済に足します" : "登録のカードでお支払いいただきます"}。${hint}`, ok:"買う"})) return;
+    if(!await ask({title:"追加枠を1件買いますか？", body:`今月だけ全体公開できる件数が1件増えます。${yenFull(o.extraFee)}（税込）を${P0.price ? "次回のカード決済に足します" : "登録のカードでお支払いいただきます"}。${hint}`, ok:"買う"})) return;
     if(subAuto()) return subGo({op:"extra"});
     if(await stripeGo("extra")) return;
     const extra = {...(S.company.extra || {})}; extra[ym] = Number(extra[ym] || 0) + 1;
@@ -9840,7 +10033,7 @@ Object.assign(FORMS, {
   async coinvite(form){
     const g = k => String(form.elements[k]?.value || "").trim(), email = g("email").toLowerCase();
     const mem = await api().listMembers(S.cid);
-    if(SUBSCRIPTION_ON && tenant() && !(planOf(S.company).incl || []).includes("staff")){
+    if(subPaid() && tenant() && !(planOf(S.company).incl || []).includes("staff")){
       const ivs = await api().listInvites({companyId:S.cid}).catch(() => []);
       if(mem.filter(m => m.status !== "suspended" && !m.owner).length + ivs.length >= staffSlots(S.company)) throw new Error("従業員の枠を使い切っています。「契約・料金」で従業員追加を1人分足してください");
     }
@@ -10107,7 +10300,7 @@ function estDiffRows(e){
   const byId = new Map(base.map(r => [r.id, r])), curIds = new Set(cur.map(r => r.id)), out = [];
   let bi = 0;
   const flushTo = idx => { while(bi < idx){ const b = base[bi++]; if(!curIds.has(b.id)) out.push({...b, _del:true}); } };
-  const KEYS = ["loc", "name", "spec", "qty", "unit", "price"];
+  const KEYS = ["loc", "name", "spec", "qty", "unit", "price", "st"];
   cur.forEach(r => {
     const b = byId.get(r.id);
     if(b){ const idx = base.indexOf(b); if(idx >= bi){ flushTo(idx); bi = idx + 1; } }
