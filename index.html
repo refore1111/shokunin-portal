@@ -179,14 +179,14 @@ h2{font-size:16px;line-height:1.5;margin:0 0 12px}
 .photos .x{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;cursor:pointer;font-size:14px;line-height:26px;padding:0}
 
 /* フォーム */
-.field{display:grid;gap:6px;margin:0 0 16px}
+.field{display:grid;gap:6px;margin:0 0 16px;align-content:start}
 .field > span,.field > legend{font-size:14px;font-weight:700;padding:0}
 .field small{color:var(--sub);font-size:12px;font-weight:400;margin-left:4px}
 fieldset{border:0;padding:0;min-width:0}
 input[type=text],input[type=email],input[type=password],input[type=tel],input[type=number],input[type=date],input[type=file],select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:10px 12px;font-size:16px}
 input[type=file]{padding:8px}
 textarea{min-height:110px;resize:vertical}
-.two{display:grid;gap:0 12px}
+.two{display:grid;gap:0 12px;align-items:start}
 @media (min-width:560px){.two{grid-template-columns:1fr 1fr}}
 .checks{display:flex;flex-wrap:wrap;gap:8px}
 .checks label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:4px;padding:6px 10px;background:var(--surface);font-size:14px;cursor:pointer}
@@ -873,6 +873,8 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .plan.free{background:var(--paper)}
 /* オプション：契約していない機能はボカシ＋鍵、ボタンは灰色 */
 .locked{position:relative;border-radius:6px;overflow:hidden;min-height:180px}
+/* 物件マスタで固定した入力欄（class="locked"）は、鍵つきの枠とは別：高さはふつうの入力欄のまま */
+input.locked,select.locked,textarea.locked{min-height:0;overflow:visible;background:#F1F3F6;color:var(--sub)}
 .locked .blur{filter:blur(6px);pointer-events:none;user-select:none}
 .lock-over{position:absolute;inset:0;display:grid;place-items:start center;padding:56px 16px 16px;border:0;background:rgba(238,241,244,.35);cursor:pointer;font:inherit;color:var(--ink)}
 .lock-chip{display:flex;align-items:center;gap:10px;background:var(--surface);border:2px solid var(--kon-text);border-radius:999px;padding:10px 18px;font-weight:700;font-size:14px;line-height:1.4;text-align:left;box-shadow:0 6px 18px rgba(0,0,0,.15)}
@@ -2898,7 +2900,7 @@ function adminNav(){
     <a href="#/admin/calendar" ${location.hash.startsWith("#/admin/calendar") ? 'aria-current="page"' : ""}>予定表</a>
     <a href="#/admin/invoices" ${/^#\/admin\/(invoices|bills)/.test(location.hash) ? 'aria-current="page"' : ""}>請求書${badge("invoices")}</a>
     <a href="#/admin/chat" ${location.hash.startsWith("#/admin/chat") ? 'aria-current="page"' : ""}>チャット${chatBadge()}</a>
-    <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者${S.pending ? `<span class="badge" aria-label="審査待ち${S.pending}件">${S.pending}</span>` : ""}</a>
+    <a href="#/admin/craftsmen" ${onC ? 'aria-current="page"' : ""}>協力業者</a>
     ${tenant() ? coNavExtra() : ""}
     ${coAdmin() ? "" : "<!--"}<a href="#/admin/settings" ${location.hash.startsWith("#/admin/settings") ? 'aria-current="page"' : ""}>設定${S.empPending?.length ? `<span class="badge" aria-label="従業員の申し込み${S.empPending.length}件">${S.empPending.length}</span>` : ""}</a>${coAdmin() ? "" : "-->"}</nav>`;
 }
@@ -3093,16 +3095,21 @@ function estDocHtml0(e, type, seal, billing = {}){
   // 変わったところは「訂正前（取消線）」→「訂正後」
   const was = (r, txt, keys) => r._ch && keys.some(k => r._ch.includes(k)) ? `<s class="es-old">${txt(r._old)}</s> ` : "";
   let no = 0;
-  const body = Array.from({length:n}, (_, k) => { const r = rows[k];
+  const bodyOf = (list, len) => Array.from({length:len}, (_, k) => { const r = list[k];
     const cells = !r ? `<td></td><td></td><td></td><td></td><td></td><td></td>`
       : r.noteRow ? `<td></td><td colspan="5" class="es-note">${r._del ? `<s class="es-del">${esc(r.name)}</s>` : esc(r.name)}</td>`
       : r._del ? `<td><s>${esc(r.loc)}</s></td><td><s>${esc(r.name)}</s> <span class="es-tag del">削除</span></td><td><s>${esc(r.spec)}</s></td><td class="c"><s>${fq(r)}</s></td><td class="r"><s>${fp(r)}</s></td><td class="r"><s>${fa(r)}</s></td>`
       : `<td>${was(r, o => esc(o.loc), ["loc"])}${esc(r.loc)}</td><td>${was(r, o => esc(o.name), ["name"])}${esc(r.name)}${r._add ? ` <span class="es-tag add">追加</span>` : r._ch ? ` <span class="es-tag chg">変更</span>` : ""}</td><td>${was(r, o => esc(o.spec), ["spec"])}${esc(r.spec)}</td><td class="c">${was(r, fq, ["qty", "unit"])}${fq(r)}</td><td class="r">${was(r, fp, ["price"])}${fp(r)}</td><td class="r">${was(r, fa, ["qty", "price"])}${fa(r)}</td>`;
     const num = r && !r._del && !r.whyRow ? ++no : "";
     return `<tr class="${r?._del ? "es-r-del" : r?._add ? "es-r-add" : r?._ch ? "es-r-chg" : ""}">${type === "invoice" ? "" : `<td class="no">${r ? num : ++no}</td>`}${cells}</tr>`; }).join("");
-  const table = `<table class="es-items${type === "invoice" ? " gray" : ""}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody>
+  // 行が多いときは、1枚目に30行、2枚目からは50行ずつ（合計と発注書の欄は最後のページ）
+  const P1 = 30, P2 = 50, paged = type !== "invoice" && rows.length > P1 + 6;
+  const chunks = paged ? [rows.slice(0, P1), ...Array.from({length:Math.ceil((rows.length - P1) / P2)}, (_, i) => rows.slice(P1 + i * P2, P1 + (i + 1) * P2))] : [rows];
+  const tableOf = (list, len, last) => `<table class="es-items${type === "invoice" ? " gray" : ""}"><thead><tr>${head}</tr></thead><tbody>${bodyOf(list, len)}</tbody>${last ? foot : ""}</table>${last ? "" : `<div class="es-next">次のページへつづきます</div>`}`;
+  const foot = `
     ${type === "invoice" ? `<tfoot><tr><td colspan="4"></td><th>小計</th><td class="r">${yenFull(t.sub)}</td></tr><tr><td colspan="4"></td><th>消費税(税率10%)</th><td class="r">${yenFull(t.tax)}</td></tr><tr><td colspan="4"></td><th>合計</th><td class="r">${yenFull(t.total)}</td></tr></tfoot>`
-      : `<tfoot><tr><td class="no"></td><td colspan="6" class="r">${yenFull(t.sub)}</td></tr></tfoot>`}</table>`;
+      : `<tfoot><tr><td class="no"></td><td colspan="6" class="r">${yenFull(t.sub)}</td></tr></tfoot>`}`;
+  const table = tableOf(chunks[0], paged ? chunks[0].length : n, !paged);
   if(type === "invoice") return `<div class="pdfdoc es inv">
     <div class="es-invhead">${to}<div class="es-invt"><b>御請求書</b><span>No.　${esc(e.no || "")}</span></div></div>
     <div class="es-mid"><div class="es-left">${prop}<p class="es-greet">下記のとおり御請求申し上げます。</p>
@@ -3110,7 +3117,12 @@ function estDocHtml0(e, type, seal, billing = {}){
     ${table}
     <div class="es-bank">${esc([billing.bank ? `振込先；${billing.bank}` : "", `支払条件；${e.terms || billing.terms || BILLING_DEFAULT.terms}`].filter(Boolean).join("　"))}</div></div>`;
   const bar = type === "ukesho" ? "発　注　請　書" : "見　　積　　書";
-  return `<div class="pdfdoc es">
+  const footer = type === "ukesho" ? `<div class="es-ukefoot"><div class="es-ukeleft"><div>工事概要：${esc(e.kind || "")}</div><div>支払条件：${esc(e.terms || BILLING_DEFAULT.terms)}</div><div>有効期限：発行後30日</div></div>${from(true)}</div>${staff ? `<div class="es-ukestaff">工事担当；　${staff}</div>` : ""}`
+      : `<div class="es-order"><div class="es-order-h"><b>【工事発注書】</b><span>令和　　年　　月　　日</span></div><p>上記工事内容、金額を了承し工事を発注致します。</p><div class="es-sign"><span>御社名　；</span><i></i><span>担当者　；</span><i class="s"></i></div></div>`;
+  const pages = chunks.length;
+  const more = chunks.slice(1).map((c, i) => { const last = i === pages - 2;
+    return `<div class="pdfdoc es es-cont"><div class="es-bar">${bar}</div><div class="es-sub"><span>NO：　　${esc(e.no || "")}${e.rev ? `　（訂正${e.rev}）` : ""}　${esc(estTitle(e))}</span><span>${i + 2} / ${pages}</span></div>${tableOf(c, c.length, last)}${last ? footer : ""}<div class="es-endline"></div></div>`; }).join("");
+  return `${more ? `<div class="pdfwrap">` : ""}<div class="pdfdoc es">
     <div class="es-bar">${bar}</div>
     <div class="es-sub"><span>NO：　　${esc(e.no || "")}${e.rev ? `　（訂正${e.rev}）` : ""}</span><span>発行日　${e.issuedAt ? fmtDate(e.issuedAt) : ""}</span></div>
     ${type === "ukesho" ? `${to}${prop}` : `<div class="es-mid"><div class="es-left">${to}<p class="es-greet">下記の通り、お見積もり申し上げます。</p>${prop}</div>${from()}</div>`}
@@ -3119,9 +3131,8 @@ function estDocHtml0(e, type, seal, billing = {}){
     ${type === "ukesho" ? `<div class="es-line2"><span>下記記載の内容にて工事を受注致します。</span><span>工事期間；　${e.periodStart ? fmtDate(e.periodStart) : ""}${e.periodEnd && e.periodEnd !== e.periodStart ? ` 〜 ${fmtDate(e.periodEnd)}` : ""}　まで</span></div>`
       : `<div class="es-line2 under"><span>見積有効期限　　${esc(e.validity || BILLING_DEFAULT.validity)}</span><span>お支払い条件　　${esc(e.terms || BILLING_DEFAULT.terms)}</span></div>`}
     ${table}
-    ${type === "ukesho" ? `<div class="es-ukefoot"><div class="es-ukeleft"><div>工事概要：${esc(e.kind || "")}</div><div>支払条件：${esc(e.terms || BILLING_DEFAULT.terms)}</div><div>有効期限：発行後30日</div></div>${from(true)}</div>${staff ? `<div class="es-ukestaff">工事担当；　${staff}</div>` : ""}`
-      : `<div class="es-order"><div class="es-order-h"><b>【工事発注書】</b><span>令和　　年　　月　　日</span></div><p>上記工事内容、金額を了承し工事を発注致します。</p><div class="es-sign"><span>御社名　；</span><i></i><span>担当者　；</span><i class="s"></i></div></div>`}
-    <div class="es-endline"></div></div>`;
+    ${paged ? `<div class="es-sub" style="justify-content:flex-end"><span>1 / ${pages}</span></div>` : footer}
+    <div class="es-endline"></div></div>${more}${more ? "</div>" : ""}`;
 }
 // 見積書の別紙「クロス張替え詳細」：寸法メモから、箇所ごと・天井/壁ごとに足した㎡と金額
 function clothDetailRows(rows){
@@ -5960,7 +5971,6 @@ async function viewHome(){
   jobs.filter(j => jobMine(j) && j.declinedAt && j.status === "assigned").forEach(j => add(j.title, "発注が断られました。対応してください", `#/admin/job/${j.id}`, "danger", j.staff?.name || "", jst(j), rootOf(j.id)));
   reps.filter(r => r.status === "submitted").forEach(r => { const j = jobs.find(x => x.id === r.jobId); if(j && jobMine(j) && !["completed", "paid"].includes(j.status)) add(j.title, "完了報告が届きました。確認する", `#/admin/job/${j.id}`, "warn", j.staff?.name || "", jst(j), rootOf(j.id)); });
   [...(S.threads?.values() || [])].filter(isUnread).filter(t => !mineOnly || !t.jobId || jobMine(jobs.find(j => j.id === t.jobId))).forEach(t => add(t.jobTitle || "チャット", `${peerName(t)}から新しいチャット`, chatHref(t), "", t.jobId ? jobs.find(j => j.id === t.jobId)?.staff?.name || "" : undefined, jst(t.jobId && jobs.find(j => j.id === t.jobId)), rootOf(t.jobId)));
-  if(S.pending && !mineOnly) add("協力業者の登録", `審査待ちが${S.pending}件あります`, "#/admin/craftsmen");
   return `<div class="page-head"><div><h1>ホーム</h1><p class="lead">今やることです。押すとその画面に移ります。</p></div>${hasOpt("docs") ? `<a class="btn" href="#/admin/memo">＋ 工事メモ・見積を作る</a>` : lockBtn("docs", "＋ 工事メモ・見積を作る")}</div>
     <div><section class="panel"><h2>やること <small>${todo.length}件</small></h2>
       ${me ? `<p class="small home-scope">${mineOnly ? `担当が<b>${esc(staffCanon(me) || me)}</b>の案件だけ出しています。` : "全員の案件を出しています。"}<button type="button" class="textlink" data-act="home-scope">${mineOnly ? "全部を見る" : "自分の担当だけにする"}</button></p>` : ""}
@@ -6920,6 +6930,8 @@ const PDF_CSS = `
 .es .es-line2{display:flex;justify-content:space-between;font-size:10px;margin:8px 4px 10px;padding-bottom:3px}
 .es .es-line2.under{border-bottom:1px solid #222}
 .es .es-items{width:100%;font-size:10px;border:1px solid #c9ced6}
+.es-next{text-align:right;font-size:9.5px;color:#555;margin:4px 0 0}
+.est-pv-page .pdfdoc+.pdfdoc,.pv-page .pdfdoc+.pdfdoc{border-top:12px solid #E3E6EB}
 .es .es-items thead th{background:#3B7EA6;color:#fff;font-weight:700;padding:4px;border:1px solid #c9ced6;white-space:nowrap}
 .es .es-items td{border:1px solid #d3d7de;padding:2px 5px;height:19px}
 .es .es-items tbody tr:nth-child(even) td{background:#E8ECF1}
