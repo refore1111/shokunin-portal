@@ -5298,7 +5298,23 @@ function csvToProps(rows){
   if(ix.name < 0) throw new Error("CSVに「物件名」の列が見つかりません（1行目に見出しが必要です）");
   const clean = v => String(v || "").replace(/[　\s]+/g, " ").trim();
   return rows.slice(1).map(r => ({id:newId(), company:clean(r[ix.company]), name:clean(r[ix.name]), address:clean(r[ix.address]),
-    al:clean(r[ix.al]), ev:clean(r[ix.ev]), note:clean(r[ix.note])})).filter(p => p.name);
+    al:clean(r[ix.al]), ev:clean(r[ix.ev]), note:clean(r[ix.note])})).filter(p => p.name && !/^（例）/.test(p.note));
+}
+const PROP_CSV_HEAD = ["管理会社", "物件名", "所在地", "オートロック", "エレベーター", "備考"];
+const PROP_CSV_SAMPLE = [["〇〇不動産管理", "サンプルハイツ新小岩", "東京都葛飾区新小岩1-2-3", "あり", "あり", "（例）見本の行です。備考が「（例）」で始まる行は読み込まれません"], ["〇〇不動産管理", "サンプルコーポ", "東京都江戸川区平井4-5-6", "なし", "なし", "（例）ゴミ置き場は建物の裏"]];
+const PRICE_CSV_HEAD = ["分類", "作業名", "単位", "見積単価", "業者単価", "手間のみ単価", "備考・品番"];
+const PRICE_CSV_SAMPLE = [["表装工事", "クロス張替え（壁）", "㎡", "1200", "800", "450", "（例）見本の行です。備考が「（例）」で始まる行は読み込まれません"], ["表装工事", "CF張替え", "㎡", "3000", "2000", "", "（例）品番を書いておくと便利"], ["クリーニング", "ハウスクリーニング 1K", "式", "25000", "18000", "", "（例）"], ["設備工事", "水栓交換", "箇所", "15000", "9000", "4000", "（例）材料込み（材工）"]];
+const csvBlob = rows => new Blob(["﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], {type:"text/csv"});
+const csvNum = v => { const n = Number(String(v ?? "").replace(/[¥￥,，円\s]/g, "")); return isFinite(n) && String(v ?? "").trim() !== "" ? Math.max(0, Math.round(n)) : ""; };
+// 単価表のCSV → 行（見出しの名前で列を探す。順番は自由）
+function csvToPrices(rows){
+  const head = rows[0].map(h => normKey(h));
+  const col = names => head.findIndex(h => names.some(n => h === normKey(n) || h.includes(normKey(n))));
+  const ix = {cat:col(["分類", "工種"]), name:col(["作業名", "工事名", "品名"]), unit:col(["単位"]), sell:col(["見積単価", "見積"]), price:col(["業者単価", "実行単価", "発注単価"]), tema:col(["手間のみ", "手間"]), note:col(["備考", "品番"])};
+  if(ix.name < 0) throw new Error("CSVに「作業名」の列が見つかりません（1行目に見出しが必要です。テンプレートを使うと確実です）");
+  const clean = v => String(v || "").replace(/[　\s]+/g, " ").trim();
+  return rows.slice(1).map(r => ({cat:clean(r[ix.cat]), name:clean(r[ix.name]), unit:clean(r[ix.unit]) || "式", sellPrice:ix.sell < 0 ? "" : csvNum(r[ix.sell]),
+    unitPrice:ix.price < 0 ? "" : csvNum(r[ix.price]), temaPrice:ix.tema < 0 ? "" : csvNum(r[ix.tema]), note:clean(r[ix.note])})).filter(x => x.name && !/^（例）/.test(x.note));
 }
 const propIdKey = p => `${p.company}|${normKey(p.name)}|${normKey(p.address)}`;
 function csvCell(v){ v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
@@ -5665,7 +5681,8 @@ async function viewSettings(tab){
     <section class="panel"><h2>CSVから取り込む</h2>
       <p class="small" style="margin:0 0 10px">1行目に見出し「管理会社・物件名・所在地・オートロック・エレベーター・備考」があるCSVを取り込めます。同じ管理会社・物件名・所在地の物件は上書きされます。</p>
       <label class="toggle" style="margin-bottom:10px"><input type="checkbox" id="prop-replace">いまの物件マスタをすべて消して入れ替える</label>
-      <input type="file" accept=".csv,text/csv" data-propimport aria-label="CSVファイルを選ぶ"></section>
+      <div class="row" style="flex-wrap:wrap;gap:8px;align-items:center"><input type="file" accept=".csv,text/csv" data-propimport aria-label="CSVファイルを選ぶ"><button type="button" class="btn sub sm" data-act="prop-template">テンプレート（CSV）をダウンロード</button></div>
+      <p class="small" style="margin:8px 0 0">テンプレートはExcelやNumbersで開いて、1行に1物件ずつ入れ、CSV形式で保存して取り込んでください（備考が「（例）」で始まる見本の行は読み込まれません）。</p></section>
 ` : ""}
     ${tab === "prices" ? `    <section class="panel"><h2>単価表 <small>業者に払う単価（実行単価）と、管理会社への見積単価（税抜）</small></h2>
       <p class="small" style="margin:0 0 10px">ここに登録した作業は、案件作成の作業内訳で「分類 → 工事」の順にプルダウンから選べます。分類は自由に付けられます（空欄は「未分類」）。選んだ作業の単価は変更できないので、どの業者さまにも同じ単価で発注されます。単価を変えても、作成済みの案件・発注書の金額は変わりません。</p>
@@ -5679,6 +5696,9 @@ async function viewSettings(tab){
         <div class="items-ed" id="price-ed">${priceGroupsHtml([...S.prices.filter(p => !p.estOnly), ...estOnlyRows()])}</div>
         <div class="row between" style="flex-wrap:wrap"><span class="row" style="flex-wrap:wrap"><button type="button" class="btn sub" data-act="add-price">＋ 作業を追加</button>${tenant() ? "" : `<button type="button" class="btn sub" data-act="add-default-prices">標準の単価を追加</button>`}<button type="button" class="btn sub" data-act="price-co-import" title="管理会社の単価表から作ったファイルを読み込み、その管理会社の見積単価に入れます">管理会社の見積単価を取り込む</button></span><button class="btn">単価表を保存</button></div>
       </form>
+      <div class="price-csv" style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px"><h3 style="margin:0 0 6px;font-size:15px">CSVで取り込む・書き出す</h3>
+        <p class="small" style="margin:0 0 8px">1行目に見出し「分類・作業名・単位・見積単価・業者単価・手間のみ単価・備考・品番」があるCSVを読み込みます。同じ作業名の行は上書き、ない作業は下に足します。読み込んだあと「単価表を保存」を押すと反映されます。単価は税抜の数字だけを入れてください。</p>
+        <div class="row" style="flex-wrap:wrap;gap:8px;align-items:center"><input type="file" accept=".csv,text/csv" data-priceimport aria-label="単価表のCSVファイルを選ぶ"><button type="button" class="btn sub sm" data-act="price-template">テンプレート（CSV）をダウンロード</button><button type="button" class="btn sub sm" data-act="price-export">今の単価表をCSVで書き出す</button></div></div>
       <datalist id="cat-list-p">${[...new Set([...PRICE_CATS, ...S.prices.map(p => p.cat)].filter(Boolean))].map(c => `<option value="${esc(c)}">`).join("")}</datalist>
       <datalist id="unit-list-p">${["式","㎡","m","枚","箇所","台","本","個","部屋","日","人工"].map(u => `<option value="${u}">`).join("")}</datalist></section>
 ` : ""}
@@ -8180,6 +8200,13 @@ const ACTIONS = {
     S.props = S.props.filter(p => p.company !== co); S.propFilter.company = "";
     await api().saveProperties(S.props); toast(`${n.toLocaleString()}件を削除しました`); route();
   },
+  async "prop-template"(){ saveBlob(csvBlob([PROP_CSV_HEAD, ...PROP_CSV_SAMPLE]), "物件マスタ_テンプレート.csv"); },
+  async "price-template"(){ saveBlob(csvBlob([PRICE_CSV_HEAD, ...PRICE_CSV_SAMPLE]), "単価表_テンプレート.csv"); },
+  async "price-export"(){
+    const list = (S.prices || []).filter(p => !p.off && !p.estOnly);
+    if(!list.length) throw new Error("単価表がまだ空です");
+    saveBlob(csvBlob([PRICE_CSV_HEAD, ...list.map(p => [p.cat || "", p.name, p.unit || "", p.sellPrice ?? defSell(p.name) ?? "", p.unitPrice ?? "", p.temaPrice || "", p.note || ""])]), `単価表_${todayIso()}.csv`);
+  },
   async "prop-export"(){
     const lines = [["管理会社","物件名","所在地","オートロック","エレベーター","備考"], ...S.props.map(p => [p.company, p.name, p.address, p.al, p.ev, p.note])];
     saveBlob(new Blob(["﻿" + lines.map(r => r.map(csvCell).join(",")).join("\r\n")], {type:"text/csv"}), `物件マスタ_${todayIso()}.csv`);
@@ -8999,6 +9026,31 @@ document.addEventListener("change", e => {
     renderDelList(); return;
   }
   if(e.target.matches("[data-propfilter=company]")){ S.propFilter.company = e.target.value; renderPropList(); return; }
+  if(e.target.matches("[data-priceimport]")){
+    const input = e.target, file = input.files[0]; if(!file) return;
+    (async () => {
+      if(S.priceCo) throw new Error("見積単価の管理会社で「標準（全部の管理会社）」を選んでから取り込んでください");
+      const incoming = csvToPrices(await readCsvFile(file));
+      if(!incoming.length) throw new Error("取り込める作業がありませんでした（見本の行「（例）…」は読み込みません）");
+      const ed = $("#price-ed"); if(!ed) return;
+      const rowsBy = new Map([...ed.querySelectorAll(".price-row")].map(r => [normKey(r.querySelector("[name=p_name]").value), r]));
+      let added = 0, updated = 0; const html = [];
+      incoming.forEach(x => {
+        const r = rowsBy.get(normKey(x.name));
+        if(r){
+          const set = (n, v) => { const i = r.querySelector(`[name=${n}]`); if(i && v !== "" && v != null) i.value = v; };
+          set("p_cat", x.cat); set("p_unit", x.unit); set("p_sell", x.sellPrice); set("p_price", x.unitPrice); set("p_tema", x.temaPrice); set("p_note", x.note);
+          if(x.sellPrice !== "") r.dataset.sell = x.sellPrice;
+          r.classList.add("csv-hit"); updated++;
+        } else { html.push(priceRowHtml({...x, id:""})); added++; }
+      });
+      if(!await ask({title:"単価表に読み込みますか？", body:`上書き：${updated}件\n新しく足す：${added}件\n\n読み込んだあと「単価表を保存」を押すまで反映されません。`, ok:"読み込む"})) { ed.querySelectorAll(".csv-hit").forEach(r => r.classList.remove("csv-hit")); return; }
+      if(html.length) ed.insertAdjacentHTML("beforeend", html.join(""));
+      priceFilter?.(ed.closest("form"));
+      toast(`${updated + added}件を読み込みました。「単価表を保存」を押すと反映されます`);
+    })().catch(err => { console.error(err); toast(err.message || String(err)); }).finally(() => { input.value = ""; });
+    return;
+  }
   if(e.target.matches("[data-propimport]")){
     const input = e.target, file = input.files[0]; if(!file) return;
     (async () => {
@@ -9054,7 +9106,7 @@ const subPaid = () => SUBSCRIPTION_ON && !FREE_NOW;
 const OP_DEFAULT = {
   plans:{free:{name:"無料プラン", price:0, limit:1, incl:[]}, beginner:{name:"ビギナープラン", price:980, limit:3, incl:[]},
     pro:{name:"プロプラン", price:4980, limit:15, incl:["calendar", "money", "docs"]}, master:{name:"マスタープラン", price:14800, limit:30, incl:["calendar", "money", "docs", "staff"]}},
-  trial:{name:"お試しプラン", limit:5, days:30},
+  trial:{name:"お試しプラン", limit:5, days:30, incl:["calendar", "money", "docs", "staff"]},   // incl = お試し中に使えるオプション
   fee:0.1, memberFee:1000, moneyFee:1000, extraFee:1000,
   bank:"", opName:"株式会社Refore（GENPUKU Pro 運営）", opInvoiceNumber:"",
   stripe:{links:{}, portal:"", prepay:""}
@@ -9063,7 +9115,8 @@ const opCfg = () => ({...OP_DEFAULT, ...(S.opCfg || {}), plans:Object.fromEntrie
 const opFee = () => Number(opCfg().fee) || 0.1;
 // お試しプラン：運営が招待するときに選ぶ。期間中は月額が無料（全体公開の案件の運営手数料はかかる）。終わると新しい案件を公開できない
 const isTrial = c => subPaid() && c?.plan === "trial";
-const planOf = c => isTrial(c) ? {...opCfg().trial, price:0, trial:true, incl:["calendar", "money", "docs", "staff"]} : opCfg().plans[c?.plan] || opCfg().plans.free;
+const trialIncl = () => Array.isArray(opCfg().trial.incl) ? opCfg().trial.incl.filter(k => OPT_KEYS.includes(k)) : OP_DEFAULT.trial.incl;
+const planOf = c => isTrial(c) ? {...opCfg().trial, price:0, trial:true, incl:trialIncl()} : opCfg().plans[c?.plan] || opCfg().plans.free;
 const PLAN_KEYS = ["free", "beginner", "pro", "master"];
 const DAY_MS = 86400000;
 // 次回の請求日（カード決済の日）。プラン・オプションを下げる手続きは、この日の前日まで今の内容で使える
@@ -9394,7 +9447,7 @@ async function viewCoPlan(){
       ${ends.map(k => `<div class="doc-row"><span class="row-main"><b>${k === "staff" ? `従業員追加を${Number(c.optEnd.staff)}人減らす（${staffSlots(c)}人 → ${staffSlots(c) - Number(c.optEnd.staff)}人）` : `${esc(OPTS[k].name)}をやめる`}</b><span class="small">${fmtDate(until)}まで使えます。データは残ります</span></span><button class="btn sub" data-act="co-undo" data-what="opt" data-k="${k}">取り消す</button></div>`).join("")}
       <p class="small" style="margin:8px 0 0"><button type="button" class="textlink" data-act="co-advance">（デモ）次回請求日まで進めて、変更を反映する</button></p></section>` : "";
   return `<h1>契約・料金</h1><p class="lead">プランで、公開できる案件の数と使える機能が変わります。月額はご登録のカードで毎月自動でお支払いいただきます（Stripe）。全体に公開した案件は、発注するときに工事代金の${Math.round(opFee() * 100)}%が運営手数料として上乗せされます（既存業者のみの案件はかかりません）。</p>
-    ${isTrial(c) ? `<div class="alert-box trial-box"><b>${esc(trialNote(c))}</b><p>お試し中は月額（プラン・オプション・メンバー）が無料です。${trialLeft(c) > 0 ? "続けて使うときは、下のプランから選んでください。" : "続けて案件を公開するには、下のプランから選んでください。"}</p></div>` : ""}
+    ${isTrial(c) ? `<div class="alert-box trial-box"><b>${esc(trialNote(c))}</b><p>お試し中は月額が無料です（全体公開は月${opCfg().trial.limit}件まで。使えるオプション：${trialIncl().length ? trialIncl().map(k => esc(OPTS[k].name)).join("・") : "なし"}）。${trialLeft(c) > 0 ? "続けて使うときは、下のプランから選んでください。" : "続けて案件を公開するには、下のプランから選んでください。"}</p></div>` : ""}
     ${sched}
     ${Object.keys(c.pendingPay || {}).length ? `<div class="note"><b>お支払いの確認待ち</b>：${Object.keys(c.pendingPay).map(k => esc(STRIPE_LABEL(k))).join("、")}<br><span class="small">Stripe でのお支払いを運営が確認すると切り替わります。</span></div>` : ""}
     ${await coQuotaBox()}
@@ -9661,7 +9714,7 @@ function viewOpCos(cos){
     <form class="panel" data-form="opcompany"><h2>工務店を招待する</h2>
       <label class="field"><span>会社名</span><input name="name" required placeholder="例：みどり建装株式会社"></label>
       <div class="two"><label class="field"><span>代表者の名前</span><input name="ownerName" required></label><label class="field"><span>代表者のメール</span><input name="ownerEmail" type="email" required></label></div>
-      <div class="two"><label class="field"><span>プラン</span><select name="plan"><option value="trial">${esc(opCfg().trial.name)}（${opCfg().trial.days}日間無料・月${opCfg().trial.limit}件まで）</option>${Object.entries(opCfg().plans).map(([k, x]) => `<option value="${k}" ${k === "free" ? "selected" : ""}>${esc(x.name)}（${x.price ? yenFull(x.price) : "0円"}）</option>`).join("")}</select></label>
+      <div class="two"><label class="field"><span>プラン</span><select name="plan"><option value="trial">${esc(opCfg().trial.name)}（${opCfg().trial.days}日間無料・全体公開 月${opCfg().trial.limit}件まで・${trialIncl().length ? trialIncl().map(k => OPTS[k].name).join("・") : "オプションなし"}）</option>${Object.entries(opCfg().plans).map(([k, x]) => `<option value="${k}" ${k === "free" ? "selected" : ""}>${esc(x.name)}（${x.price ? yenFull(x.price) : "0円"}）</option>`).join("")}</select></label>
         <label class="field"><span>工事番号の頭 <small>英字2〜3文字</small></span><input name="prefix" maxlength="3" placeholder="例：MD" style="text-transform:uppercase"></label></div>
       <label class="field"><span>締め日 <small>既存業者からの請求</small></span><select name="closeDay">${CLOSE_DAYS.map(([d, l]) => `<option value="${d}" ${d === 0 ? "selected" : ""}>毎月${l}</option>`).join("")}</select></label>
       <button class="btn">招待する</button></form></div>`;
@@ -9750,6 +9803,7 @@ function viewOpSettings(){
     <p class="small" style="margin:-6px 0 0">「収支オプションの月額」は、オプション（予定表・収支・工事メモ等）1つあたりの月額です。「メンバー1人の月額」は従業員追加の1人あたりの月額です（マスタープランは無料）。</p>
     <h2>お試しプラン <small>運営が招待するときに選べます。期間中は月額が無料です</small></h2>
     <div class="two"><label class="field"><span>プラン名</span><input name="tn" value="${esc(o.trial.name)}"></label><div class="two"><label class="field"><span>日数</span><input name="td" type="number" min="1" value="${o.trial.days}"></label><label class="field"><span>月の公開件数</span><input name="tl" type="number" min="1" value="${o.trial.limit}"></label></div></div>
+    <fieldset class="field"><legend>お試し中に使えるオプション <small>チェックしたものだけ使えます。外したものは鍵つきで表示され、有料プランにすると使えます</small></legend><div class="checks">${OPT_KEYS.map(k => `<label class="toggle"><input type="checkbox" name="ti" value="${k}" ${trialIncl().includes(k) ? "checked" : ""}>${esc(OPTS[k].name)}${k === "staff" ? "（何人でも）" : ""}</label>`).join("")}</div></fieldset>
     <h2>Stripe <small>支払いリンクの URL を貼るだけでつながります（テスト用の URL でも試せます）</small></h2>
     ${SUBSCRIPTION_ON ? "" : `<p class="small warn" style="margin:0">今はサブスクを使っていない設定（SUBSCRIPTION_ON = false）なので、URL を入れても工務店の画面には出ません。</p>`}
     <p class="small" style="margin:0">Stripe の管理画面 →「商品カタログ」で商品と料金を作り、「支払いリンク」で URL を作って貼ります。月額のものは「継続」、追加枠は「1回限り」、先払いは「お客様が金額を指定する」で作ります。完了後のページは「確認ページを表示」のままで大丈夫です。</p>
@@ -10090,7 +10144,7 @@ Object.assign(FORMS, {
   async opsettings(form){
     const f = form.elements, o = opCfg(), plans = {};
     Object.keys(o.plans).forEach(k => { plans[k] = {name:f["pn_" + k].value.trim() || o.plans[k].name, price:Number(f["pp_" + k].value) || 0, limit:Number(f["pl_" + k].value) || 1}; });
-    const trial = {name:f.tn.value.trim() || o.trial.name, days:Number(f.td.value) || 30, limit:Number(f.tl.value) || 1};
+    const trial = {name:f.tn.value.trim() || o.trial.name, days:Number(f.td.value) || 30, limit:Number(f.tl.value) || 1, incl:[...form.querySelectorAll("[name=ti]:checked")].map(i => i.value)};
     const d = {plans, trial, fee:(Number(f.fee.value) || 0) / 100, memberFee:Number(f.memberFee.value) || 0, moneyFee:Number(f.moneyFee.value) || 0, extraFee:Number(f.extraFee.value) || 0, bank:f.bank.value.trim(), opName:f.opName.value.trim(), opInvoiceNumber:f.opInvoiceNumber.value.trim()};
     const surl = n => { const v = (f["sl_" + n]?.value || "").trim(); if(v && !/^https:\/\/(buy|billing|checkout)\.stripe\.com\//.test(v)) throw new Error("Stripe の URL（https://buy.stripe.com/… など）を入れてください：" + v); return v; };
     d.stripe = {links:Object.fromEntries(["beginner", "pro", "master", "calendar", "money", "docs", "staff", "extra"].map(k => [k, surl(k)])), prepay:surl("prepay"), portal:surl("portal"), api:(() => { const v = (f.sl_api?.value || "").trim().replace(/\/+$/, ""); if(v && !/^https:\/\//.test(v)) throw new Error("自動化サーバーの URL は https:// で始まるものを入れてください"); return v; })()};
