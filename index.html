@@ -3576,7 +3576,8 @@ async function matOrdersFromEst(e, jid){
   if(!rows.length && !net.length && !home.length) return 0;
   const by = new Map(); rows.forEach(r => { if(!by.has(r.sup.mat)) by.set(r.sup.mat, []); by.get(r.sup.mat).push(r); });
   const old = await api().getMatOrders(jid).catch(() => []), add = [];
-  by.forEach((list, sid) => {
+  const hand = sid => old.some(o => o.handEdited && o.status === "draft" && o.supplierId === sid);   // 手で直した下書きがある発注先は作り直さない
+  by.forEach((list, sid) => { if(hand(sid)) return;
     const sup = sups.find(x => x.id === sid) || {id:sid, name:list[0].sup.matName || "材料"};
     const items = list.map(r => {
       const m = r.sup.matId ? mats.find(x => x.id === r.sup.matId) : null, rate = Number(r.sup.matRate) > 0 ? r.sup.matRate : isCloth(r.name) ? CLOTH_LOSS : 1;
@@ -3593,10 +3594,10 @@ async function matOrdersFromEst(e, jid){
     add.push({id:"mo_" + newId(), supplierId:sup.id, supplierName:sup.name, kind:"material", terms:sup.terms || "", issuedAt:todayIso(), items, delivery:"現場", deliveryNote:"", honor:"御中", showManager:true, workDate:"", parking:0, others:"", note:`工事メモ（${e.no || ""}）から`, status:"draft", autoMemo:true, createdAt:Date.now(), updatedAt:Date.now()});
   });
   // ネット購入：発注書は使わず、買う物リスト（URLつき）。金額は材料費として収支に入る
-  if(net.length) add.push({id:"mo_" + newId(), supplierId:"__net", supplierName:"ネット購入", kind:"material", net:true, terms:"", issuedAt:todayIso(), delivery:"現場", honor:"御中", showManager:false, parking:0, others:"", note:"買う物リスト",
+  if(net.length && !hand("__net")) add.push({id:"mo_" + newId(), supplierId:"__net", supplierName:"ネット購入", kind:"material", net:true, terms:"", issuedAt:todayIso(), delivery:"現場", honor:"御中", showManager:false, parking:0, others:"", note:"買う物リスト",
     items:net.map(r => ({name:r.name, maker:"", code:r.spec || "", qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.sup.matPrice) || 0, date:"", loc:r.loc || "", url:r.sup.url || ""})), status:"draft", autoMemo:true, createdAt:Date.now(), updatedAt:Date.now()});
   // ホームセンター：ネットと同じく買う物リスト。金額は材料費として収支に入る
-  if(home.length) add.push({id:"mo_" + newId(), supplierId:"__home", supplierName:"ホームセンター", kind:"material", net:true, terms:"", issuedAt:todayIso(), delivery:"現場", honor:"御中", showManager:false, parking:0, others:"", note:"買う物リスト",
+  if(home.length && !hand("__home")) add.push({id:"mo_" + newId(), supplierId:"__home", supplierName:"ホームセンター", kind:"material", net:true, terms:"", issuedAt:todayIso(), delivery:"現場", honor:"御中", showManager:false, parking:0, others:"", note:"買う物リスト",
     items:home.map(r => ({name:r.name, maker:"", code:r.spec || "", qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.sup.matPrice) || 0, date:"", loc:r.loc || ""})), status:"draft", autoMemo:true, createdAt:Date.now(), updatedAt:Date.now()});
   await api().saveMatOrders(jid, [...old, ...add]);
   return add.length;
@@ -3617,6 +3618,7 @@ async function workOrdersFromEst(e, jid){
   rows.forEach(r => { const sid = r.sup.work.startsWith("n:") ? r.sup.work : r.sup.work.slice(2); if(!by.has(sid)) by.set(sid, []); by.get(sid).push(r); });
   const old = await api().getMatOrders(jid).catch(() => []), add = [];
   by.forEach((list, sid) => { const sup = sups.find(x => x.id === sid) || {id:list[0].sup.work, name:list[0].sup.workName || "外部の業者"};
+    if(old.some(o => o.handEdited && o.status === "draft" && o.supplierId === sup.id)) return;   // 手で直した下書きは残す
     add.push({id:"mo_" + newId(), supplierId:sup.id, supplierName:sup.name, kind:"work", terms:sup.terms || "", issuedAt:todayIso(), delivery:"現場", honor:"御中", showManager:true, workDate:"", parking:0, others:"", note:`工事メモ（${e.no || ""}）から`,
       items:list.map(r => ({loc:r.loc || "", name:r.name, spec:r.spec || "", qty:Number(r.qty) || 0, unit:r.unit || "式", unitPrice:Number(r.cost) || null})), status:"draft", autoMemo:true, createdAt:Date.now(), updatedAt:Date.now()}); });
   await api().saveMatOrders(jid, [...old, ...add]);
@@ -6545,6 +6547,7 @@ async function caseSync(e){
   // 材料・外部の発注書：工事メモから作った下書きは作り直す（もう出した発注書はそのまま）
   const mos = await api().getMatOrders(root.id).catch(() => []), keep = mos.filter(o => !(o.autoMemo && o.status === "draft"));
   if(mos.some(o => o.autoMemo && o.status !== "draft")) warn.push("もう出した材料・外部の発注書は変えていません。必要なら手で直してください");
+  if(mos.some(o => o.handEdited && o.status === "draft")) warn.push("手で直した材料・外部の発注書は、そのまま残しています（工事メモの変更は入っていません）");
   await api().saveMatOrders(root.id, keep); await matOrdersFromEst(e, root.id); await workOrdersFromEst(e, root.id);
   S.ldCache = null; return warn;
 }
@@ -8740,6 +8743,8 @@ const FORMS = {
     const o = {...(old || {}), id:old?.id || "mo_" + newId(), supplierId:sup.id, supplierName:sup.name, kind:sup.kind === "work" ? "work" : "material", terms:sup.terms || "",
       issuedAt:g("issuedAt") || todayIso(), items, delivery:form.querySelector("[name=delivery]:checked")?.value || "現場", deliveryNote:g("deliveryNote"),
       honor:sup.id === "__manual" ? g("honor") : "御中", showManager:!!form.elements.showManager?.checked, workDate:g("workDate"), parking:0, others:g("others"), note:g("note"), status:old?.status || "draft", createdAt:old?.createdAt || Date.now(), updatedAt:Date.now()};
+    // 工事メモから自動で作った発注書を手で直したら、これからは工事メモを直しても作り直さない（直した品番・数量を残す）
+    if(o.autoMemo){ o.autoMemo = false; o.handEdited = true; }
     const list = old ? orders.map(x => x.id === o.id ? o : x) : [...orders, o];
     await api().saveMatOrders(jobId, list); toast("保存しました");
     if(mode === "pdf"){ const d = await moDoc(jobId, o.id); toast("PDFを作成しています…"); await downloadPdf(d.html, d.fname); }
