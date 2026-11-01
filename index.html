@@ -5549,7 +5549,9 @@ async function viewMatOrder(jobId, oid){
   const o = oid === "new" ? {...o0, items:isTaki(o0.supplierId) ? cloth.map(({area, ...r}) => r) : []} : orders.find(x => x.id === oid);
   if(!o) return `${back(`#/admin/job/${jobId}`, "案件の管理")}<div class="empty">発注書が見つかりません。</div>`;
   const manual = o.supplierId === "__manual";
-  const sup = manual ? {id:"__manual", kind:o.kind} : (S.suppliers.find(x => x.id === o.supplierId) || S.suppliers[0] || {});
+  // 「設定」の一覧にない発注先（工事メモで名前を入れた業者 n:名前 など）は、その発注先のまま選んでおく（一覧の最初に変わらないように）
+  const ext = oid !== "new" && !manual && o.supplierId && !S.suppliers.some(x => x.id === o.supplierId) ? {id:o.supplierId, name:o.supplierName || "外部の業者", kind:o.kind === "work" ? "work" : "material", terms:o.terms || ""} : null;
+  const sup = manual ? {id:"__manual", kind:o.kind} : ext || (S.suppliers.find(x => x.id === o.supplierId) || S.suppliers[0] || {});
   const kind = sup.kind === "work" ? "work" : "material";
   const rows = o.items?.length ? o.items : [{qty:1}];
   return `${back(`#/admin/job/${jobId}`, "案件の管理")}
@@ -5557,7 +5559,7 @@ async function viewMatOrder(jobId, oid){
     <p class="lead">${esc(job.title)}${job.jobNo ? `（${esc(job.jobNo)}）` : ""}　この発注書は管理者だけに表示されます。</p>
     <form data-form="matorder" data-job="${esc(jobId)}" data-oid="${esc(o.id || "")}" class="stack mo-form k-${kind}${manual ? " is-manual" : ""}">
       <section class="panel"><h2>発注先</h2>
-        <div class="two"><label class="field"><span>発注先 <small>一覧は「設定」で編集</small></span><select name="sup">${S.suppliers.map(x => `<option value="${esc(x.id)}" data-kind="${esc(x.kind)}" ${x.id === sup.id && !manual ? "selected" : ""}>${esc(x.name)}（${x.kind === "work" ? "工事" : "材料"}）</option>`).join("")}<option value="__manual" data-kind="${esc(kind)}" ${manual ? "selected" : ""}>手入力（宛先をここで入れる）</option></select></label>
+        <div class="two"><label class="field"><span>発注先 <small>一覧は「設定」で編集</small></span><select name="sup">${ext ? `<option value="${esc(ext.id)}" data-kind="${esc(ext.kind)}" selected>${esc(ext.name)}（${ext.kind === "work" ? "工事" : "材料"}）</option>` : ""}${S.suppliers.map(x => `<option value="${esc(x.id)}" data-kind="${esc(x.kind)}" ${x.id === sup.id && !manual ? "selected" : ""}>${esc(x.name)}（${x.kind === "work" ? "工事" : "材料"}）</option>`).join("")}<option value="__manual" data-kind="${esc(kind)}" ${manual ? "selected" : ""}>手入力（宛先をここで入れる）</option></select></label>
           <label class="field"><span>発行日</span><input type="date" name="issuedAt" value="${esc(o.issuedAt || todayIso())}"></label></div>
         <div class="manual-only"><div class="two"><label class="field"><span>宛先（会社名・氏名）</span><input type="text" name="toName" value="${esc(manual ? o.supplierName : "")}" placeholder="例：〇〇工務店"></label>
           <label class="field"><span>敬称</span><select name="honor">${["御中","様"].map(h => `<option ${h === (o.honor || "御中") ? "selected" : ""}>${h}</option>`).join("")}</select></label></div>
@@ -5574,7 +5576,9 @@ async function viewMatOrder(jobId, oid){
       <section class="panel"><h2>そのほか</h2>
         <div class="k-mat"><fieldset class="field"><legend>納品先</legend><div class="checks">${["現場","事務所","その他"].map(v => `<label><input type="radio" name="delivery" value="${v}" ${(o.delivery || "現場") === v ? "checked" : ""}>${v}</label>`).join("")}</div></fieldset>
           <label class="field"><span>その他の納品先 <small>「その他」のとき</small></span><input type="text" name="deliveryNote" value="${esc(o.deliveryNote)}"></label></div>
-        <div class="k-work"><div><label class="field"><span>作業予定日</span><input type="text" name="workDate" value="${esc(o.workDate)}" placeholder="例：最短希望／6/29〜7/1"></label>
+        <div class="k-work"><div><div class="field"><span>作業予定日 <small>日付と時間を選ぶと下の欄に入ります（修繕は 16:00〜18:00 など）</small></span>
+          <div class="row wd-pick" style="gap:6px;flex-wrap:wrap;align-items:center"><input type="date" name="wdDay" value="${esc(o.workDay || "")}" aria-label="作業の日"><input type="time" name="wdFrom" step="900" value="${esc(o.workFrom || "")}" aria-label="何時から"><span>〜</span><input type="time" name="wdTo" step="900" value="${esc(o.workTo || "")}" aria-label="何時まで"></div></div>
+          <label class="field"><span>作業予定日（発注書に載る文字） <small>「最短希望」など、文字でも入れられます</small></span><input type="text" name="workDate" value="${esc(o.workDate)}" data-auto="${o.workDay || o.workFrom || o.workTo ? esc(o.workDate) : ""}" placeholder="例：最短希望／6/29〜7/1／11/2（月）16:00〜18:00"></label>
 </div>
           <label class="field"><span>その他施行予定業者 <small>「、」で区切ると欄が分かれます</small></span><input type="text" name="others" value="${esc(o.others)}" placeholder="例：表装工事、クリーニング"></label></div>
         <label class="field"><span>備考 <small class="k-mat">発注書の「備考」欄に載ります</small><small class="k-work">発注書に赤字で大きく載ります（鍵の場所など）</small></span><textarea name="note" rows="3">${esc(o.note)}</textarea></label></section>
@@ -8734,15 +8738,16 @@ const FORMS = {
   },
   async matorder(form, e){
     const jobId = form.dataset.job, mode = e.submitter?.value || "save", g = k => String(form.elements[k]?.value || "").trim();
-    const sup = g("sup") === "__manual" ? {id:"__manual", name:g("toName"), kind:g("mkind"), terms:g("mterms")} : (S.suppliers || []).find(x => x.id === g("sup"));
+    const orders = await api().getMatOrders(jobId);
+    const old = orders.find(x => x.id === form.dataset.oid);
+    const sup = g("sup") === "__manual" ? {id:"__manual", name:g("toName"), kind:g("mkind"), terms:g("mterms")} : (S.suppliers || []).find(x => x.id === g("sup"))
+      || (old && g("sup") === old.supplierId ? {id:old.supplierId, name:old.supplierName, kind:old.kind, terms:old.terms || ""} : null);
     if(!sup) throw new Error("発注先を選んでください");
     if(sup.id === "__manual" && !sup.name) throw new Error("宛先を入れてください");
     const items = readMoRows(form); if(!items.length) throw new Error("品名・内容を1行以上入れてください");
-    const orders = await api().getMatOrders(jobId);
-    const old = orders.find(x => x.id === form.dataset.oid);
     const o = {...(old || {}), id:old?.id || "mo_" + newId(), supplierId:sup.id, supplierName:sup.name, kind:sup.kind === "work" ? "work" : "material", terms:sup.terms || "",
       issuedAt:g("issuedAt") || todayIso(), items, delivery:form.querySelector("[name=delivery]:checked")?.value || "現場", deliveryNote:g("deliveryNote"),
-      honor:sup.id === "__manual" ? g("honor") : "御中", showManager:!!form.elements.showManager?.checked, workDate:g("workDate"), parking:0, others:g("others"), note:g("note"), status:old?.status || "draft", createdAt:old?.createdAt || Date.now(), updatedAt:Date.now()};
+      honor:sup.id === "__manual" ? g("honor") : "御中", showManager:!!form.elements.showManager?.checked, workDate:g("workDate"), workDay:g("wdDay"), workFrom:g("wdFrom"), workTo:g("wdTo"), parking:0, others:g("others"), note:g("note"), status:old?.status || "draft", createdAt:old?.createdAt || Date.now(), updatedAt:Date.now()};
     // 工事メモから自動で作った発注書を手で直したら、これからは工事メモを直しても作り直さない（直した品番・数量を残す）
     if(o.autoMemo){ o.autoMemo = false; o.handEdited = true; }
     const list = old ? orders.map(x => x.id === o.id ? o : x) : [...orders, o];
@@ -9110,6 +9115,12 @@ document.addEventListener("change", e => {
   if(e.target.matches(".pick-item [name=pick]")){ const g = e.target.closest(".pick-grp"); g.querySelector("[data-pickgrp]").checked = [...g.querySelectorAll("[name=pick]")].every(x => x.checked); return; }
   if(e.target.matches("form[data-form=matorder] [name=mkind]")){
     const f = e.target.form; f.classList.remove("k-material", "k-work"); f.classList.add("k-" + (e.target.value === "work" ? "work" : "material")); return;
+  }
+  if(e.target.matches("form[data-form=matorder] [name=wdDay],form[data-form=matorder] [name=wdFrom],form[data-form=matorder] [name=wdTo]")){   // 作業予定日：選んだ日付・時間を文字の欄に入れる
+    const f = e.target.form, d = f.elements.wdDay.value, a = f.elements.wdFrom.value, b = f.elements.wdTo.value;
+    const w = f.elements.workDate, v = [d ? fmtDay(d) : "", a || b ? `${a}〜${b}` : ""].filter(Boolean).join(" ");
+    if(v || w.value === w.dataset.auto){ w.value = v; w.dataset.auto = v; }   // 全部消したら、選んで入れた文字も消す（手で書いた「最短希望」などは残す）
+    return;
   }
   if(e.target.matches("form[data-form=matorder] [name=sup]")){
     const f = e.target.form, opt = e.target.selectedOptions[0], isManual = e.target.value === "__manual";
