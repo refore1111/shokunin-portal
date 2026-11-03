@@ -3680,7 +3680,7 @@ async function viewBills(ymArg){
     S.bills.cards[id] = {co, k, from, to, list, fmts};
     const tot = billTot(list.reduce((a, r) => a + billAmt(r), 0)), noAmt = list.filter(r => !Number(r.contract)).length, feeN = list.filter(r => r.fee).length;
     return `<section class="panel bill-card"><div class="row between"><h2 style="margin:0">${esc(co)} <small>収支の${Number(ym.slice(5))}月分</small></h2>
-        ${bill ? `<span class="pill paid">発行済み ${fmtDate(bill.issuedAt)}</span>` : due ? `<span class="pill waiting">締め日を過ぎました</span>` : `<span class="pill">締め日前（${fmtDate(to)}）</span>`}</div>
+        ${bill ? (bill.paidAt ? `<span class="pill paid">入金済み ${fmtDate(bill.paidAt)}</span>` : `<span class="pill waiting">入金待ち（発行 ${fmtDate(bill.issuedAt)}）</span>`) : due ? `<span class="pill waiting">締め日を過ぎました</span>` : `<span class="pill">締め日前（${fmtDate(to)}）</span>`}</div>
       <div class="tbl-wrap" style="margin-top:10px"><table class="mtbl nb"><thead><tr><th>工事番号</th><th>物件名称</th><th>工事種類</th><th>完了日</th><th class="r">金額（税込）</th></tr></thead><tbody>
         ${list.map(r => `<tr><td>${esc(r.jobNo)}</td><td class="name">${esc(r.name)}${r.stage === "tachiai" ? " <span class=\"stg stg-tachiai\">立会のみ</span>" : r.self ? " <span class=\"stg stg-self\">自社施工</span>" : ""}</td><td>${esc(r.kind)}</td><td>${fmtDate(doneDateOf(r))}</td><td class="r">${Number(r.contract) ? `${yenFull(billAmt(r))}${r.fee ? `<br><small class="sub">請負 ${yenFull(r.contractIn)} −手数料${esc(r.fee)}%</small>` : ""}` : `<a class="warn" href="#/admin/money/edit/${esc(r.id)}">請負金額を入力</a>`}</td></tr>`).join("")}
         <tr class="sum"><th colspan="4">合計 ${list.length}件（税抜 ${yenFull(tot.sub)}　消費税 ${yenFull(tot.tax)}）</th><td class="r">${yenFull(tot.total)}</td></tr></tbody></table></div>
@@ -3688,7 +3688,7 @@ async function viewBills(ymArg){
       <div class="row between" style="margin-top:10px;align-items:center">
         <span class="row bill-cfg"><select data-billclose="${esc(k)}" aria-label="締め日">${[0, 5, 10, 15, 20, 25].map(d => `<option value="${d}" ${Number(day) === d ? "selected" : ""}>${closeLabel(d)}</option>`).join("")}</select>
           ${Object.entries(BILL_FMT).map(([f, l]) => `<label class="toggle"><input type="checkbox" data-billfmt="${esc(k)}" value="${f}" ${fmts.includes(f) ? "checked" : ""}>${l}</label>`).join("")}</span>
-        <span class="row">${bill ? `${fmts.map(f => `<button class="btn sub" data-act="bill-pdf" data-id="${esc(id)}" data-fmt="${f}">${f === "sum" ? "まとめ請求書PDF" : "案件ごとの請求書PDF"}</button>`).join("")}<button class="btn sub danger-text" data-act="bill-undo" data-id="${esc(id)}">発行を取り消す</button>`
+        <span class="row">${bill ? `${fmts.map(f => `<button class="btn sub" data-act="bill-pdf" data-id="${esc(id)}" data-fmt="${f}">${f === "sum" ? "まとめ請求書PDF" : "案件ごとの請求書PDF"}</button>`).join("")}${bill.paidAt ? `<button class="btn sub" data-act="bill-paid" data-id="${esc(id)}" data-off="1">入金を取り消す</button>` : `<button class="btn" data-act="bill-paid" data-id="${esc(id)}">入金済みにする</button><button class="btn sub danger-text" data-act="bill-undo" data-id="${esc(id)}">発行を取り消す</button>`}`
           : `<button class="btn" data-act="bill-make" data-id="${esc(id)}" ${list.length ? "" : "disabled"}>請求書を作る</button>`}</span></div></section>`;
   }).join("");
   return `<nav class="seg" aria-label="請求書の種類"><a href="#/admin/invoices">業者からの請求</a>${billsTab(true)}</nav>
@@ -7997,6 +7997,12 @@ const ACTIONS = {
     const all = await api().listLedger();
     for(const r of c.list) await api().saveLedger({...(all.find(x => x.id === r.id) || {id:r.id, jobId:r.jobId}), billId:id, updatedAt:Date.now()});
     toast("請求書を作りました"); route();
+  },
+  async "bill-paid"(el){   // 管理会社からの入金：入金した日を残す（取り消すと入金待ちに戻る）
+    const bill = (await api().listBills()).find(b => b.id === el.dataset.id); if(!bill) return;
+    const off = !!el.dataset.off;
+    if(!await ask({title:off ? "入金を取り消しますか？" : `${bill.company} の入金を確認しましたか？`, body:off ? "入金待ちに戻します。" : `${yenFull(bill.total)}　今日の日付で「入金済み」にします。`, ok:off ? "取り消す" : "入金済みにする"})) return;
+    await api().saveBill({...bill, paidAt:off ? "" : todayIso()}); toast(off ? "入金待ちに戻しました" : "入金済みにしました"); route();
   },
   async "bill-undo"(el){
     if(!await ask({title:"発行を取り消しますか？", body:"請求書を消して、案件をまた請求の対象に戻します。", ok:"取り消す", danger:true})) return;
