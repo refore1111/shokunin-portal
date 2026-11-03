@@ -6215,9 +6215,8 @@ async function viewHome(){
 /* ---------- 管理：工事メモ（スマホで入れて、そのまま見積の下書きにする） ---------- */
 // 工事ごとの発注先：業者（協力業者・外部の工事の発注先）と材料（タキザワなど）は別々に選ぶ
 function memoWorkSupOpts(){
-  const cr = [...(S.crafts?.values() || [])].filter(c => c.status === "approved").sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0) || String(a.tradeName || a.name).localeCompare(String(b.tradeName || b.name), "ja"));
   const ws = (S.suppliers || []).filter(x => x.kind === "work");
-  return `<option value="">未定（募集する）</option>${cr.length ? `<optgroup label="協力業者">${cr.map(c => `<option value="c:${esc(c.uid)}">${esc(c.tradeName || c.name)}</option>`).join("")}</optgroup>` : ""}${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}">${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self">自社でやる</option><option value="__typed">ポータルにいない業者（名前を入れる）</option>`;
+  return `<option value="">未定（募集する）</option><optgroup label="募集する工種">${Object.keys(CAT_TRADE).map(c => `<option value="t:${esc(c)}">${esc(c)}</option>`).join("")}</optgroup>${ws.length ? `<optgroup label="外部の工事">${ws.map(x => `<option value="s:${esc(x.id)}">${esc(x.name)}</option>`).join("")}</optgroup>` : ""}<option value="self">自社でやる</option><option value="__typed">ポータルにいない業者（名前を入れる）</option>`;
 }
 // 長い一覧（協力業者・材料マスタ）のプルダウンは、押したときに中身を入れる（行ごとに全員分を入れると画面がとても重くなるため）
 const LAZY_OPTS = {ws:() => memoWorkSupOpts(), pws:() => priceWsOpts(), pmat:() => priceMatOpts()};
@@ -6244,7 +6243,7 @@ function memoRowHtml(){
     <input type="text" name="m_unit" list="est-units" placeholder="単位" aria-label="単位">
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
     <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="LB9519" hidden>LB9519</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span>
-      <span class="mp-sup"><label class="mp-ws">業者の発注先<select name="m_ws" data-lazy="ws"><option value="">未定（募集する）</option></select></label>
+      <span class="mp-sup"><label class="mp-ws">工種・発注先<select name="m_ws" data-lazy="ws"><option value="">未定（募集する）</option></select></label>
         <label class="mp-ms">材料の発注先<select name="m_ms">${memoMatSupOpts()}</select></label><label class="mp-mp">材料単価<input type="number" name="m_mp" min="0" inputmode="numeric" placeholder="円"></label><label class="mp-url" hidden>URL<input type="url" name="m_url" placeholder="https://（買うページ）"></label></span>
       <label class="mp-wsn" hidden>業者名<input type="text" name="m_wsName" placeholder="例：〇〇内装（ポータルにいない業者）" autocomplete="off"></label>
       <label class="mp-st">この工事<select name="m_st"><option value="">する</option>${EST_ST.map(x => `<option>${x}</option>`).join("")}</select></label>
@@ -6412,7 +6411,8 @@ function memoSupFill(row, p){
   const ws = row.querySelector("[name=m_ws]"), ms = row.querySelector("[name=m_ms]"), mp = row.querySelector("[name=m_mp]"); if(!ws) return;
   // 「(3㎡未満)」などの小さい工事は、元の工事（クッションフロア貼替など）の発注先・材料を使う
   if(!p.workSup && !p.matSup){ const b = estPrices().find(x => x.name === String(p.name || "").replace(/[（(][^）)]*未満[）)]$/, "") && x.id !== p.id); if(b) p = {...p, workSup:b.workSup, matSup:b.matSup, matId:b.matId, matRate:b.matRate, matPrice:b.matPrice, matUrl:b.matUrl}; }
-  if(p.workSup){ lazyFill(ws); if([...ws.options].some(o => o.value === p.workSup)) ws.value = p.workSup; }
+  lazyFill(ws); const want = p.workSup && !p.workSup.startsWith("c:") ? p.workSup : p.cat ? `t:${p.cat}` : "";
+  if(want && [...ws.options].some(o => o.value === want)) ws.value = want;
   if(p.matSup && [...ms.options].some(o => o.value === p.matSup)) ms.value = p.matSup;
   if(p.matSup === "net"){   // ネットで買う：単価表の金額（×数量の倍率）とURLを入れる
     if(p.matPrice != null && p.matPrice !== "") mp.value = Math.round(Number(p.matPrice) * (Number(p.matRate) > 0 ? Number(p.matRate) : 1));
@@ -6680,6 +6680,7 @@ function memoFillFromEst(f, e){
     v("m_loc", r.loc); v("m_name", r.name); v("m_pid", r.priceId || ""); v("m_qty", r.qty); v("m_unit", r.unit); v("m_spec", r.spec); v("m_sell", r.price); v("m_cost", r.cost); v("m_why", r.why); v("m_st", r.st || "");
     if(r.dims?.length) row.dataset.dims = JSON.stringify(r.dims); if(r.accent) row.dataset.acc = "1";
     if(r.sup?.work){ const ws = row.querySelector("[name=m_ws]"); ws.insertAdjacentHTML("beforeend", `<option value="${esc(r.sup.work)}">${esc(r.sup.workName || supNameOf(r.sup.work))}</option>`); ws.value = r.sup.work; }
+    else if(CAT_TRADE[r.cat]){ const ws = row.querySelector("[name=m_ws]"); ws.insertAdjacentHTML("beforeend", `<option value="t:${esc(r.cat)}">${esc(r.cat)}</option>`); ws.value = `t:${r.cat}`; }
     if(r.sup?.mat){ v("m_ms", r.sup.mat); v("m_mp", r.sup.matPrice ?? ""); if(r.sup.url){ v("m_url", r.sup.url); row.querySelector(".mp-url").hidden = false; } if(r.sup.matId) row.dataset.matId = r.sup.matId; if(r.sup.matRate) row.dataset.matRate = r.sup.matRate; }
     memoRowState(row); });
   if(!box.children.length) box.insertAdjacentHTML("beforeend", memoRowHtml());
@@ -6717,7 +6718,7 @@ async function caseStep(el){
 }
 // 業者の発注先：「ポータルにいない業者」を選んだら、入れた名前（n:名前）
 function memoWsOf(row, name){
-  const ws = row.querySelector("[name=m_ws]")?.value || ""; if(ws !== "__typed") return ws;
+  const ws = row.querySelector("[name=m_ws]")?.value || ""; if(ws.startsWith("t:")) return ""; if(ws !== "__typed") return ws;
   const n = (row.querySelector("[name=m_wsName]")?.value || "").trim(); if(!n) throw new Error(`「${name || "工事"}」の業者名を入れてください`);
   return "n:" + n;
 }
@@ -6733,7 +6734,7 @@ async function memoCollect(form){
       const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
       const dims0 = isCloth(name) || isCF(name) ? memoDims(r) : [], dims = dims0.length ? dims0 : (dimsOfEl(r).dims || []).filter(d => !d.acc), acc = up1(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
-        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", ccat:r.dataset.chk ? CK_CAT : "", sup:memoSupOf(memoWsOf(r, name), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {}, v("m_url")), why:v("m_why"), st:v("m_st"), keep:dimsOfEl(r), rid:r.dataset.rid || (r.dataset.rid = "r_" + newId())}; })
+        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", ccat:r.dataset.chk ? CK_CAT : (v("m_ws").startsWith("t:") ? v("m_ws").slice(2) : ""), sup:memoSupOf(memoWsOf(r, name), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {}, v("m_url")), why:v("m_why"), st:v("m_st"), keep:dimsOfEl(r), rid:r.dataset.rid || (r.dataset.rid = "r_" + newId())}; })
       .filter(x => x.p.name && !(x.fixed && (x.qty === "" || !x.qty) && !x.dims.length));   // クロス・床で数量のない行は入れない
     // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
     const adds = rows.filter(x => x.save && x.p.cost > 0);
