@@ -3874,6 +3874,18 @@ async function ledgerDataLoad(){
   S.ledgerCoNames = [...names.values()];
   return {rows, cfg, names};
 }
+// 収支の行だけ（案件ごとの書類・発注書は読まない）。工事番号の続き・管理会社の候補など、金額の集計がいらない画面で使う
+async function ledgerLite(){
+  const [stored, jobs, cfg] = await Promise.all([api().listLedger().catch(() => []), api().listJobs({}).catch(() => []), api().getLedgerCfg().catch(() => ({}))]);
+  const jobNo = new Map(jobs.map(j => [j.id, j.jobNo || ""])), has = new Set(stored.map(r => r.jobId).filter(Boolean));
+  const rows = stored.map(r => ({...r, jobNo:r.jobNo || jobNo.get(r.jobId) || "", coKey:coKey(r.company)}));
+  jobs.filter(j => j.jobNo && !j.parentId && !j.fixOf && !has.has(j.id)).forEach(j => rows.push({id:j.id, jobId:j.id, jobNo:j.jobNo, company:"", coKey:""}));
+  const names = new Map(); rows.forEach(r => { if(r.company && !names.has(r.coKey)) names.set(r.coKey, r.company); });
+  Object.keys(cfg.fees || {}).forEach(c => { if(!names.has(coKey(c))) names.set(coKey(c), c); });
+  rows.forEach(r => { r.coName = names.get(r.coKey) || r.company; });
+  S.ledgerCoNames ||= [...names.values()];
+  return {rows, cfg, names};
+}
 // 管理会社の候補は収支を基準にする（取引終了の会社は出さない。収支が読めないときだけ物件マスタの会社）
 function ledgerCos(keep = []){
   const seen = new Set(), base = S.ledgerCoNames?.length ? S.ledgerCoNames : (S.props || []).map(p => p.company);
@@ -3881,7 +3893,7 @@ function ledgerCos(keep = []){
   keep.map(c => String(c || "").trim()).filter(c => c && !seen.has(managerKey(c))).forEach(c => { seen.add(managerKey(c)); out.push(c); });
   return out.sort((a, b) => a.localeCompare(b, "ja"));
 }
-async function ledgerCosLoad(){ if(!S.ledgerCoNames) await ledgerData().catch(() => {}); return ledgerCos(); }
+async function ledgerCosLoad(){ if(!S.ledgerCoNames) await ledgerLite().catch(() => {}); return ledgerCos(); }
 const inKi = (r, ki) => r.month ? kiOfMonth(r.month) === ki : (r.ki ?? kiNow()) === ki;
 const yoy = (a, b) => b ? `${(a / b * 100).toFixed(1)}%` : "";
 const inTax = v => (Number(v) || 0) + Math.floor((Number(v) || 0) * TAX_RATE);   // 税抜 → 税込（収支は税込で出す）
@@ -5005,6 +5017,9 @@ async function viewJobEdit(id){
   const propFixed = !!(id && priv.building);   // 物件情報は物件マスタ・工事メモから入るので、編集画面には出さない（新しい案件のときだけ入力）
   const staffOpts = [...S.staff.map(p => p.name), ...(staffSel && !S.staff.some(p => p.name === staffSel) && id ? [staffSel] : [])];
   S.jobNos = (await api().listJobs({}).catch(() => [])).filter(j => j.jobNo && j.id !== id && j.parentId !== id && j.id !== job.parentId && !(job.parentId && j.parentId === job.parentId) && j.fixOf !== id && j.id !== job.fixOf && !(job.fixOf && j.fixOf === job.fixOf)).map(j => j.jobNo);
+  { const [{rows: lr}, ests] = await Promise.all([ledgerLite().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
+    const mine = new Set([id, job.parentId, job.fixOf].filter(Boolean));
+    S.jobNos.push(...lr.filter(r => !mine.has(r.jobId) && !mine.has(r.id)).map(r => r.jobNo), ...ests.filter(e => !mine.has(e.jobId)).map(e => e.no)); S.jobNos = [...new Set(S.jobNos.filter(Boolean).map(normJobNo))]; }
   setTimeout(() => { const f = document.querySelector("form[data-form=job]"); if(f){ fillJobNo(f); renderLots(f); renderSelf(f); } }, 0);
   S.editPhotos = [...(job.photos || [])];
   const chk = t => (job.trades || []).includes(t) ? "checked" : "";
@@ -5346,7 +5361,7 @@ function fillJobNo(form, force = false){
   const cur = normJobNo(el.value);
   if(!cur || (force && /^[A-Z]+-\d{4}-$/.test(cur))) el.value = head;
   const used = (S.jobNos || []).filter(n => n.startsWith(head)).sort((a, b) => Number(a.split("-")[2]) - Number(b.split("-")[2]));
-  if(hint) hint.textContent = used.length ? `ポータルで最後に使った番号：${used[used.length - 1]}（収支一覧の番号を確認して入れてください）` : "収支一覧を見て、最後の番号を入れてください";
+  if(hint) hint.textContent = used.length ? `最後に使った番号（収支・見積・案件）：${used[used.length - 1]}` : "収支一覧を見て、最後の番号を入れてください";
 }
 // 案件の管理会社のプルダウン：収支にある会社（ledgerCos）。同じ会社（工事番号の略号が同じ）は1つにまとめる
 const MANAGERS = ["FLEX TOKYO", "Nワークス", "アイレントホーム", "イデアルシーク", "ジェントリーブルーエージェント", "ベストホームクリエイト", "リアルエステート", "ファミリープロパティー"];
@@ -5769,7 +5784,7 @@ async function viewSettings(tab){
   if(!["props","prices","suppliers","materials","docs","people","data"].includes(tab)) tab = "props";
   if(tab === "docs") await tplIndex().catch(() => {});
   if(tab === "prices"){
-    const {rows: lr, cfg: lc, names: ln} = await ledgerData().catch(() => ({rows:[], cfg:{}, names:new Map()}));
+    const {rows: lr, cfg: lc, names: ln} = await ledgerLite().catch(() => ({rows:[], cfg:{}, names:new Map()}));
     const used = [...ln.entries()].filter(([k]) => lr.some(r => r.coKey === k) || Object.keys(lc.fees || {}).some(c => coKey(c) === k)).map(([, v]) => v);
     const inPrices = (S.prices || []).flatMap(p => Object.keys(p.sellBy || {}));
     S.priceCos = [...new Set([...used, ...inPrices.filter(c => !used.some(u => coSame(u, c)))])].sort((a, b) => a.localeCompare(b, "ja"));
@@ -6783,7 +6798,7 @@ async function viewMemo(lid = ""){
   else if(S.suppliers.some(x => /MOZU/i.test(x.name || "") && !x.url && !x.urlOff)){ S.suppliers = S.suppliers.map(x => /MOZU/i.test(x.name || "") && !x.url && !x.urlOff ? {...x, url:MOZU_URL} : x); api().saveSuppliers(S.suppliers).catch(e => console.error(e)); }   // MOZUはネットの注文サイトから頼む   // 材料屋さんにMOZUを入れておく
   const cos = await ledgerCosLoad();
   // 工事番号の見本（収支・見積で使った番号の続き）と、先方のご担当者様の候補
-  const [{rows: lrows}, ests] = await Promise.all([ledgerData().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
+  const [{rows: lrows}, ests] = await Promise.all([ledgerLite().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
   S.memoEsts = ests; S.memoNos = [...lrows.map(r => r.jobNo), ...ests.map(e => e.no)].filter(Boolean);
   // 収支の案件から開いたとき：その案件の管理会社・物件・担当・工事種類・工事番号を入れておき、保存すると同じ案件の見積になる
   // 見積（est_…）を開いたとき：その案件の工事メモの画面（状態・次にやること・業者と書類）
@@ -10505,7 +10520,7 @@ document.addEventListener("change", e => { const b = e.target.closest?.("[data-k
 // 新しい工事番号：管理会社の頭文字-期-（収支・案件・見積で使った番号のいちばん大きい番号＋1）
 async function nextJobNo(company){
   const head = `${jobNoPrefix(company)}-${jobNoPeriod()}-`;
-  const [{rows}, ests] = await Promise.all([ledgerData().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
+  const [{rows}, ests] = await Promise.all([ledgerLite().catch(() => ({rows:[]})), api().listEstimates().catch(() => [])]);
   const nums = [...rows.map(r => r.jobNo), ...ests.map(e => e.no), ...(S.jobNos || [])].map(normJobNo).filter(n => n.startsWith(head)).map(n => Number(n.slice(head.length)) || 0);
   return head + (Math.max(0, ...nums) + 1);
 }
