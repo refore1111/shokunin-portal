@@ -3662,7 +3662,9 @@ function closePeriod(ym, day){
 }
 // 完了の日：ポータルの案件は完了確認の日、手入力の行は完了にした日（なければ完了月の末日）
 // 請求する金額：手数料のある会社（孫受け）は、請負金額から手数料を引いた金額
-const billAmt = r => r.lost ? 0 : r.fee ? Math.round((Number(r.contract) || 0) * (1 - r.fee / 100)) : Number(r.contract) || 0;
+// 請求する金額（税込）：収支の「売上」と同じ（手数料のある会社は手数料を引いた額）。合計から税抜と消費税を出す
+const billAmt = r => r.lost ? 0 : Math.round(Number(r.net) || 0);
+const billTot = total => { const sub = exTax(total); return {sub, tax:total - sub, total}; };
 const doneDateOf = r => r.doneAt ? isoOf(r.doneAt) : r.month ? `${r.month}-${String(new Date(...r.month.split("-").map(Number), 0).getDate()).padStart(2, "0")}` : "";
 async function viewBills(ymArg){
   const ym = /^\d{4}-\d{2}$/.test(ymArg || "") ? ymArg : curMonth();
@@ -3673,15 +3675,15 @@ async function viewBills(ymArg){
   const cards = companies.map(co => {
     const k = coKey(co), day = cfg.close?.[k] ?? 0, fmts = cfg.billFmt?.[k] || ["sum"], {from, to} = closePeriod(ym, day), id = `${k}_${ym}`, bill = billBy.get(id);
     const due = to <= todayIso();
-    const list = bill ? rows.filter(r => bill.ledgerIds.includes(r.id)) : rows.filter(r => r.coKey === k && r.done && !r.billedOutside && !(r.billId && r.billId !== id) && ["won", "arr", "tachiai", "done", undefined, ""].includes(r.stage) && (d => d && d >= from && d <= to)(doneDateOf(r)));
+    const list = bill ? rows.filter(r => bill.ledgerIds.includes(r.id)) : rows.filter(r => r.coKey === k && r.month === ym && !r.lost && !(r.billId && r.billId !== id));
     if(!list.length && !bill) return "";
     S.bills.cards[id] = {co, k, from, to, list, fmts};
-    const sub = list.reduce((a, r) => a + billAmt(r), 0), noAmt = list.filter(r => !Number(r.contract)).length, feeN = list.filter(r => r.fee).length;
-    return `<section class="panel bill-card"><div class="row between"><h2 style="margin:0">${esc(co)} <small>${closeLabel(day)}　${fmtDate(from)}〜${fmtDate(to)}</small></h2>
+    const tot = billTot(list.reduce((a, r) => a + billAmt(r), 0)), noAmt = list.filter(r => !Number(r.contract)).length, feeN = list.filter(r => r.fee).length;
+    return `<section class="panel bill-card"><div class="row between"><h2 style="margin:0">${esc(co)} <small>収支の${Number(ym.slice(5))}月分</small></h2>
         ${bill ? `<span class="pill paid">発行済み ${fmtDate(bill.issuedAt)}</span>` : due ? `<span class="pill waiting">締め日を過ぎました</span>` : `<span class="pill">締め日前（${fmtDate(to)}）</span>`}</div>
-      <div class="tbl-wrap" style="margin-top:10px"><table class="mtbl nb"><thead><tr><th>工事番号</th><th>物件名称</th><th>工事種類</th><th>完了日</th><th class="r">金額（税抜）</th></tr></thead><tbody>
-        ${list.map(r => `<tr><td>${esc(r.jobNo)}</td><td class="name">${esc(r.name)}${r.stage === "tachiai" ? " <span class=\"stg stg-tachiai\">立会のみ</span>" : r.self ? " <span class=\"stg stg-self\">自社施工</span>" : ""}</td><td>${esc(r.kind)}</td><td>${fmtDate(doneDateOf(r))}</td><td class="r">${Number(r.contract) ? `${yenFull(billAmt(r))}${r.fee ? `<br><small class="sub">請負 ${yenFull(r.contract)} −手数料${esc(r.fee)}%</small>` : ""}` : `<a class="warn" href="#/admin/money/edit/${esc(r.id)}">請負金額を入力</a>`}</td></tr>`).join("")}
-        <tr class="sum"><th colspan="4">小計 ${list.length}件　消費税 ${yenFull(Math.floor(sub * TAX_RATE))}</th><td class="r">${yenFull(sub)}</td></tr></tbody></table></div>
+      <div class="tbl-wrap" style="margin-top:10px"><table class="mtbl nb"><thead><tr><th>工事番号</th><th>物件名称</th><th>工事種類</th><th>完了日</th><th class="r">金額（税込）</th></tr></thead><tbody>
+        ${list.map(r => `<tr><td>${esc(r.jobNo)}</td><td class="name">${esc(r.name)}${r.stage === "tachiai" ? " <span class=\"stg stg-tachiai\">立会のみ</span>" : r.self ? " <span class=\"stg stg-self\">自社施工</span>" : ""}</td><td>${esc(r.kind)}</td><td>${fmtDate(doneDateOf(r))}</td><td class="r">${Number(r.contract) ? `${yenFull(billAmt(r))}${r.fee ? `<br><small class="sub">請負 ${yenFull(r.contractIn)} −手数料${esc(r.fee)}%</small>` : ""}` : `<a class="warn" href="#/admin/money/edit/${esc(r.id)}">請負金額を入力</a>`}</td></tr>`).join("")}
+        <tr class="sum"><th colspan="4">合計 ${list.length}件（税抜 ${yenFull(tot.sub)}　消費税 ${yenFull(tot.tax)}）</th><td class="r">${yenFull(tot.total)}</td></tr></tbody></table></div>
       ${noAmt ? `<p class="small warn" style="margin:6px 0 0">請負金額が入っていない案件が${noAmt}件あります。</p>` : ""}${feeN ? `<p class="small" style="margin:6px 0 0">孫受け：元請手数料を引いた金額で請求します。</p>` : ""}
       <div class="row between" style="margin-top:10px;align-items:center">
         <span class="row bill-cfg"><select data-billclose="${esc(k)}" aria-label="締め日">${[0, 5, 10, 15, 20, 25].map(d => `<option value="${d}" ${Number(day) === d ? "selected" : ""}>${closeLabel(d)}</option>`).join("")}</select>
@@ -3702,9 +3704,9 @@ function billSummaryHtml(b, seal, billing){
     <div class="es-mid"><div class="es-left"><table class="es-prop"><tr><th>対象期間；</th><td>${fmtDate(b.from)} 〜 ${fmtDate(b.to)}（${esc(closeLabel(b.close))}）</td></tr><tr><th>発行日；</th><td>${fmtDate(b.issuedAt)}</td></tr></table>
       <p class="es-greet">下記のとおり御請求申し上げます。</p><div class="es-billbox"><span>ご請求金額</span><b>${yenFull(b.total)}</b></div></div>
       <div class="es-from">${seal ? `<img class="es-seal" src="${esc(seal)}" alt="">` : ""}${billing.invoiceNumber ? `<div class="es-tno">${esc(billing.invoiceNumber)}</div>` : ""}<b>${esc(c.name)}</b><div>${esc(c.address)}</div>${c.address2 ? `<div>${esc(c.address2)}</div>` : ""}<div>TEL；${esc(c.tel)}　FAX；${esc(c.fax)}</div></div></div>
-    <table class="es-items gray"><thead><tr><th class="no">No</th><th>物件名称</th><th>工事種類</th><th>完了日</th><th>金額</th></tr></thead><tbody>
+    <table class="es-items gray"><thead><tr><th class="no">No</th><th>物件名称</th><th>工事種類</th><th>完了日</th><th>${b.taxIn ? "金額（税込）" : "金額"}</th></tr></thead><tbody>
       ${Array.from({length:n}, (_, k) => { const r = b.rows[k]; return `<tr><td class="no">${r ? k + 1 : ""}</td>${r ? `<td>${esc(r.name)}</td><td>${esc(r.kind || "")}</td><td class="c">${fmtDate(r.doneDate)}</td><td class="r">${yenFull(r.amount)}</td>` : "<td></td><td></td><td></td><td></td>"}</tr>`; }).join("")}</tbody>
-      <tfoot><tr><td colspan="3"></td><th>小計</th><td class="r">${yenFull(b.sub)}</td></tr><tr><td colspan="3"></td><th>消費税(税率10%)</th><td class="r">${yenFull(b.tax)}</td></tr><tr><td colspan="3"></td><th>合計</th><td class="r">${yenFull(b.total)}</td></tr></tfoot></table>
+      <tfoot><tr><td colspan="3"></td><th>${b.taxIn ? "小計（税抜）" : "小計"}</th><td class="r">${yenFull(b.sub)}</td></tr><tr><td colspan="3"></td><th>消費税(税率10%)</th><td class="r">${yenFull(b.tax)}</td></tr><tr><td colspan="3"></td><th>合計</th><td class="r">${yenFull(b.total)}</td></tr></tfoot></table>
     <div class="es-bank">${esc([billing.bank ? `振込先；${billing.bank}` : "", `支払条件；${billing.terms || BILLING_DEFAULT.terms}`].filter(Boolean).join("　"))}</div></div>`;
 }
 /* ---------- 収支一覧（Reforeだけ。4期収支一覧表と同じ形：全体／管理会社ごと／個人成績） ---------- */
@@ -7986,10 +7988,10 @@ const ACTIONS = {
   async "bill-make"(el){
     const id = el.dataset.id, c = S.bills?.cards[id]; if(!c) return;
     const noAmt = c.list.filter(r => !Number(r.contract)).length;
-    if(!await ask({title:`${c.co} の請求書を作りますか？`, body:`${fmtDate(c.from)}〜${fmtDate(c.to)}に完了した ${c.list.length}件です。${noAmt ? `\n請負金額が入っていない案件が${noAmt}件あります（0円で入ります）。` : ""}\n作った案件は、次の請求に入りません。`, ok:"請求書を作る"})) return;
+    if(!await ask({title:`${c.co} の請求書を作りますか？`, body:`収支の${Number(S.bills.ym.slice(5))}月分の ${c.list.length}件です。${noAmt ? `\n請負金額が入っていない案件が${noAmt}件あります（0円で入ります）。` : ""}\n作った案件は、次の請求に入りません。`, ok:"請求書を作る"})) return;
     const rows = c.list.map(r => ({ledgerId:r.id, jobNo:r.jobNo || "", name:r.name, kind:r.kind || "", doneDate:doneDateOf(r), amount:billAmt(r), gross:Number(r.contract) || 0, fee:r.fee || 0, estimateId:r.estimateId || "", jobId:r.jobId || ""}));
-    const sub = rows.reduce((a, r) => a + r.amount, 0), tax = Math.floor(sub * TAX_RATE), ym = S.bills.ym;
-    const bill = {id, company:c.co, coKey:c.k, ym, close:S.bills.cfg.close?.[c.k] ?? 0, from:c.from, to:c.to, ledgerIds:rows.map(r => r.ledgerId), rows, sub, tax, total:sub + tax,
+    const {sub, tax, total} = billTot(rows.reduce((a, r) => a + r.amount, 0)), ym = S.bills.ym, mEnd = new Date(...ym.split("-").map(Number), 0).getDate();
+    const bill = {id, company:c.co, coKey:c.k, ym, close:0, from:`${ym}-01`, to:`${ym}-${mEnd}`, taxIn:true, ledgerIds:rows.map(r => r.ledgerId), rows, sub, tax, total,
       no:`${jobNoPrefix(c.co)}-${ym.replace("-", "")}`, issuedAt:todayIso(), createdAt:Date.now()};
     await api().saveBill(bill);
     const all = await api().listLedger();
@@ -8013,7 +8015,7 @@ const ACTIONS = {
       const docs = [];
       for(const r of bill.rows){
         let e = r.estimateId ? await api().getEstimate(r.estimateId).catch(() => null) : null;
-        if(!e || !e.rows?.length) e = {company:bill.company, honor:"御中", no:r.jobNo, building:r.name, kind:r.kind, noFee:true, rows:[{id:"r1", name:r.kind ? `${r.kind}　一式` : "工事一式", qty:1, unit:"式", price:r.amount}]};
+        if(!e || !e.rows?.length) e = {company:bill.company, honor:"御中", no:r.jobNo, building:r.name, kind:r.kind, noFee:true, rows:[{id:"r1", name:r.kind ? `${r.kind}　一式` : "工事一式", qty:1, unit:"式", price:bill.taxIn ? exTax(r.amount) : r.amount}]};
         else if(r.fee) e = {...e, feePct:r.fee};
         docs.push(estDocHtml(e, "invoice", seal, billing));
       }
