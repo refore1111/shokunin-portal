@@ -3636,8 +3636,8 @@ async function estToJob(e){
   const site = {address:e.address || "", building:e.building || "", room:e.room || "", autolock:e.autolock || "", elevator:e.elevator || ""};
   // 業者ごとの工期があれば、案件の工期はその最初〜最後まで広げる
   const ls = lots.filter(l => l.start), sD = ls.reduce((a, l) => !a || l.start < a ? l.start : a, e.periodStart || ""), eD = ls.reduce((a, l) => !a || (l.end || l.start) > a ? (l.end || l.start) : a, e.periodEnd || e.periodStart || "");
-  const data = {title:estTitle(e) || "見積からの案件", trades, pref:pref || "", city:city || "", startDate:sD, endDate:eD,
-    price:itemsTotal(items), parking:items.filter(isParking).reduce((a, i) => a + itemAmount(i), 0), ...(lots.length ? {lots} : {}), taxMode:"税別", items, site, staff:e.staff || null, jobNo:e.no || "", description:"", priceNote:"", photos:[], status:"draft", audience:"all"};
+  const data = {title:e.jobTitle || estTitle(e) || "見積からの案件", trades, pref:pref || "", city:city || "", startDate:sD, endDate:eD,
+    price:itemsTotal(items), parking:items.filter(isParking).reduce((a, i) => a + itemAmount(i), 0), ...(lots.length ? {lots} : {}), taxMode:"税別", items, site, staff:e.staff || null, jobNo:e.no || "", description:e.workDesc || "", priceNote:"", photos:[], status:"draft", audience:"all"};
   const jid = await api().saveJob(null, data);
   await api().setJobPrivate(jid, {...site, keyInfo:e.keyInfo || "", manager:e.company || "", contact:e.contact || "", masterId:e.masterId || "", photoUrls:e.photoUrls || [], items, selfItems:(e.rows || []).filter(rowSelf).map(rowToItem), ...(e.moveIn ? {moveIn:e.moveIn} : {})});
   const old = e.ledgerId ? (await api().listLedger()).find(x => x.id === e.ledgerId) : null;
@@ -3668,7 +3668,7 @@ const billTot = total => { const sub = exTax(total); return {sub, tax:total - su
 const doneDateOf = r => r.doneAt ? isoOf(r.doneAt) : r.month ? `${r.month}-${String(new Date(...r.month.split("-").map(Number), 0).getDate()).padStart(2, "0")}` : "";
 async function viewBills(ymArg){
   const ym = /^\d{4}-\d{2}$/.test(ymArg || "") ? ymArg : curMonth();
-  const [{rows, cfg, names}, bills] = await Promise.all([ledgerData(), api().listBills().catch(() => [])]);
+  const [{rows, cfg, names}, bills] = await Promise.all([ledgerBillData(), api().listBills().catch(() => [])]);
   const billBy = new Map(bills.map(b => [b.id, b]));
   const companies = [...new Set(rows.filter(r => r.company).map(r => r.coName))].sort((a, b) => a.localeCompare(b, "ja"));
   S.bills = {ym, rows, cfg, cards:{}};
@@ -3872,6 +3872,22 @@ async function ledgerDataLoad(){
   Object.keys(cfg.fees || {}).forEach(c => { if(!names.has(coKey(c))) names.set(coKey(c), c); });
   rows.forEach(r => { r.coKey = coKey(r.company); r.coName = names.get(r.coKey) || r.company; });
   S.ledgerCoNames = [...names.values()];
+  return {rows, cfg, names};
+}
+// 管理会社への請求に使う収支：請負金額・手数料・月だけ。業者の金額はいらないので、案件ごとの書類・発注書は読まない（収支を開いたばかりなら、それを使う）
+async function ledgerBillData(){
+  if(S.ldCache && Date.now() - S.ldCache.at < 20000) return S.ldCache.p;
+  const [stored, jobs, cfg] = await Promise.all([api().listLedger(), api().listJobs({}), api().getLedgerCfg().catch(() => ({}))]);
+  const byJob = new Map(stored.filter(r => r.jobId).map(r => [r.jobId, r]));
+  const roots = jobs.filter(j => !j.parentId && !j.fixOf && !byJob.get(j.id)?.hidden && (["assigned", "working", "finished", "completed", "paid"].includes(j.status) || byJob.get(j.id)?.contract || byJob.get(j.id)?.ki));
+  const auto = roots.map(j => { const L = byJob.get(j.id) || {}, doneAt = j.completedAt || j.finishedAt;
+    return {id:j.id, jobId:j.id, month:L.month || (doneAt ? isoOf(doneAt).slice(0, 7) : ""), jobNo:j.jobNo || "", name:j.title, company:L.company || "", contract:L.contract || 0, contractTaxIn:L.contractTaxIn ?? null,
+      kind:L.kind || "", vendors:[], done:L.stage === "arr" && !L.done ? false : ["completed", "paid"].includes(j.status), doneAt:j.completedAt || j.paidAt || L.doneAt || 0, status:j.status,
+      stage:L.stage || (j.assignedTo || L.contract ? "won" : ""), estimateId:L.estimateId || "", billId:L.billId || "", billedOutside:!!L.billedOutside}; });
+  const rows = [...auto, ...stored.filter(r => !r.jobId)].map(r => calcLedger(r, cfg)), names = new Map();
+  [...stored.filter(r => !r.jobId), ...rows].forEach(r => { if(r.company && !names.has(coKey(r.company))) names.set(coKey(r.company), r.company); });
+  Object.keys(cfg.fees || {}).forEach(c => { if(!names.has(coKey(c))) names.set(coKey(c), c); });
+  rows.forEach(r => { r.coKey = coKey(r.company); r.coName = names.get(r.coKey) || r.company; });
   return {rows, cfg, names};
 }
 // 収支の行だけ（案件ごとの書類・発注書は読まない）。工事番号の続き・管理会社の候補など、金額の集計がいらない画面で使う
@@ -6514,6 +6530,11 @@ const itemKey = i => JSON.stringify([i.loc, i.name, i.qty, i.unit, i.unitPrice, 
 async function caseSync(e){
   const warn = [], all = await api().listJobs({}), jobs = all.filter(j => j.id === e.jobId || j.parentId === e.jobId), root = jobs.find(j => j.id === e.jobId);
   if(!root) return warn;
+  // 工事メモの案件名・作業内容は、工事が変わっていなくても元の案件に入れる（完了確認が済んだ案件はそのまま）
+  if(!["completed", "paid"].includes(root.status)){ const up = {};
+    if(e.jobTitle != null && e.jobTitle !== "" && e.jobTitle !== root.title) up.title = e.jobTitle;
+    if(e.workDesc != null && e.workDesc !== (root.description || "")) up.description = e.workDesc;
+    if(Object.keys(up).length) await api().saveJob(root.id, up); }
   const rows = (e.rows || []).filter(rowForPortal), byRid = new Map(rows.map(r => [r.id, r])), privs = {};
   for(const j of jobs) privs[j.id] = await api().getJobPrivate(j.id).catch(() => ({}));
   const its = j => itemsWithId(privs[j.id].items?.length ? privs[j.id].items : j.items || []);
@@ -6674,6 +6695,7 @@ function memoFillFromEst(f, e){
   set("company", e.company); set("toName", e.toName || ""); set("person", e.person || ""); set("propName", e.building || ""); set("propId", e.masterId || ""); set("room", e.room || ""); set("address", e.address || "");
   const kind = Object.entries(EST_LEDGER_KIND).find(([k]) => k === e.kind)?.[1]; if(kind) set("kind", kind);
   if(e.staff?.name && [...E.staff.options].some(o => o.value === e.staff.name)) E.staff.value = e.staff.name;
+  set("jobTitle", e.jobTitle || ""); set("workDesc", e.workDesc || "");
   const box = f.querySelector("#memo-rows"); box.innerHTML = "";
   (e.rows || []).filter(r => !r.noteRow && r.name).forEach(r => { box.insertAdjacentHTML("beforeend", memoRowHtml()); const row = box.lastElementChild, v = (n, x) => { const el = row.querySelector(`[name=${n}]`); if(el && x != null) el.value = x; };
     row.dataset.rid = r.id;   // 見積の行の目印（業者の案件の工事とつなぐ）
@@ -6779,7 +6801,7 @@ async function memoCollect(form){
     return {company, toName:isOtherCo(company) ? g("toName") : "", honor:isOtherCo(company) ? (g("honor") || "御中") : "御中", person:g("person"), building:bName, room, name, staff, st, kind0:g("kind") || "原状回復",
       contact:[master.pk ? `専用駐車場：${hasFacility(master.pk) ? "あり" : "なし"}` : "", ckText, g("orderNote")].filter(Boolean).join("\n"), checks, kind:LEDGER_EST_KIND[g("kind")] ?? "退去工事",
       address:g("address") || master.address || "", autolock:master.al || "", elevator:master.ev || "", masterId:master.id || "", keyInfo:g("keyInfo"),
-      staffObj:staff ? {name:staff, phone:st?.phone || ""} : null, rows:estTailSort(estRows), note:[g("mFree"), dimNote].filter(Boolean).join("\n"), memoHtml:memoSnap(form)};
+      staffObj:staff ? {name:staff, phone:st?.phone || ""} : null, jobTitle:g("jobTitle"), workDesc:g("workDesc"), rows:estTailSort(estRows), note:[g("mFree"), dimNote].filter(Boolean).join("\n"), memoHtml:memoSnap(form)};
 }
 // 工事メモの画面をそのまま覚える（入れた値を画面に書き込み、長い一覧は選んだ1つだけにして小さくする）
 function memoSnap(f){
@@ -6842,6 +6864,8 @@ async function viewMemo(lid = ""){
         <label class="ev-pick"><select name="mEv"><option value="">—</option><option>有</option><option>無</option><option>不明</option></select></label></div></div>
       <label class="field"><span>備考 <small>物件マスタに覚えます。自社だけが見ます（発注書には載りません）</small></span><textarea name="mNote" rows="2"></textarea></label>
         <div class="two"><label class="field"><span>担当</span><select name="staff"><option value="">—</option>${(S.staff || []).map(s => `<option ${S.profile?.staffName === s.name ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label><label class="field"><span>工事種類 <small>収支・見積に入ります</small></span><select name="kind">${LEDGER_KINDS.map(k => `<option ${k === "原状回復" ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>
+        <label class="field"><span>案件名 <small>空なら「物件名 号室 工事種類」。業者さんの一覧・予定表に出ます</small></span><input type="text" name="jobTitle" placeholder="例：メルフィス東金町 401号室 アンテナ工事" autocomplete="off"></label>
+        <label class="field"><span>作業内容 <small>募集のとき業者さんに見せる説明</small></span><textarea name="workDesc" rows="2" placeholder="例：1K 退去後のクロス張替え（壁・天井）と下地補修"></textarea></label>
       </section>
       <section class="mpaper"><h2>チェック <small>紙の上の段。押すと下の工事に入ります</small></h2>
         ${memoChecksHtml()}
