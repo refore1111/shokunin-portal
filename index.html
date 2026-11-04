@@ -21,9 +21,9 @@
 <!-- Firebase の部品は、ページを読み始めると同時にダウンロードしておく（ログイン画面が早く出る） -->
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
-<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js">
-<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js">
-<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&display=swap" rel="stylesheet">
@@ -1200,7 +1200,7 @@ const FIREBASE_CONFIG = {
 };
 // URLの末尾に ?demo を付けると、本番データに触れずにデモモードで開けます
 const FORCE_DEMO = new URLSearchParams(location.search).has("demo");
-const FIREBASE_SDK_VERSION = "10.12.2";
+const FIREBASE_SDK_VERSION = "10.14.1";
 const COMPANY_ID = "refore";
 const CONTACT_TEL = "03-6824-7182";
 const REPORT_EMAIL = "info@refore.co.jp";   // 完了報告メールの送信先
@@ -2387,7 +2387,11 @@ class FirebaseBackend {
     this.mode = "firebase";
     firebase.initializeApp(FIREBASE_CONFIG);
     this.auth = firebase.auth(); this.db = firebase.firestore();
-    try { this.db.settings({ignoreUndefinedProperties:true, merge:true}); } catch(e) { console.warn(e); }
+    // データの受け取りを fetch のストリームにする（useFetchStreams）。XHR のままだと、受け取るたびに今までの分を全部コピーし直すので、
+    // 件数が多いと何GBもメモリを使い、スマホ・iPad がとても重くなる。10.12.2 ではこの設定が効かないので 10.14.1 にした。
+    // 2026-11-04 計測（iPad相当）：収支を開いたときのメモリ 972MB → 82MB。Firebase の版を戻したり、この設定を消したりしないでください。
+    const FETCH_STREAMS = typeof ReadableStream === "function" && typeof TextDecoder === "function" && "getReader" in ReadableStream.prototype;
+    try { this.db.settings({ignoreUndefinedProperties:true, merge:true, ...(FETCH_STREAMS ? {useFetchStreams:true} : {})}); } catch(e) { console.warn(e); }
     // iPhone・iPad は、PDFを開いて戻ると端末の保存場所（IndexedDB）が切れて、つながらなくなる（The client has already been terminated）ので使わない
     if(!IS_IOS) this.db.enablePersistence({synchronizeTabs:true}).catch(e => console.warn("端末への保存は使いません：", e.code || e));
     this.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.error(e));
