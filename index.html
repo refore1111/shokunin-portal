@@ -4,6 +4,7 @@
   ・必ず GitHub（refore1111/shokunin-portal の main）にある最新の index.html を元に変更してください。古いファイルから作り直すと、ほかの変更が消えます。
   ・Firebase の読み取りを節約する仕組み（READ_KEEP_UNTIL_CHANGE・LOCAL_DB・_pget・_bump・listLedger の差分読み）を消さないでください。
   ・変更は、まとめ役のチャット（GENPUKU PRO協力業者ポータルの作業チャット）を通して本番に入れます。
+  ・表示を速くする仕組み（sw.js の登録・BOOT_CACHE・VIEW_CACHE・routing の線）を消さないでください。sw.js は index.html と同じ場所に置きます。
 -->
 <html lang="ja">
 <head>
@@ -26,7 +27,7 @@
 <link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet" media="(min-width: 900px)">
 <style>
 [hidden]{display:none!important}   /* 隠した欄は、grid・flexの指定があっても必ず隠す */
@@ -1179,6 +1180,14 @@ form.memo .memo-row.is-st{border-left-color:#B0285A}form.memo .memo-price{margin
 }
 
 .connect-box{flex-basis:100%;margin-top:8px;padding:10px 12px;border:1px dashed var(--line);border-radius:6px;background:#F7F9FD;display:flex;flex-direction:column;gap:2px}
+</style>
+<style>
+body.routing::before{content:"";position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);height:3px;z-index:9999;background:linear-gradient(90deg,transparent,#E8A33D,transparent);background-size:40% 100%;background-repeat:no-repeat;animation:gpRoute 1s linear infinite}
+@keyframes gpRoute{from{background-position:-40% 0}to{background-position:140% 0}}
+@media (prefers-reduced-motion: reduce){body.routing::before{animation:none;background:#E8A33D;opacity:.6}}
+.gp-update{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:9998;display:flex;gap:10px;align-items:center;background:#142A5E;color:#fff;padding:10px 12px 10px 16px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:14px;max-width:calc(100% - 24px)}
+.gp-update button{background:#fff;color:#142A5E;border:0;border-radius:6px;padding:6px 12px;font-weight:700;font-size:14px;cursor:pointer}
+.gp-speed{position:fixed;left:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:9997;background:rgba(20,42,94,.92);color:#fff;font:12px/1.5 ui-monospace,Menlo,monospace;padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre}
 </style>
 </head>
 <body>
@@ -2859,7 +2868,7 @@ class FirebaseBackend {
 /* =========================================================
    画面の状態と描画
    ========================================================= */
-const S = {api:null, user:null, profile:null, tok:0, lastHash:null, filter:{pref:"", trade:"", mine:false}, editPhotos:[], pending:0, crafts:new Map(), threads:new Map(), notifUnsub:null, pageUnsub:null, pressStamp:null, adminSort:"work"};
+const S = {viewCache:new Map(), api:null, user:null, profile:null, tok:0, lastHash:null, filter:{pref:"", trade:"", mine:false}, editPhotos:[], pending:0, crafts:new Map(), threads:new Map(), notifUnsub:null, pageUnsub:null, pressStamp:null, adminSort:"work"};
 const api = () => S.api;
 /* ===== 工務店（マルチテナント）・運営・職人のメンバー：共通の判定 =====
    Refore（COMPANY_ID）のデータは今までどおりの場所。ほかの工務店は companies/{cid}/… と、案件などの companyId で分ける */
@@ -7441,7 +7450,23 @@ async function route(){
   const moved = hash !== S.lastHash; if(moved) S.navDepth = (S.navDepth || 0) + 1; S.lastHash = hash;
   if(S.pageUnsub){ S.pageUnsub(); S.pageUnsub = null; }
   let after = null;
-  const done = (html, opts) => { if(token !== S.tok) return; paint(html, opts); if(moved) window.scrollTo(0, 0); if(after) S.pageUnsub = after(); decorateNotices(); };
+  const t0 = performance.now(), vkey = viewKey(hash);
+  const cacheOk = viewCacheable(parts);
+  let cachedAt = null;
+  clearTimeout(S.routeTimer); S.routeTimer = setTimeout(() => { if(token === S.tok) document.body.classList.add("routing"); }, 120);
+  if(moved && cacheOk && S.viewCache.has(vkey)){   // 前に見た画面：前の表示をすぐ出す
+    try { const c = S.viewCache.get(vkey); paint(c.html, c.opts); window.scrollTo(0, 0); decorateNotices(); cachedAt = performance.now() - t0; } catch(e) { console.warn(e); }
+  }
+  const done = (html, opts) => {
+    if(token !== S.tok) return;
+    clearTimeout(S.routeTimer); document.body.classList.remove("routing");
+    const y = window.scrollY;
+    paint(html, opts);
+    if(cachedAt != null) window.scrollTo(0, y); else if(moved) window.scrollTo(0, 0);
+    if(after) S.pageUnsub = after(); decorateNotices();
+    if(cacheOk && !opts?.bare && typeof html === "string"){ S.viewCache.delete(vkey); S.viewCache.set(vkey, {html, opts}); if(S.viewCache.size > 40) S.viewCache.delete(S.viewCache.keys().next().value); }
+    if(SPEED_ON){ SPEED.last.push({hash, ms:performance.now() - t0, cached:cachedAt}); speedShow(); }
+  };
   if(!api()) return;
   try {
     if(parts[0] === "terms") return done(viewTerms(parts[1]), {bare:true});
@@ -9013,7 +9038,7 @@ document.addEventListener("click", async e => {
   e.preventDefault();
   if(el.disabled) return;
   el.disabled = true;
-  if(!LIGHT_ACTS.has(el.dataset.act)){ S.ldCache = null; S.craftsAt = 0; }   // 何か保存したら、収支の集計と協力業者は読み直す（画面の中だけの操作は読み直さない）
+  if(!LIGHT_ACTS.has(el.dataset.act)){ S.ldCache = null; S.craftsAt = 0; viewCacheClear(); }   // 何か保存したら、収支の集計と協力業者は読み直す（画面の中だけの操作は読み直さない）
   try { await ACTIONS[el.dataset.act](el); }
   catch(err) { console.error(err); toast(err.message || String(err)); }
   finally { el.disabled = false; }
@@ -9024,7 +9049,7 @@ document.addEventListener("submit", async e => {
   e.preventDefault();
   const btns = [...form.querySelectorAll("button")];
   btns.forEach(b => b.disabled = true);
-  S.ldCache = null; S.craftsAt = 0;
+  S.ldCache = null; S.craftsAt = 0; viewCacheClear();
   try { await FORMS[form.dataset.form](form, e); }
   catch(err) { console.error(err); toast(err.message || String(err)); }
   finally { btns.forEach(b => b.disabled = false); }
@@ -9478,10 +9503,13 @@ async function coPostGuard(id, x, status){
 }
 // ログインした直後：工務店なら会社、職人のメンバーなら親方、運営の設定を読む
 async function afterLogin(){
-  S.cid = null; S.company = null; S.me = null;
-  const p = S.profile; if(!p) return;
-  { const [o, cn] = await Promise.all([api().getOpSettings().catch(() => ({})), api().getOpConnect().catch(() => ({}))]); S.opCfg = {...o, connect:cn}; }
-  if(p.role === "co"){ S.cid = p.companyId; S.company = await api().getCompany(p.companyId).catch(() => null); await applyScheduled().catch(e => console.warn(e)); }
+  S.me = null;
+  const p = S.profile; if(!p){ S.cid = null; S.company = null; return; }
+  const [o, cn, co] = await Promise.all([api().getOpSettings().catch(() => ({})), api().getOpConnect().catch(() => ({})),
+    p.role === "co" ? api().getCompany(p.companyId).catch(() => null) : null]);   // 運営設定と会社は並べて読む
+  S.opCfg = {...o, connect:cn};
+  if(p.role === "co"){ S.cid = p.companyId; S.company = co; await applyScheduled().catch(e => console.warn(e)); }
+  else { S.cid = null; S.company = null; }
 
 }
 function coStatusNote(){ return `<div class="alert-box"><b>この会社の利用は停止中です。</b><p>運営（Refore）にお問い合わせください。</p></div>`; }
@@ -10687,6 +10715,57 @@ document.addEventListener("mousedown", e => {
 document.addEventListener("input", e => { const t = e.target; if(t.matches?.("#est-form [name=company], form[data-form=memo] [name=company], form[data-form=memo] [name=companyNew]")) S.estCo = t.value === "__new" ? "" : t.value.trim(); });
 document.addEventListener("change", e => { const t = e.target; if(t.matches?.("form[data-form=memo] [name=company]")) S.estCo = t.value === "__new" ? "" : t.value; });
 
+/* ---------- 表示を速くする ---------- */
+const SPEED_ON = (() => { try { return new URLSearchParams(location.search).has("speed"); } catch(e) { return false; } })();
+const T0 = performance.now();
+const SPEED = {boot:null, bootFast:null, last:[]};
+function speedShow(){
+  if(!SPEED_ON) return;
+  let el = document.querySelector(".gp-speed"); if(!el){ el = document.createElement("div"); el.className = "gp-speed"; document.body.appendChild(el); }
+  const f = ms => ms == null ? "-" : (ms / 1000).toFixed(2) + "秒";
+  el.textContent = `起動：${f(SPEED.boot)}${SPEED.bootFast != null ? `（先に表示 ${f(SPEED.bootFast)}）` : ""}\n` + SPEED.last.slice(-4).map(x => `${x.hash.slice(0, 26)}　${f(x.ms)}${x.cached != null ? `（先に ${f(x.cached)}）` : ""}`).join("\n");
+}
+// 前回のプロフィール・会社・運営設定（端末に覚えておき、次に開いたとき先に使う）
+const BOOT_KEY = uid => `gp_boot_${uid}`;
+function bootGet(uid){ try { const v = JSON.parse(localStorage.getItem(BOOT_KEY(uid)) || "null"); return v && Date.now() - v.at < 14 * 86400000 ? v : null; } catch(e) { return null; } }
+function bootSnap(){ return {profile:S.profile, cid:S.cid, company:S.company, opCfg:S.opCfg}; }
+function bootSet(uid){ try { localStorage.setItem(BOOT_KEY(uid), JSON.stringify({...bootSnap(), at:Date.now()})); } catch(e) {} }
+function bootClear(){ try { Object.keys(localStorage).filter(k => k.startsWith("gp_boot_")).forEach(k => localStorage.removeItem(k)); } catch(e) {} }
+const bootSig = v => { try { return JSON.stringify([v.profile, v.cid, v.company, v.opCfg]); } catch(e) { return Math.random(); } };
+// 一度見た画面の表示（戻ったときに先に出す）。入力する画面・書類の画面は使わない
+function viewCacheable(parts){
+  const p = S.profile; if(!p || p.role === "op" || !termsOk(p)) return false;
+  const [a, b, c, d] = parts;
+  if(isCoRole(p.role)){
+    if(a !== "admin") return false;
+    if(!b || ["list", "home", "craftsmen", "calendar", "invoices", "bills", "craftsman"].includes(b)) return true;
+    if(b === "job") return !d;
+    if(b === "money") return c !== "edit";
+    if(b === "chat") return !c;
+    return false;
+  }
+  if(!a || ["jobs", "job", "applied", "work", "invoice", "schedule"].includes(a)) return true;
+  if(a === "chat") return !b;
+  return false;
+}
+const viewKey = hash => `${S.user?.uid || ""}|${S.cid || ""}|${hash}`;
+function viewCacheClear(){ S.viewCache.clear(); }
+// 新しい版のお知らせ（sw.js から届く）
+function showUpdateBar(){
+  if(document.querySelector(".gp-update")) return;
+  const bar = document.createElement("div"); bar.className = "gp-update"; bar.setAttribute("role", "status");
+  bar.innerHTML = `<span>新しい版があります</span><button type="button">更新する</button>`;
+  bar.querySelector("button").onclick = () => location.reload();
+  document.body.appendChild(bar);
+}
+const SW_OK = !FORCE_DEMO && "serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost");
+if(SW_OK){ try { navigator.serviceWorker.addEventListener("message", e => { if(e.data && e.data.type === "gp-updated") showUpdateBar(); }); } catch(e) {} }
+function registerSW(){
+  if(!SW_OK) return;
+  try { navigator.serviceWorker.register("sw.js").catch(e => console.warn("sw", e)); } catch(e) { console.warn(e); }
+}
+window.addEventListener("load", () => setTimeout(registerSW, 1500));
+
 /* ---------- 起動 ---------- */
 function loadScript(src){
   return new Promise((res, rej) => {
@@ -10710,10 +10789,18 @@ async function boot(){
   }
   S.api.onAuth(async u => {
     stopNotifier(); stopBadges();
-    S.user = u;
-    try { S.profile = u ? await S.api.getProfile(u.uid) : null; } catch(e) { console.error(e); S.profile = null; }
+    S.user = u; viewCacheClear();
+    if(!u) bootClear();
+    const bk = u && S.api.mode !== "demo" ? bootGet(u.uid) : null;
+    if(bk){   // 前回の内容ですぐ表示（裏で最新を読む）
+      S.profile = bk.profile; S.cid = bk.cid; S.company = bk.company; S.opCfg = bk.opCfg;
+      route(); SPEED.bootFast = performance.now() - T0;
+    }
+    try { S.profile = u ? await S.api.getProfile(u.uid) : null; } catch(e) { console.error(e); S.profile = bk ? bk.profile : null; }
     try { await afterLogin(); } catch(e) { console.error(e); }
-    route();
+    if(u && S.profile) bootSet(u.uid);
+    if(!bk || bootSig(bk) !== bootSig(bootSnap())){ viewCacheClear(); route(); }
+    if(SPEED.boot == null) setTimeout(() => { SPEED.boot = performance.now() - T0; speedShow(); }, 0);
   });
   window.addEventListener("hashchange", route);
 }
