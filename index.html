@@ -2992,14 +2992,17 @@ function gcalUrl(j, p){
   const note = [p.keyInfo ? "鍵・入室方法：" + p.keyInfo : "", p.contact ? "連絡事項：" + p.contact : "", location.href.split("#")[0] + "#/work/" + j.id].filter(Boolean).join("\n");
   return "https://calendar.google.com/calendar/render?" + new URLSearchParams({action:"TEMPLATE", text:j.title || "工事", dates:`${d(j.craftStart)}/${d(addDays(j.craftEnd || j.craftStart, 1))}`, location:loc, details:note}).toString();
 }
-// 完了確認の予定（終日。日付は手配したあとに選ぶ。説明にUP日を入れる）。題名は「完(物件名)」、雑工事があれば「完雑(物件名)」
+// 完了確認の予定（終日。日付は手配したあとに選ぶ。説明にUP日を入れる）。題名は「完(物件名)」、雑工事か自社でやる工事があれば「完雑(物件名)」
 // 日付（dates）は「完了確認をカレンダーに入れる」を押したときに足すので、ここでは入れない。{url, up} を返す
-function doneCalUrl(root, priv, fam){
+function doneCalUrl(root, priv, fam, selfItems = priv.selfItems){
   const md = v => v ? `${Number(v.slice(5, 7))}/${Number(v.slice(8, 10))}` : "";
   const span = (a, b) => b && b !== a ? `${md(a)}〜${md(b)}` : md(a);
   const ends = fam.map(j => j.craftEnd || j.craftStart || j.endDate || j.startDate).filter(Boolean);
   const up = [root.endDate || root.startDate, ...ends].filter(Boolean).sort().pop() || todayIso();
-  const items = itemsWithId(root.allItems?.length ? root.allItems : root.items), zatsu = items.filter(i => i.cat === "雑工事");
+  const items = itemsWithId(root.allItems?.length ? root.allItems : root.items), zatsu0 = items.filter(i => i.cat === "雑工事");
+  // 発注先を「自社でやる」にした工事も雑工事として入れる（案件からは外れているので selfItems から足す）
+  const zkey = i => `${i.loc || ""}|${i.name || ""}`, zseen = new Set(zatsu0.map(zkey));
+  const zatsu = [...zatsu0, ...(selfItems || []).filter(i => i?.name && !zseen.has(zkey(i)))];
   const place = [priv.building, priv.room].filter(Boolean).join(" ") || root.title || "案件";
   const lines = [priv.manager || "", md(up), priv.moveIn ? `入居 ${md(priv.moveIn)}` : "", "",
     ...fam.map(j => `${craftName(j.assignedTo)} ${j.craftStart ? span(j.craftStart, j.craftEnd) : span(j.startDate, j.endDate) + "（入る日は未定）"}`),
@@ -5141,7 +5144,8 @@ async function viewAdminJob(id){
   const kids = family.filter(j => j.parentId === id), fixKids = family.filter(j => j.fixOf && j.fixOf === id), parentJob = job.parentId ? family.find(j => j.id === job.parentId) : null;
   // 完了確認の予定：元の案件と分離発注の子案件の、発注した業者をまとめる
   const root = parentJob || job, calFam = [root, ...family.filter(j => j.parentId === root.id && j.id !== root.id)].map(j => j.id === job.id ? job : j).filter(j => j.assignedTo && !j.declinedAt);
-  const cal = calFam.length ? doneCalUrl(root, priv, calFam) : null, calUrl = cal?.url || "";
+  const calSelf = parentJob ? (await api().getJobPrivate(root.id).catch(() => ({}))).selfItems : priv.selfItems;   // 自社でやる工事は元の案件に入っている
+  const cal = calFam.length ? doneCalUrl(root, priv, calFam, calSelf) : null, calUrl = cal?.url || "";
   // 工程表：元の案件と分離発注の子案件の、工種ごとの工期（発注した業者の入る日があればそれ）
   const ganttLots = [root, ...family.filter(j => j.parentId === root.id)].map(j => j.id === job.id ? job : j).flatMap(j => (j.lots || []).filter(l => (l.iids || []).length || j.lots.length === 1).map(l => ({...l,
     start:(j.parentId || j.lots.length === 1) && j.craftStart ? j.craftStart : l.start, end:(j.parentId || j.lots.length === 1) && j.craftStart ? (j.craftEnd || j.craftStart) : l.end, who:j.assignedTo && !j.declinedAt ? craftName(j.assignedTo) : "未発注"})));
