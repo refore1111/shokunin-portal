@@ -5489,7 +5489,7 @@ function supRowHtml(p = {kind:"material"}){
       <label class="field"><span>メール <small>材料発注書のメールの宛先</small></span><input type="email" name="sp_email" value="${esc(p.email)}" placeholder="例：order@example.com"></label>
       <label class="field"><span>FAX</span><input type="tel" name="sp_fax" value="${esc(p.fax)}" placeholder="例：03-1234-5678"></label>
       <label class="field"><span>支払条件</span><input type="text" name="sp_terms" value="${esc(p.terms)}" placeholder="例：工事完了月末締め、翌月末支払い"></label>
-      <label class="field"><span>注文サイト <small>ネットで頼むときだけ</small></span><input type="url" name="sp_url" value="${esc(p.url || "")}" placeholder="https://..."></label>
+      <label class="field"><span>注文サイト <small>ネットで頼むときだけ</small></span><input type="text" inputmode="url" autocomplete="off" name="sp_url" value="${esc(p.url || "")}" placeholder="https://..."></label>
       <label class="field"><span>発注書の形</span><select name="sp_kind"><option value="material" ${p.kind !== "work" ? "selected" : ""}>材料の発注書（品名・メーカー・品番・納品日）</option><option value="work" ${p.kind === "work" ? "selected" : ""}>工事の発注書（箇所・内容・仕様）</option></select></label>
     </div></div>`;
 }
@@ -5754,7 +5754,7 @@ function priceRowHtml(p = {unit:"式"}){
 function priceSupRead(r){
   const ws = r.querySelector("[name=p_ws]")?.value || "", mt = r.querySelector("[name=p_mat]")?.value || "", rt = r.querySelector("[name=p_mrate]")?.value || "";
   const m = mt.startsWith("m:") ? (S.materials || []).find(x => x.id === mt.slice(2)) : null;
-  if(mt === "net"){ const np = r.querySelector("[name=p_netp]")?.value || "", nu = r.querySelector("[name=p_netu]")?.value.trim() || "";
+  if(mt === "net"){ const np = r.querySelector("[name=p_netp]")?.value || "", nu = urlFix(r.querySelector("[name=p_netu]")?.value);
     return {...(ws ? {workSup:ws} : {}), matSup:"net", ...(np !== "" ? {matPrice:Number(np) || 0} : {}), ...(nu ? {matUrl:nu} : {}), ...(rt !== "" ? {matRate:Number(rt) || 0} : {})}; }
   return {...(ws ? {workSup:ws} : {}), ...(m ? {matId:m.id, matSup:m.sup} : mt.startsWith("s:") ? {matSup:mt.slice(2)} : {}), ...(mt && rt !== "" ? {matRate:Number(rt) || 0} : {})};
 }
@@ -5769,7 +5769,7 @@ function priceSupHtml(p = {}){
   const net = p.matSup === "net", wv = p.workSup || "", mv = net ? "net" : p.matId ? "m:" + p.matId : p.matSup ? "s:" + p.matSup : "", mm = p.matId ? (S.materials || []).find(m => m.id === p.matId) : null;
   return `<div class="price-sup"><label class="ps-w">業者の発注先<select name="p_ws" data-lazy="pws">${lazyOne(wv, supNameOf(wv), "未定（募集する）")}</select></label>
     <label class="ps-m">材料<select name="p_mat" data-lazy="pmat">${lazyOne(mv, net ? "ネットで買う（金額・URL）" : mm ? [mm.name, mm.maker, mm.code].filter(Boolean).join(" ") : supNameOf(p.matSup || ""), "なし（業者の材工）")}</select></label>
-    <span class="ps-net"${net ? "" : " hidden"}><label>ネットの金額<input type="number" name="p_netp" min="0" inputmode="numeric" value="${esc(p.matPrice ?? "")}" placeholder="円"></label><label>URL<input type="url" name="p_netu" value="${esc(p.matUrl || "")}" placeholder="https://（買うページ）"></label>${p.matUrl ? `<a href="${esc(p.matUrl)}" target="_blank" rel="noopener">開く</a>` : ""}</span>
+    <span class="ps-net"${net ? "" : " hidden"}><label>ネットの金額<input type="number" name="p_netp" min="0" inputmode="numeric" value="${esc(p.matPrice ?? "")}" placeholder="円"></label><label>URL<input type="text" inputmode="url" autocomplete="off" name="p_netu" value="${esc(p.matUrl || "")}" placeholder="https://（買うページ）"></label>${p.matUrl ? `<a href="${esc(p.matUrl)}" target="_blank" rel="noopener">開く</a>` : ""}</span>
     <label class="ps-r">材料の数量＝工事の数量×<input type="number" name="p_mrate" min="0" step="0.01" inputmode="decimal" value="${esc(p.matRate ?? "")}" placeholder="${/クロス/.test(p.name || "") ? "1.3" : "1"}"></label></div>`;
 }
 // 見積だけの項目：単価表に入れたもの＋まだ入れていない雛形の項目
@@ -6266,6 +6266,8 @@ function memoMatSupOpts(){
   return `<option value="">なし（業者の材工）</option>${(S.suppliers || []).filter(x => x.kind !== "work").map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}<option value="net">ネットで買う（URL）</option><option value="home">ホームセンターで買う</option>`;
 }
 const buyMat = ms => ms === "net" || ms === "home";   // 発注書を作らずに買う材料（ネット・ホームセンター）
+// 貼ったURLを直す：「商品名 https://…」のような共有の文から https://… を取り出す。https:// がなければ足す
+const urlFix = s => { s = String(s || "").trim(); const m = s.match(/https?:\/\/[^\s「」『』（）()<>"]+/); if(m) return m[0]; return /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(s) ? "https://" + s : s; };
 const memoSupOf = (ws, ms, mp, ds = {}, url = "") => ws || ms || mp !== "" ? {...(ws ? {work:ws, workName:supNameOf(ws)} : {}), ...(ms ? {mat:ms, matName:ms === "net" ? "ネット購入" : ms === "home" ? "ホームセンター" : supNameOf(ms)} : {}), ...(mp !== "" && mp != null ? {matPrice:Number(mp) || 0} : {}),
   ...(ms && !buyMat(ms) && ds.matId ? {matId:ds.matId} : {}), ...(ms && !buyMat(ms) && Number(ds.matRate) > 0 ? {matRate:Number(ds.matRate)} : {}), ...(ms === "net" && url ? {url} : {})} : null;
 const supNameOf = v => !v ? "" : v === "self" ? "自社でやる" : v.startsWith("n:") ? v.slice(2) : v.startsWith("c:") ? (S.crafts?.get(v.slice(2))?.tradeName || S.crafts?.get(v.slice(2))?.name || "") : ((S.suppliers || []).find(x => x.id === v.replace(/^s:/, ""))?.name || "");
@@ -6277,7 +6279,7 @@ function memoRowHtml(){
     <button type="button" class="i-x" data-act="memo-rm" aria-label="この行を消す">×</button>
     <div class="memo-price"><label class="mp-spec">品番・メーカー<input type="text" name="m_spec" placeholder="例：サンゲツ SP2823（見積・請書・発注書に載ります）" autocomplete="off"><button type="button" class="mq-b mp-any" data-act="memo-any" data-v="LB9519" hidden>LB9519</button><button type="button" class="mq-b mp-any" data-act="memo-any" hidden>なんでもいい（${CLOTH_ANY}）</button></label><label>見積単価<input type="number" name="m_sell" min="0" inputmode="numeric" placeholder="円"></label><label>業者単価<input type="number" name="m_cost" min="0" inputmode="numeric" placeholder="円"></label><span class="mp-amt"></span>
       <span class="mp-sup"><label class="mp-ws">工種・発注先<select name="m_ws" data-lazy="ws"><option value="">未定（募集する）</option></select></label>
-        <label class="mp-ms">材料の発注先<select name="m_ms">${memoMatSupOpts()}</select></label><label class="mp-mp">材料単価<input type="number" name="m_mp" min="0" inputmode="numeric" placeholder="円"></label><label class="mp-url" hidden>URL<input type="url" name="m_url" placeholder="https://（買うページ）"></label></span>
+        <label class="mp-ms">材料の発注先<select name="m_ms">${memoMatSupOpts()}</select></label><label class="mp-mp">材料単価<input type="number" name="m_mp" min="0" inputmode="numeric" placeholder="円"></label><label class="mp-url" hidden>URL<input type="text" inputmode="url" autocomplete="off" name="m_url" placeholder="https://（買うページ）"></label></span>
       <label class="mp-wsn" hidden>業者名<input type="text" name="m_wsName" placeholder="例：〇〇内装（ポータルにいない業者）" autocomplete="off"></label>
       <label class="mp-st">この工事<select name="m_st"><option value="">する</option>${EST_ST.map(x => `<option>${x}</option>`).join("")}</select></label>
       <label class="mp-why">備考<input type="text" name="m_why" placeholder="なぜこの工事をするか（見積書に載ります）例：ヘッドの接続部が割れて水漏れのため" autocomplete="off"></label></div>
@@ -6311,6 +6313,12 @@ function memoDims(row){
   return [...row.querySelectorAll(".md-row")].map(d => ({h:Number(d.querySelector("[name=d_h]").value) || 0, l:Number(d.querySelector("[name=d_l]").value) || 0, acc:d.querySelector("[name=d_acc]").checked,
     ...(all ? {loc:d.querySelector("[name=d_loc]")?.value || "", part:cf ? "床" : d.querySelector("[name=d_part]")?.value || "壁"} : {}), ...(cf && d.querySelector("[name=d_long]")?.checked ? {long:true} : {})}))
     .filter(d => d.h > 0 && d.l > 0).map(d => ({...d, a:r2(d.h * d.l)}));
+}
+// 保存した工事メモの画面を出し直したとき：もう単価表にある工事は「新しい工事（単価表に入れる）」の枠を隠す
+function memoNewSync(f){
+  const ps = estPrices();
+  f.querySelectorAll(".memo-row").forEach(r => { const nw = r.querySelector(".memo-new"), n = r.querySelector("[name=m_name]")?.value.trim(); if(!nw || !n || !ps.some(x => x.name === n)) return;
+    nw.hidden = true; const c = r.querySelector("[name=m_save]"); if(c) c.checked = false; });
 }
 // 工事内容が変わったら、クロスなら寸法の欄、単価表にない工事なら金額の欄を出す
 function memoRowState(row){
@@ -6658,6 +6666,8 @@ async function fixJobNew({jobId, estId}){
     data = {title:`${estTitle(e) || "自社施工"}（是正）`, trades:[], pref:pref || "", city:city || "", site, staff:e.staff || null, jobNo:e.no || "", taxMode:"税別", fixOf:e.ledgerId};
     priv = {...site, keyInfo:e.keyInfo || "", manager:e.company || "", contact:e.contact || "", masterId:e.masterId || "", photoUrls:e.photoUrls || []};
   }
+  const empty = (await api().listJobs({}).catch(() => [])).find(j => j.fixOf === data.fixOf && j.status === "draft" && !j.assignedTo && !(j.items || []).length);
+  if(empty) return empty.id;
   const jid = await api().saveJob(null, {...data, startDate:"", endDate:"", price:0, items:[], description:"", priceNote:"", photos:[], status:"draft", audience:"all"});
   await api().setJobPrivate(jid, {...priv, items:[]});
   S.ldCache = null; return jid;
@@ -6680,7 +6690,7 @@ async function caseHubHtml(E, lrows){
   if(E.status === "lost") next = `<b>失注</b>${b("reopen", "受注待ちに戻す")}`;
   else if(k === 0){ next = `<b>次にやること：見積を出す</b>${b("pdf", "見積書PDF", false, ' data-type="est"')}${xl}${b("sent", "提出済みにする", true)}`; }
   else if(k === 1){ next = `<b>次にやること：管理会社の返事</b>${b("order", "受注", true)}${b("lost", "失注")}${b("tachiai", "立会費のみで完了")}${b("pdf", "見積書PDF", false, ' data-type="est"')}${xl}`; backTo = b("unsent", "‹ 見積中に戻す"); }
-  else if(k === 2 && !jobs.length){ next = `<b>次にやること：業者・材料屋さんに発注</b><label class="field hub-photo"><span>現場写真のリンク <small>任意・Dropboxの退去写真フォルダの共有リンクなど。業者さんが応募する前から見られます</small></span><input type="url" name="hubPhoto" inputmode="url" placeholder="https://www.dropbox.com/..." value="${esc((E.photoUrls || [])[0] || "")}"></label>${b("start", "発注する（決めた業者・材料屋さんへ）", true)}${b("self", "自社施工で完了")}${b("pdf", "請書PDF", false, ' data-type="ukesho"')}<p class="small" style="margin:6px 0 0">工事ごとに「業者の発注先」「材料の発注先」を決めておくと、そのとおりに発注します。未定の工事は募集に出します。</p>`; backTo = b("unorder", "‹ 受注待ちに戻す"); }
+  else if(k === 2 && !jobs.length){ next = `<b>次にやること：業者・材料屋さんに発注</b><label class="field hub-photo"><span>現場写真のリンク <small>任意・Dropboxの退去写真フォルダの共有リンクなど。業者さんが応募する前から見られます</small></span><input type="text" name="hubPhoto" inputmode="url" autocomplete="off" placeholder="https://www.dropbox.com/..." value="${esc((E.photoUrls || [])[0] || "")}"></label>${b("start", "発注する（決めた業者・材料屋さんへ）", true)}${b("self", "自社施工で完了")}${b("pdf", "請書PDF", false, ' data-type="ukesho"')}<p class="small" style="margin:6px 0 0">工事ごとに「業者の発注先」「材料の発注先」を決めておくと、そのとおりに発注します。未定の工事は募集に出します。</p>`; backTo = b("unorder", "‹ 受注待ちに戻す"); }
   else if(k === 6) next = `<b>完了しました</b>${lrow?.billId ? `<span class="small">管理会社への請求書を作りました</span>` : `<span class="small">締め日に管理会社への請求書に入ります</span>`}${E.status === "tachiai" ? "" : b("pdf", "請書PDF", false, ' data-type="ukesho"')}${b("pdf", "請求書PDF", false, ' data-type="invoice"')}${E.status === "tachiai" || (!E.jobId && !E.ledgerId) ? "" : `<div class="hub-fix"><span class="small"><b>是正・追加の発注</b>（発注した分は収支に入ります）</span><button type="button" class="btn sub" data-act="fix-new" ${E.jobId ? `data-job="${esc(E.jobId)}"` : `data-est="${esc(E.id)}"`}>業者に発注</button><button type="button" class="btn sub" data-act="fix-new" data-mat="1" ${E.jobId ? `data-job="${esc(E.jobId)}"` : `data-est="${esc(E.id)}"`}>材料・外部発注</button></div>`}`;
   else if(k === 5) next = `<b>次にやること：管理会社に完了報告</b>${lrow ? `<button type="button" class="btn" data-act="stage-next" data-id="${esc(lrow.id)}" data-step="done">完了報告済み</button>` : ""}`;
   else next = `<b>次にやること：${k === 3 ? "業者の承諾・入る日を待つ" : "作業が終わったら完了を確認"}</b><span class="small">業者ごとの状態は下の「業者と書類」で見られます。</span>`;
@@ -6747,7 +6757,7 @@ async function caseStep(el){
   else if(step === "self") return ACTIONS["est-self"]();
   else if(step === "start"){
     // 発注のときに入れた現場写真のリンクは、案件（分離発注の分も）に入り、業者が応募前から見られる
-    const pu = (document.querySelector("[name=hubPhoto]")?.value || "").trim();
+    const pu = urlFix(document.querySelector("[name=hubPhoto]")?.value);
     if(pu && !/^https?:\/\/\S+$/i.test(pu)) throw new Error("現場写真のリンクは https:// から始まるURLを入れてください");
     const e2 = pu ? {...e, photoUrls:[pu, ...(e.photoUrls || []).filter(u => u !== pu)]} : e;
     if(!await ask({title:"この内容で発注しますか？", body:startPreview(e2) + (pu ? "\n\n現場写真のリンク：あり（業者さんが応募前から見られます）" : "") + "\n\n違っていたら「やめる」を押して、工事メモの各工事の「業者の発注先」を直してください。", ok:"発注する"})) return;
@@ -6773,7 +6783,7 @@ async function memoCollect(form){
       const pp = p0 && {...p0, sell:num("m_sell") === "" ? p0.sell : num("m_sell"), cost:num("m_cost") === "" ? p0.cost : num("m_cost")};   // 工事メモで直した単価を使う
       const dims0 = isCloth(name) || isCF(name) ? memoDims(r) : [], dims = dims0.length ? dims0 : (dimsOfEl(r).dims || []).filter(d => !d.acc), acc = up1(dims.filter(d => d.acc).reduce((a, d) => a + d.a, 0));
       return {loc:v("m_loc"), p:pp || {id:"", name, unit:v("m_unit") || "式", sell:num("m_sell"), cost:num("m_cost") || 0, cat:v("m_cat")}, unit:v("m_unit"), qty:q === "" ? "" : Number(q) || 0, free:!pp,
-        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", ccat:r.dataset.chk ? CK_CAT : (v("m_ws").startsWith("t:") ? v("m_ws").slice(2) : ""), sup:memoSupOf(memoWsOf(r, name), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {}, v("m_url")), why:v("m_why"), st:v("m_st"), keep:dimsOfEl(r), rid:r.dataset.rid || (r.dataset.rid = "r_" + newId())}; })
+        save:!pp && !!r.querySelector("[name=m_save]")?.checked, dims, acc, accCode:v("m_accCode"), spec:v("m_spec"), fixed:!!r.dataset.fixed, label:r.dataset.alias ? name : "", ccat:r.dataset.chk ? CK_CAT : (v("m_ws").startsWith("t:") ? v("m_ws").slice(2) : ""), sup:memoSupOf(memoWsOf(r, name), v("m_ms"), num("m_mp"), v("m_ms") ? r.dataset : {}, urlFix(v("m_url"))), why:v("m_why"), st:v("m_st"), keep:dimsOfEl(r), rid:r.dataset.rid || (r.dataset.rid = "r_" + newId())}; })
       .filter(x => x.p.name && !(x.fixed && (x.qty === "" || !x.qty) && !x.dims.length));   // クロス・床で数量のない行は入れない
     // 新しい工事を単価表に入れる（業者の単価を入れたものだけ）。同じ名前がもうあれば、それを使う
     const adds = rows.filter(x => x.save && x.p.cost > 0);
@@ -6853,8 +6863,8 @@ async function viewMemo(lid = ""){
   S.memoRow = L || null;
   setTimeout(() => { const f = document.querySelector("form[data-form=memo]"); if(!f) return;
     const unlock = () => f.querySelectorAll("button[disabled]").forEach(b => b.disabled = false);   // 前に押せないまま保存されたボタンも押せるようにする
-    if(D){ f.innerHTML = D.html; unlock(); f.dataset.draft = D.id; memoReprice(f); memoCalc(); return; }   // 下書きは入れかけの画面をそのまま戻す
-    if(E){ if(E.memoHtml){ f.innerHTML = E.memoHtml; unlock(); memoCalc(); } else { f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); memoFillFromEst(f, E); } memoDocLock(f); const h = $("#memo-no"); if(h) h.textContent = E.no ? `工事番号は ${E.no} です` : ""; return; }
+    if(D){ f.innerHTML = D.html; unlock(); f.dataset.draft = D.id; memoReprice(f); memoNewSync(f); memoCalc(); return; }   // 下書きは入れかけの画面をそのまま戻す
+    if(E){ if(E.memoHtml){ f.innerHTML = E.memoHtml; unlock(); memoNewSync(f); memoCalc(); } else { f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); memoFillFromEst(f, E); } memoDocLock(f); const h = $("#memo-no"); if(h) h.textContent = E.no ? `工事番号は ${E.no} です` : ""; return; }
     f.querySelectorAll("#memo-cf .mcf").forEach(c => memoPreset(c.querySelector(".memo-row"), c.dataset.cf)); if(L) memoFromLedger(f, L); memoCalc(); }, 0);
   return `${back("#/admin/home", "ホーム")}${E ? hub : `<div class="page-head"><div><h1>工事メモ・見積</h1><p class="lead">現場でスマホから入れます。工事は単価表から選び、見積の金額・業者の金額・利益もここで見られます。そのまま見積になります。</p></div></div>`}
     ${L ? `<p class="panel small" style="margin:0 0 12px">収支の案件「<b>${esc(L.name)}</b>」（${esc(L.jobNo || "工事番号なし")}）の見積を作ります。</p>` : ""}
@@ -8721,6 +8731,13 @@ const FORMS = {
   async lsearch(form){ const q = form.elements.q.value.trim(); go(q ? `#/admin/money/${form.dataset.ki}/${encodeURIComponent("検索")}/${encodeURIComponent(q)}` : `#/admin/money/${form.dataset.ki}`); },
   async billing(form){ const g = k => form.elements[k].value.trim(); await api().saveBilling({invoiceNumber:g("invoiceNumber"), bank:g("bank"), validity:g("validity"), terms:g("terms")}); S.billing = null; toast("保存しました"); },
   async memo(form){
+    // 新しい工事メモ：同じ物件・号室で、まだ終わっていない案件が収支にあれば、保存（物件マスタ・単価表への書き込み）の前に知らせる
+    if(!form.dataset.eid && !form.dataset.lid){
+      const fe = form.elements, pid = fe.propId?.value || "", bn = ((pid && (S.props || []).find(p => p.id === pid)?.name) || fe.propName?.value || "").trim(), rm = (fe.room?.value || "").trim();
+      const nk = s => String(s || "").replace(/[\s　]/g, "").replace(/号室/g, "").toLowerCase(), me = nk(rm ? `${bn} ${rm}` : bn);
+      const dup = me ? (await api().listLedger().catch(() => [])).find(r => nk(r.name) === me && !r.done && !["done", "lost"].includes(r.stage)) : null;
+      if(dup && !await ask({title:"同じ物件の案件がもうあります", body:`収支に「${dup.name}」（${dup.jobNo || "工事番号なし"}）があります。\n\nこのまま保存すると、別の工事番号で新しい案件ができます（ダブりのもとになります）。前の案件の見積にするときは「キャンセル」を押して、収支のその案件から工事メモを開いてください。`, ok:"新しい案件として作る"})) return;
+    }
     const c = await memoCollect(form), now = Date.now();
     // 前からある見積（工事メモの画面で開いたもの）は、その見積を直す。状態はそのまま
     if(form.dataset.eid){ await memoSaveExisting(form, c); toast("保存しました（見積・収支・業者の案件に反映しました）"); return route(); }
@@ -8791,7 +8808,7 @@ const FORMS = {
   },
   async suppliers(form){
     const list = [...form.querySelectorAll(".sup-row")].map(r => { const v = n => r.querySelector(`[name=${n}]`).value.trim();
-      return {id:r.dataset.id || "s_" + newId(), name:v("sp_name"), kind:v("sp_kind") === "work" ? "work" : "material", email:v("sp_email"), fax:v("sp_fax"), tel:"", terms:v("sp_terms"), url:v("sp_url"), ...(!v("sp_url") && /MOZU/i.test(v("sp_name")) ? {urlOff:true} : {})}; }).filter(x => x.name);
+      return {id:r.dataset.id || "s_" + newId(), name:v("sp_name"), kind:v("sp_kind") === "work" ? "work" : "material", email:v("sp_email"), fax:v("sp_fax"), tel:"", terms:v("sp_terms"), url:urlFix(v("sp_url")), ...(!v("sp_url") && /MOZU/i.test(v("sp_name")) ? {urlOff:true} : {})}; }).filter(x => x.name);
     await api().saveSuppliers(list); S.suppliers = list; toast("発注先を保存しました"); route();
   },
   async materials(form){
