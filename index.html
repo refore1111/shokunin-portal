@@ -6316,6 +6316,8 @@ function memoDims(row){
 }
 // 保存した工事メモの画面を出し直したとき：もう単価表にある工事は「新しい工事（単価表に入れる）」の枠を隠す
 function memoNewSync(f){
+  // 前の版で保存した画面は URL の欄が type="url" のまま。ブラウザが保存を止めるので、文字の欄に直す
+  f.querySelectorAll('input[type="url"]').forEach(i => { i.type = "text"; i.inputMode = "url"; i.autocomplete = "off"; });
   const ps = estPrices();
   f.querySelectorAll(".memo-row").forEach(r => { const nw = r.querySelector(".memo-new"), n = r.querySelector("[name=m_name]")?.value.trim(); if(!nw || !n || !ps.some(x => x.name === n)) return;
     nw.hidden = true; const c = r.querySelector("[name=m_save]"); if(c) c.checked = false; });
